@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-# Copyright (C) 2017-2018 v3aqb
+# Copyright (C) 2017-2019 v3aqb
 
 # This file is part of fwlite-cli.
 
@@ -84,7 +84,6 @@ class conn_manager(object):
         # choose / create and return a connection
         async with self._lock:
             if self.connection is None:
-                logger.info('creating new hxs2 connection. %s' % proxy.name)
                 self.connection = hxs2_connection(proxy, self.timeout, self)
         return self.connection
 
@@ -130,11 +129,11 @@ class hxs2_connection(object):
         self.connected = False
         self.connection_lost = False
 
-        _psk = self.proxy.query.get('PSK', [''])[0]
+        self._psk = self.proxy.query.get('PSK', [''])[0]
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
 
-        self.__pskcipher = Encryptor(_psk, self.method)
+        self.__pskcipher = None
         self.__cipher = None
         self._next_stream_id = 1
 
@@ -161,9 +160,9 @@ class hxs2_connection(object):
                     await self.getKey()
                 except asyncio.CancelledError:
                     raise
-                except Exception:
-                    self.connection_lost = True
-                    self._manager.remove(self)
+                except Exception as e:
+                    logger.error('hxsocks2 getKey %r' % e)
+                    # logger.error(traceback.format_exc())
                     try:
                         self.remote_writer.close()
                     except Exception:
@@ -341,6 +340,9 @@ class hxs2_connection(object):
                 payload = io.BytesIO(payload)
                 logger.debug('recv frame_type: %s, stream_id: %s' % (frame_type, stream_id))
 
+                if random.random() < 0.02:
+                    await self.send_frame(6, 1, 0, b'\x00' * random.randint(64, 256))
+
                 if frame_type == 0:
                     # DATA
                     # first 2 bytes of payload indicates data_len, the rest would be padding
@@ -451,7 +453,7 @@ class hxs2_connection(object):
     async def getKey(self):
         logger.debug('hxsocks2 getKey')
         host, port, usn, psw = (self.proxy.hostname, self.proxy.port, self.proxy.username, self.proxy.password)
-        logger.debug('hxsocks2 connect to server')
+        logger.info('hxsocks2 connect to server')
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
             self.proxy.hostname,
@@ -460,8 +462,9 @@ class hxs2_connection(object):
             timeout=self.timeout,
             tunnel=True)
 
-        acipher = ECC(self.__pskcipher._key_len)
-        pubk = acipher.get_pub_key()
+        self.__pskcipher = Encryptor(self._psk, self.method)
+        ecc = ECC(self.__pskcipher._key_len)
+        pubk = ecc.get_pub_key()
         logger.debug('hxsocks2 send key exchange request')
         ts = int(time.time()) // 30
         ts = struct.pack('>I', ts)
@@ -523,7 +526,7 @@ class hxs2_connection(object):
             if auth == hmac.new(psw.encode(), pubk + server_key + usn.encode(), hashlib.sha256).digest():
                 try:
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
-                    shared_secret = acipher.get_dh_key(server_key)
+                    shared_secret = ecc.get_dh_key(server_key)
                     logger.debug('hxs key exchange success')
                     self.__cipher = AEncryptor(shared_secret, self.method, CTX)
                     # start reading from connection
