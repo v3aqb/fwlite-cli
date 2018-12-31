@@ -144,9 +144,9 @@ class hxs2_connection(object):
         self._stream_status = {}
 
         self._stat_data_recv = 0
-        self._stat_total_recv = 0
+        self._stat_total_recv = 1
         self._stat_data_sent = 0
-        self._stat_total_sent = 0
+        self._stat_total_sent = 1
 
         self._lock = Lock()
 
