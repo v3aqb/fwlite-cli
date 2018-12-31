@@ -227,10 +227,7 @@ class get_proxy(object):
         failed_parents = [k for k in failed_parents if 'pooled' not in k]
         if success:
             if 'direct' in failed_parents:
-                if command == 'CONNECT':
-                    rule = '|https://%s' % requesthost[0]
-                else:
-                    rule = '|http://%s' % requesthost[0] if requesthost[1] == 80 else '%s:%d' % requesthost
+                rule = '||%s' % requesthost[0]
                 if rule not in self.local.rules:
                     resp_time = self.conf.parentlist.get('direct').get_avg_resp_time(requesthost[0])
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
