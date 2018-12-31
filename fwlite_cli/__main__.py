@@ -35,6 +35,10 @@ def main():
     import platform
     s += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
 
+    if sys.platform == 'win32':
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+
     logger = logging.getLogger('FW_Lite')
     logger.setLevel(logging.INFO)
     hdr = logging.StreamHandler()
