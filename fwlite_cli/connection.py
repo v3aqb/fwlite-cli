@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-# Copyright (C) 2014-2018 v3aqb
+# Copyright (C) 2014-2015 v3aqb
 
 # This file is part of fwlite-cli.
 
@@ -117,7 +117,7 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=F
                 raise IOError(0, 'create tunnel via %s failed!' % proxy.name)
         return remote_reader, remote_writer, proxy.name
     elif proxy.scheme == 'socks5':
-        remote_reader, remote_writer = await open_connection(proxy.hostname, proxy.port, proxy.get_via(), timeout=timeout, tunnel=True)
+        remote_reader, remote_writer, _ = await open_connection(proxy.hostname, proxy.port, proxy.get_via(), timeout=timeout, tunnel=True)
         remote_writer.write(b"\x05\x02\x00\x02" if proxy.username else b"\x05\x01\x00")
         data = await remote_reader.readexactly(2)
         if data == b'\x05\x02':  # basic auth
@@ -127,20 +127,20 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=F
                                           chr(len(proxy.password)).encode(),
                                           proxy.password.encode()]))
             data = await remote_reader.readexactly.recv(2)
-        assert data[1] == b'\x00'  # no auth needed or auth passed
+        assert data[1] == 0  # no auth needed or auth passed
         remote_writer.write(b''.join([b"\x05\x01\x00\x03",
                                       chr(len(addr)).encode(),
                                       addr.encode(),
                                       struct.pack(b">H", port)]))
         data = await remote_reader.readexactly(4)
-        assert data[1] == b'\x00'
-        if data[3] == b'\x01':  # read ipv4 addr
+        assert data[1] == 0
+        if data[3] == 1:  # read ipv4 addr
             await remote_reader.readexactly(4)
-        elif data[3] == b'\x03':  # read host addr
+        elif data[3] == 3:  # read host addr
             size = await remote_reader.readexactly(1)
             size = ord(size)
             await remote_reader.readexactly(size)
-        elif data[3] == b'\x04':  # read ipv6 addr
+        elif data[3] == 4:  # read ipv6 addr
             await remote_reader.readexactly(16)
         await remote_reader.readexactly(2)  # read port
         return remote_reader, remote_writer, proxy.name
