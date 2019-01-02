@@ -1,5 +1,5 @@
 
-# Copyright (C) 2014-2018 v3aqb
+# Copyright (C) 2014-2019 v3aqb
 
 # This file is part of fwlite-cli.
 
@@ -541,6 +541,7 @@ class http_handler(base_handler):
                     self.wfile_write(data)
             else:
                 # websocket?
+                self.logger.warning('websocket?')
                 self.close_connection = True
                 self.retryable = False
                 # flush writer buf
@@ -781,6 +782,7 @@ class http_handler(base_handler):
                     rtime = time.clock() - context.timelog
                 if count == 3 and self.command == 'CONNECT':
                     # log server response time
+                    self.pproxy.log(self.request_host[0], rtime)
                     self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, True, self.failed_parents, self.ppname, rtime)
                 context.retryable = False
                 write_to.write(data)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-# Copyright (C) 2014-2018 v3aqb
+# Copyright (C) 2014-2019 v3aqb
 
 # This file is part of fwlite-cli.
 
@@ -40,18 +40,19 @@ hdr.setFormatter(formatter)
 logger.addHandler(hdr)
 
 
-class default_1_dict(dict):
+class default_dict(dict):
+    def __init__(self, default):
+        self.default = default
+        super().__init__(self)
+
     def __missing__(self, key):
-        return 1
+        return self.default
 
 
 class ParentProxy(object):
     via = None
     DEFAULT_TIMEOUT = 8
-    avg_resp_time = 1
-    avg_resp_time_ts = 0
-    avg_resp_time_by_host = default_1_dict()
-    avg_resp_time_by_host_ts = default_1_dict()
+    GATE = 0
 
     def __init__(self, name, proxy):
         '''
@@ -95,9 +96,16 @@ class ParentProxy(object):
 
         self.id = self.query.get('id', [self.name, ])[0]
 
-        self.httppriority = int(httppriority)
-        self.httpspriority = int(httpspriority)
-        self.timeout = int(timeout)
+        self.httppriority = float(httppriority)
+        self.httpspriority = float(httpspriority)
+        self.timeout = float(timeout)
+        self.gate = self.GATE
+
+        self.avg_resp_time = self.gate
+        self.avg_resp_time_ts = 0
+        self.avg_resp_time_by_host = default_dict(self.gate)
+        self.avg_resp_time_by_host_ts = default_dict(0)
+
         self.country_code = self.query.get('location', [''])[0] or None
         self.last_ckeck = 0
         if self.parse.scheme.lower() == 'sni':
@@ -115,19 +123,19 @@ class ParentProxy(object):
 
     def log(self, host, rtime):
         self.avg_resp_time = 0.87 * self.get_avg_resp_time() + (1 - 0.87) * rtime
-        self.avg_resp_time_by_host[host] = 0.87 * self.get_avg_resp_time(host) + (1 - 0.87) * rtime
+        self.avg_resp_time_by_host[host] = 0.87 * self.avg_resp_time_by_host[host] + (1 - 0.87) * rtime
         self.avg_resp_time_ts = self.avg_resp_time_by_host_ts[host] = time.time()
-        logger.debug('%s to %s: %.3fs avg: %.3fs' % (self.name, host, rtime, self.avg_resp_time))
+        logger.info('%s to %s: %.3fs avg: %.3fs %.3fs' % (self.name, host, rtime, self.avg_resp_time, self.avg_resp_time_by_host[host]))
 
     def get_avg_resp_time(self, host=None):
         if host is None:
             if time.time() - self.avg_resp_time_ts > 360:
-                if self.avg_resp_time > 1:
+                if self.avg_resp_time > self.gate:
                     self.avg_resp_time *= 0.93
                 self.avg_resp_time_ts = time.time()
             return self.avg_resp_time
         if time.time() - self.avg_resp_time_by_host_ts[host] > 360:
-            if self.avg_resp_time_by_host[host] > 1:
+            if self.avg_resp_time_by_host[host] > self.gate:
                 self.avg_resp_time_by_host[host] *= 0.93
             self.avg_resp_time_by_host_ts[host] = time.time()
         return self.avg_resp_time_by_host[host] or self.avg_resp_time
