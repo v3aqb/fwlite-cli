@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2014-2018 v3aqb
+# Copyright (C) 2014-2019 v3aqb
 
 # This file is part of fwlite-cli.
 
@@ -180,8 +180,13 @@ class Config(object):
                 with open(self.apnic_path, 'wb') as localfile:
                     localfile.write(data)
 
-        self.timeout = self.userconf.dgetint('FWLite', 'timeout', 6)
+        self.timeout = self.userconf.dgetint('FWLite', 'timeout', 4)
         ParentProxy.DEFAULT_TIMEOUT = self.timeout
+        self.gate = self.userconf.dgetint('FWLite', 'gate', 1)
+        if self.gate < 0:
+            self.logger.warning('gate < 0, set to 0')
+            self.gate = 0
+        ParentProxy.GATE = self.gate
         self.parentlist = ParentProxyList()
         self.HOSTS = defaultdict(list)
         self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
