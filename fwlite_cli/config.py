@@ -162,9 +162,13 @@ class Config(object):
 
         if not os.path.exists(self.gfwlist_path):
             self.logger.warning('"gfwlist.txt" not found! downloading...')
-            import urllib.request as urllib2
+            import urllib.request
+            proxy_handler = urllib.request.ProxyHandler({})
+            opener = urllib.request.build_opener(proxy_handler)
+            urlopen = opener.open
+
             gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
-            r = urllib2.urlopen(gfwlist_url)
+            r = urlopen(gfwlist_url)
             data = r.read()
             if r.getcode() == 200 and data:
                 with open(self.gfwlist_path, 'wb') as localfile:
@@ -172,9 +176,13 @@ class Config(object):
 
         if not os.path.exists(self.apnic_path):
             self.logger.warning('"delegated-apnic-latest.txt" not found! downloading...')
-            import urllib.request as urllib2
-            gfwlist_url = 'https://ftp.apnic.net/stats/apnic/delegated-apnic-latest'
-            r = urllib2.urlopen(gfwlist_url)
+            import urllib.request
+            proxy_handler = urllib.request.ProxyHandler({})
+            opener = urllib.request.build_opener(proxy_handler)
+            urlopen = opener.open
+
+            apnic_url = 'https://ftp.apnic.net/stats/apnic/delegated-apnic-latest'
+            r = urlopen(apnic_url)
             data = r.read()
             if r.getcode() == 200 and data:
                 with open(self.apnic_path, 'wb') as localfile:
