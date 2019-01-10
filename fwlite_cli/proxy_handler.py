@@ -882,13 +882,13 @@ class http_handler(base_handler):
             except Exception as e:
                 self.send_error(404, repr(e))
                 return
-        elif parse.path == '/api/parent' and self.command == 'GET':
+        elif parse.path == '/api/proxy' and self.command == 'GET':
             data = [(p.name, ('%s://%s:%s' % (p.scheme, p._host_port[0], p._host_port[1])) if p.proxy else '', p._priority) for k, p in self.conf.parentlist.dict.items()]
             data = sorted(data, key=lambda item: item[0])
             data = json.dumps(sorted(data, key=lambda item: item[2]))
             self.write(200, data=data, ctype='application/json')
             return
-        elif parse.path == '/api/parent' and self.command == 'POST':
+        elif parse.path == '/api/proxy' and self.command == 'POST':
             'accept a json encoded tuple: (str rule, str dest)'
             name, proxy = json.loads(body)
             self.conf.addparentproxy(name, proxy)
@@ -897,14 +897,23 @@ class http_handler(base_handler):
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout()
             return
-        elif parse.path.startswith('/api/parent/') and self.command == 'DELETE':
+        elif parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
             try:
-                self.conf.parentlist.remove(parse.path[12:])
-                if self.conf.userconf.has_option('parents', parse.path[12:]):
-                    self.conf.userconf.remove_option('parents', parse.path[12:])
+                self.conf.parentlist.remove(parse.path[11:])
+                if self.conf.userconf.has_option('parents', parse.path[11:]):
+                    self.conf.userconf.remove_option('parents', parse.path[11:])
                     self.conf.confsave()
-                self.write(200, data=parse.path[12:], ctype='application/json')
+                self.write(200, data=parse.path[11:], ctype='application/json')
                 self.conf.stdout()
+                return
+            except Exception as e:
+                self.send_error(404, repr(e))
+                return
+        elif parse.path.startswith('/api/proxy/') and self.command == 'GET':
+            try:
+                proxy_name = parse.path[11:]
+                proxy = self.conf.parentlist.get(proxy_name)
+                self.write(200, data=proxy.proxy, ctype='text/plain')
                 return
             except Exception as e:
                 self.send_error(404, repr(e))
