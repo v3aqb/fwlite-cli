@@ -196,7 +196,7 @@ class get_proxy(object):
                 return [self.conf.parentlist.local or self.conf.parentlist.direct]
             return [self.conf.parentlist.direct]
 
-        parentlist = list(self.conf.parentlist.httpsparents() if command == 'CONNECT' else self.conf.parentlist.httpparents())
+        parentlist = self.conf.parentlist.parents()
         if len(parentlist) < self.conf.maxretry:
             parentlist.extend(parentlist[1:] if not ifgfwed else parentlist)
             parentlist = parentlist[:self.conf.maxretry]

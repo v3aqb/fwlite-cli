@@ -239,7 +239,7 @@ class Config(object):
         for k, v in self.userconf.items('parents'):
             self.addparentproxy(k, v)
 
-        if not self.rproxy and len([k for k in self.parentlist.httpsparents() if k.httpspriority < 100]) == 0:
+        if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
             self.logger.warning('No parent proxy available!')
 
         self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)

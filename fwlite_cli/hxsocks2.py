@@ -161,7 +161,7 @@ class hxs2_connection(object):
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
-                    logger.error('hxsocks2 getKey %r' % e)
+                    logger.error('%s getKey %r' % (self.name, e))
                     # logger.error(traceback.format_exc())
                     try:
                         self.remote_writer.close()
@@ -453,7 +453,7 @@ class hxs2_connection(object):
     async def getKey(self):
         logger.debug('hxsocks2 getKey')
         host, port, usn, psw = (self.proxy.hostname, self.proxy.port, self.proxy.username, self.proxy.password)
-        logger.info('hxsocks2 connect to server')
+        logger.info('%s connect to server' % self.name)
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
             self.proxy.hostname,
