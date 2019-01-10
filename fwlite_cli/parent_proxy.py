@@ -20,15 +20,10 @@
 
 import time
 import logging
-try:
-    import urllib.parse as urlparse
-    urlquote = urlparse.quote
-    urlunquote = urlparse.unquote
-except ImportError:
-    import urlparse
-    import urllib2
-    urlquote = urllib2.quote
-    urlunquote = urllib2.unquote
+
+import urllib.parse as urlparse
+urlquote = urlparse.quote
+urlunquote = urlparse.unquote
 
 
 logger = logging.getLogger('parent_proxy')
@@ -57,14 +52,10 @@ class ParentProxy(object):
     def __init__(self, name, proxy):
         '''
         name: str, name of parent proxy
-        proxy: "http://127.0.0.1:8087<|more proxies> <optional int: httppriority> <optional int: httpspriority>"
+        proxy: "http://127.0.0.1:8087<|more proxies> <optional int: priority>"
         '''
         proxy, _, priority = proxy.partition(' ')
-        httppriority, _, httpspriority = priority.partition(' ')
-        httpspriority, _, timeout = httpspriority.partition(' ')
-        httppriority = httppriority or 99
-        httpspriority = httpspriority or httppriority
-        timeout = timeout or self.DEFAULT_TIMEOUT
+        priority = priority or 99
 
         if proxy == 'direct':
             proxy = ''
@@ -96,9 +87,8 @@ class ParentProxy(object):
 
         self.id = self.query.get('id', [self.name, ])[0]
 
-        self.httppriority = float(httppriority)
-        self.httpspriority = float(httpspriority)
-        self.timeout = float(timeout)
+        self._priority = float(priority)
+        self.timeout = self.DEFAULT_TIMEOUT
         self.gate = self.GATE
 
         self.avg_resp_time = self.gate
@@ -108,12 +98,9 @@ class ParentProxy(object):
 
         self.country_code = self.query.get('location', [''])[0] or None
         self.last_ckeck = 0
-        if self.parse.scheme.lower() == 'sni':
-            self.httppriority = -1
-            logger.warning('sni proxy is detectable by GFW, server ip can be blocked.')
 
     def priority(self, method=None, host=None):
-        result = self.httpspriority if method is 'CONNECT' else self.httppriority
+        result = self._priority
 
         score = self.get_avg_resp_time() + self.get_avg_resp_time(host)
         logger.debug('penalty %s to %s: %.2f' % (self.name, host, score * 5))
@@ -153,15 +140,14 @@ class ParentProxy(object):
         return self.name or ('%s://%s:%s' % (self.parse.scheme, self.parse.hostname, self.parse.port))
 
     def __repr__(self):
-        return '<ParentProxy: %s %s %s>' % (self.name or 'direct', self.httppriority, self.httpspriority)
+        return '<ParentProxy: %s %s>' % (self.name or 'direct', self._priority)
 
 
 class ParentProxyList(object):
     def __init__(self):
         self.direct = None
         self.local = None
-        self._httpparents = set()
-        self._httpsparents = set()
+        self._parents = set()
         self.dict = {}
 
     def addstr(self, name, proxy):
@@ -184,24 +170,18 @@ class ParentProxyList(object):
         if parentproxy.name == 'local':
             self.local = parentproxy
             return
-        if 0 <= parentproxy.httppriority <= 100:
-            self._httpparents.add(parentproxy)
-        if 0 <= parentproxy.httpspriority <= 100:
-            self._httpsparents.add(parentproxy)
+        if 0 <= parentproxy._priority <= 100:
+            self._parents.add(parentproxy)
 
     def remove(self, name):
         if name == 'direct' or name not in self.dict:
             return 1
         a = self.dict.get(name)
         del self.dict[name]
-        self._httpparents.discard(a)
-        self._httpsparents.discard(a)
+        self._parents.discard(a)
 
-    def httpparents(self):
-        return list(self._httpparents)
-
-    def httpsparents(self):
-        return list(self._httpsparents)
+    def parents(self):
+        return list(self._parents)
 
     def get(self, key):
         return self.dict.get(key)
