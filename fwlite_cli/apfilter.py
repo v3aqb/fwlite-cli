@@ -27,10 +27,7 @@ import time
 from threading import Thread
 from collections import defaultdict
 from .util import parse_hostport
-try:
-    import urlparse
-except ImportError:
-    import urllib.parse as urlparse
+import urllib.parse as urlparse
 
 
 class ExpiredError(Exception):
