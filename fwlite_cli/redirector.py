@@ -20,14 +20,9 @@
 
 import re
 import logging
-try:
-    import urllib.parse as urlparse
-    urlquote = urlparse.quote
-    urlunquote = urlparse.unquote
-except ImportError:
-    import urllib2
-    urlquote = urllib2.quote
-    urlunquote = urllib2.unquote
+import urllib.parse as urlparse
+urlquote = urlparse.quote
+urlunquote = urlparse.unquote
 
 
 class redirector(object):
