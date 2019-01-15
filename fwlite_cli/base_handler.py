@@ -41,8 +41,13 @@ async def read_response_line(reader, timeout=1):
 
 
 async def read_header_data(reader, timeout=1):
-    fut = reader.readuntil(b'\r\n\r\n')
-    header_data = await asyncio.wait_for(fut, timeout=timeout)
+    header_data = b''
+    while True:
+        fut = reader.readline()
+        line = await asyncio.wait_for(fut, timeout=timeout)
+        header_data += line
+        if not line.strip():
+            break
     return header_data
 
 
@@ -108,6 +113,7 @@ class base_handler(BaseHTTPRequestHandler):
             # read headers
             _, self.headers = await read_headers(self.client_reader)
         except (asyncio.TimeoutError, ConnectionResetError):
+            self.logger.error('base_handler read request failed!')
             self.close_connection = True
             return
 
