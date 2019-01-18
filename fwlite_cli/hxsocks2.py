@@ -366,6 +366,9 @@ class hxs2_connection(object):
                         self._client_writer[stream_id].close()
                         self._stream_status[stream_id] = CLOSED
                         await self.send_frame(3, 0, stream_id, b'\x00' * random.randint(8, 256))
+                    except KeyError:
+                        self._stream_status[stream_id] = CLOSED
+                        await self.send_frame(3, 0, stream_id, b'\x00' * random.randint(8, 256))
                 elif frame_type == 1:
                     # HEADER
                     self._last_active_c = time.time()
@@ -391,7 +394,7 @@ class hxs2_connection(object):
                                 self._stream_status[stream_id] = OPEN
                                 self._client_status[stream_id].set()
                             else:
-                                logger.info('stream open, client closed')
+                                logger.info('%s stream open, client closed' % self.name)
                                 self._stream_status[stream_id] = CLOSED
                                 await self.send_frame(3, 0, stream_id, b'\x00' * random.randint(8, 256))
                 elif frame_type == 3:
