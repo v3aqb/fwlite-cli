@@ -112,8 +112,8 @@ class base_handler(BaseHTTPRequestHandler):
 
             # read headers
             _, self.headers = await read_headers(self.client_reader)
-        except (asyncio.TimeoutError, ConnectionResetError):
-            self.logger.error('base_handler read request failed!')
+        except (asyncio.TimeoutError, ConnectionResetError) as e:
+            self.logger.debug('base_handler read request failed! %r' % e)
             self.close_connection = True
             return
 
