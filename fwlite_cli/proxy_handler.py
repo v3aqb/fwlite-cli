@@ -37,6 +37,8 @@ from .connection import open_connection
 from .base_handler import base_handler, read_header_data
 from .httputil import httpconn_pool
 
+MAX_TIMEOUT = 16
+
 
 class ClientError(Exception):
     def __init__(self, err):
@@ -588,7 +590,7 @@ class http_handler(base_handler):
     async def on_GET_Error(self, e):
         if self.ppname:
             self.logger.warning('{} {} via {} failed: {}'.format(self.command, self.shortpath, self.ppname, repr(e)))
-            self.pproxy.log(self.request_host[0], 10)
+            self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
             await self._do_GET(True)
             return
         self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False, self.failed_parents, self.ppname)
@@ -657,7 +659,7 @@ class http_handler(base_handler):
     async def _do_CONNECT(self, retry=False):
         if retry:
             self.failed_parents.append(self.ppname)
-            self.pproxy.log(self.request_host[0], 10)
+            self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
             self.retry_count += 1
             if self.retry_count > 10:
                 self.logger.error('retry time exceeded 10, pls check!')
@@ -764,15 +766,15 @@ class http_handler(base_handler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
                 count += 1
-            except asyncio.TimeoutError:
+            except ConnectionResetError:
+                data = b''
+            except (asyncio.TimeoutError, OSError):
                 if time.time() - context.last_active > timeout or context.local_eof:
                     data = b''
                 elif context.retryable and time.time() - context.last_active > self.timeout:
                     data = b''
                 else:
                     continue
-            except ConnectionResetError:
-                data = b''
 
             if not data:
                 break
@@ -816,9 +818,9 @@ class http_handler(base_handler):
             if self.ppname == 'direct':
                 self.timeout = self.conf.timeout
             else:
-                self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout - 1, 10)
+                self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout + 1, MAX_TIMEOUT)
         else:
-            self.timeout = 10
+            self.timeout = MAX_TIMEOUT
 
     async def api(self, parse):
         '''

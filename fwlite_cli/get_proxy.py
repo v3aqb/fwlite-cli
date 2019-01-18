@@ -197,15 +197,12 @@ class get_proxy(object):
             return [self.conf.parentlist.direct]
 
         parentlist = self.conf.parentlist.parents()
-        if len(parentlist) < self.conf.maxretry:
-            parentlist.extend(parentlist[1:] if not ifgfwed else parentlist)
-            parentlist = parentlist[:self.conf.maxretry]
 
         def priority(parent):
             return parent.priority(command, host)
 
         if len(parentlist) > 1:
-            random.shuffle(parentlist)
+            # random.shuffle(parentlist)
             parentlist = sorted(parentlist, key=priority)
 
         if ifgfwed:
