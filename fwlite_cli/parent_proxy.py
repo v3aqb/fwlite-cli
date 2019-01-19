@@ -63,11 +63,11 @@ class ParentProxy(object):
             proxy = 'http://' + proxy
         self.name = name
         proxy_list = proxy.split('|')
-        self.proxy = proxy_list[0]
+        self.proxy = proxy
         if len(proxy_list) > 1:
             self.via = ParentProxy('via', '|'.join(proxy_list[1:]))
             self.via.name = '%s://%s:%s' % (self.via.scheme, self.via.hostname, self.via.port)
-        self.parse = urlparse.urlparse(self.proxy)
+        self.parse = urlparse.urlparse(proxy_list[0])
 
         self.scheme = self.parse.scheme
         self.username = urlunquote(self.parse.username) if self.parse.username else None
