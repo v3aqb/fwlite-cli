@@ -145,7 +145,7 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=F
         await remote_reader.readexactly(2)  # read port
         return remote_reader, remote_writer, proxy.name
     elif proxy.scheme == 'ss':
-        from .shadowsocks import ss_connect
+        from .ssocks import ss_connect
         remote_reader, remote_writer = await ss_connect(proxy, timeout, addr, port)
         return remote_reader, remote_writer, proxy.name
     elif proxy.scheme == 'hxs2':
