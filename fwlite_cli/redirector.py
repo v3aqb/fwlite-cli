@@ -23,18 +23,20 @@ import urllib.parse as urlparse
 urlquote = urlparse.quote
 urlunquote = urlparse.unquote
 
+logger = logging.getLogger('redirector')
+logger.setLevel(logging.INFO)
+hdr = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                              datefmt='%H:%M:%S')
+hdr.setFormatter(formatter)
+logger.addHandler(hdr)
+
 
 class redirector(object):
     def __init__(self, conf):
         from .apfilter import ap_filter
         self.conf = conf
-        self.logger = logging.getLogger('redirector')
-        self.logger.setLevel(logging.INFO)
-        hdr = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                                      datefmt='%H:%M:%S')
-        hdr.setFormatter(formatter)
-        self.logger.addHandler(hdr)
+
         self._bad302 = ap_filter()
         self.reset = ap_filter()
         self.adblock = set()
@@ -49,7 +51,7 @@ class redirector(object):
             return 'reset'
         for rule, result in self.redirlst:
             if rule.match(hdlr.path):
-                self.logger.debug('Match redirect rule {}, {}'.format(rule.rule, result))
+                logger.debug('Match redirect rule {}, {}'.format(rule.rule, result))
                 if rule.override:
                     return None
                 if result == 'forcehttps':
@@ -63,11 +65,12 @@ class redirector(object):
 
     def add_redirect(self, rule, dest, pp=None):
         from .apfilter import ap_rule
+        logger.info('add redir: %s %s' % (rule, dest))
         if pp is None:
             pp = self.conf.GET_PROXY
         try:
             if rule in [a.rule for a, b in self.redirlst]:
-                self.logger.warning('multiple redirector rule! %s' % rule)
+                logger.warning('multiple redirector rule! %s' % rule)
                 return
             if dest.lower() == 'auto':
                 return pp.add_ignore(rule)
@@ -79,10 +82,10 @@ class redirector(object):
                 return self.adblock.add(rule)
             self.redirlst.append((ap_rule(rule), dest))
         except ValueError as e:
-            self.logger.debug('create autoproxy rule failed: %s' % e)
+            logger.error('add redirect rule failed: %s' % e)
 
     def load_adblock(self):
-        self.logger.info('loading adblock.txt')
+        logger.info('loading adblock.txt')
         for line in open(self.conf.adblock_path):
             if not line.strip():
                 continue
@@ -94,3 +97,28 @@ class redirector(object):
                 continue
             ip, _, host = line.strip().partition(' ')
             self.adblock.add(host)
+
+    def list(self):
+        result = []
+        for rule, dst in self.redirlst:
+            result.append('%s %s' % (rule.rule, dst))
+        for rule in self.reset.rules:
+            result.append('%s reset' % rule)
+        return result
+
+    def remove(self, redir_rule):
+        logger.info('remove redir: %s' % redir_rule)
+        rule, _, dst = redir_rule.partition(' ')
+        if dst == 'reset':
+            self.reset.remove(rule)
+            return
+        else:
+            target = None
+            for _rule, _dst in self.redirlst:
+                if _rule.rule == rule and _dst == dst:
+                    target = (_rule, _dst)
+                    break
+            if target:
+                self.redirlst.remove(target)
+                return
+            raise ValueError('rule not exist')

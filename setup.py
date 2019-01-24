@@ -7,7 +7,7 @@ install_requires = ["hxcrypto", "repoze.lru"]
 
 setup(
     name="fwlite-cli",
-    version="0",
+    version="0.2",
     license='GPLv3',
     description="A anti-censorship HTTP proxy with builtin shadowsocks support",
     author='v3aqb',
