@@ -88,9 +88,9 @@ async def _open_connection(addr, port, timeout, iplist):
 
 
 async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=False):
-    if proxy and not isinstance(proxy, ParentProxy):
+    if not isinstance(proxy, ParentProxy):
         logger.warning('parentproxy is not a ParentProxy instance, please check. %s' % (proxy))
-        proxy = ParentProxy(proxy, proxy)
+        proxy = ParentProxy(proxy or 'null', proxy or '')
 
     # do security check here
     if request_is_loopback(addr):

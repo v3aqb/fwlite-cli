@@ -130,6 +130,29 @@ function FindProxyForURL(url, host) {
 
 '''
 
+def url_retreive(url, path, proxy):
+    import urllib.request
+    if proxy.proxy:
+        if proxy.scheme == 'http' and '|' not in proxy.proxy:
+            proxy_handler = urllib.request.ProxyHandler(
+                {'http':proxy.proxy,\
+                 'https':proxy.proxy})
+        else:
+            # proxy not supported
+            with open(path, 'w') as localfile:
+                localfile.write('\n')
+            return
+    else:
+        proxy_handler = urllib.request.ProxyHandler({})
+    opener = urllib.request.build_opener(proxy_handler)
+    urlopen = opener.open
+
+    r = urlopen(url)
+    data = r.read()
+    if r.getcode() == 200 and data:
+        with open(path, 'wb') as localfile:
+            localfile.write(data)
+
 
 class Config(object):
     def __init__(self, conf_path, gui):
@@ -214,46 +237,20 @@ class Config(object):
 ''')
 
         if not os.path.exists(self.gfwlist_path):
+            self.logger.info(repr(self.parentlist.direct))
             self.logger.warning('"gfwlist.txt" not found! downloading...')
-            import urllib.request
-            proxy_handler = urllib.request.ProxyHandler({})
-            opener = urllib.request.build_opener(proxy_handler)
-            urlopen = opener.open
-
             gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
-            r = urlopen(gfwlist_url)
-            data = r.read()
-            if r.getcode() == 200 and data:
-                with open(self.gfwlist_path, 'wb') as localfile:
-                    localfile.write(data)
+            url_retreive(gfwlist_url, self.gfwlist_path, self.parentlist.direct)
 
         if not os.path.exists(self.apnic_path):
             self.logger.warning('"delegated-apnic-latest.txt" not found! downloading...')
-            import urllib.request
-            proxy_handler = urllib.request.ProxyHandler({})
-            opener = urllib.request.build_opener(proxy_handler)
-            urlopen = opener.open
-
             apnic_url = 'https://ftp.apnic.net/stats/apnic/delegated-apnic-latest'
-            r = urlopen(apnic_url)
-            data = r.read()
-            if r.getcode() == 200 and data:
-                with open(self.apnic_path, 'wb') as localfile:
-                    localfile.write(data)
+            url_retreive(apnic_url, self.apnic_path, self.parentlist.direct)
 
         if not os.path.exists(self.adblock_path):
             self.logger.warning('"adblock.txt" not found! downloading...')
-            import urllib.request
-            proxy_handler = urllib.request.ProxyHandler({})
-            opener = urllib.request.build_opener(proxy_handler)
-            urlopen = opener.open
-
             adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://hosts.nfz.moe/127.0.0.1/basic/hosts')
-            r = urlopen(adblock_url)
-            data = r.read()
-            if r.getcode() == 200 and data:
-                with open(self.adblock_path, 'wb') as localfile:
-                    localfile.write(data)
+            url_retreive(adblock_url, self.adblock_path, self.parentlist.direct)
 
         # prep PAC
         try:
