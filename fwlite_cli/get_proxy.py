@@ -47,6 +47,8 @@ class get_proxy(object):
         self.china_ip_list = []
 
         for line in open(self.conf.local_path):
+            if line.startswith('!'):
+                continue
             rule, _, dest = line.strip().partition(' ')
             if dest:  # |http://www.google.com/url forcehttps
                 self.add_redirect(rule, dest)
@@ -154,7 +156,7 @@ class get_proxy(object):
         if self.ignore.match(uri, host):
             return None
 
-        if self.conf.userconf.dgetbool('FWLite', 'gfwlist', True) and\
+        if self.conf.gfwlist_enable and\
                 uri.startswith('http://') and\
                 self.gfwlist.match('http://%s/' % host, host):
             return True
@@ -171,7 +173,7 @@ class get_proxy(object):
         if level == 3:
             return True
 
-        if self.conf.userconf.dgetbool('FWLite', 'gfwlist', True) and self.gfwlist.match(uri, host):
+        if self.conf.gfwlist_enable and self.gfwlist.match(uri, host):
             return True
 
     def get_proxy(self, uri, host, command, ip, level=1):

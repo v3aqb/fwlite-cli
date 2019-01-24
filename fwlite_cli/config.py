@@ -151,6 +151,58 @@ class Config(object):
         self.userconf = SConfigParser(interpolation=None)
         self.reload()
 
+        self.timeout = self.userconf.dgetint('FWLite', 'timeout', 4)
+        self.profile_num = len(self.userconf.dget('FWLite', 'profile', '13'))
+        self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
+        self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
+
+        listen = self.userconf.dget('FWLite', 'listen', '8118')
+        if listen.isdigit():
+            self.listen = ('127.0.0.1', int(listen))
+        else:
+            self.listen = (listen.rsplit(':', 1)[0], int(listen.rsplit(':', 1)[1]))
+
+        ParentProxy.DEFAULT_TIMEOUT = self.timeout
+
+        self.gate = self.userconf.dgetint('FWLite', 'gate', 2)
+        if self.gate < 0:
+            self.logger.warning('gate < 0, set to 0')
+            self.gate = 0
+        ParentProxy.GATE = self.gate
+
+        self.parentlist = ParentProxyList()
+        if self.userconf.dget('FWLite', 'parentproxy', ''):
+            self.addparentproxy('direct', '%s 0' % self.userconf.dget('FWLite', 'parentproxy', ''))
+        else:
+            self.addparentproxy('direct', 'direct 0')
+
+        for k, v in self.userconf.items('parents'):
+            self.addparentproxy(k, v)
+
+        for k, v in self.userconf.items('plugin'):
+            self.logger.info('register plugin: %s %s' % (k, v))
+            plugin_register(k, v)
+
+        if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
+            self.logger.warning('No parent proxy available!')
+
+        self.HOSTS = defaultdict(list)
+
+        def addhost(host, ip):
+            try:
+                ipo = ip_address(ip)
+                if isinstance(ipo, IPv4Address):
+                    self.HOSTS[host].append((2, ip))
+                else:
+                    self.HOSTS[host].append((10, ip))
+            except Exception:
+                self.logger.warning('unsupported host: %s' % ip)
+                sys.stderr.write(traceback.format_exc() + '\n')
+                sys.stderr.flush()
+
+        for host, ip in self.userconf.items('hosts'):
+            addhost(host, ip)
+
         if not os.path.exists(self.local_path):
             self.logger.warning('"local.txt" not found! creating...')
             with open(self.local_path, 'w') as f:
@@ -188,23 +240,9 @@ class Config(object):
                 with open(self.apnic_path, 'wb') as localfile:
                     localfile.write(data)
 
-        self.timeout = self.userconf.dgetint('FWLite', 'timeout', 4)
-        ParentProxy.DEFAULT_TIMEOUT = self.timeout
-        self.gate = self.userconf.dgetint('FWLite', 'gate', 1)
-        if self.gate < 0:
-            self.logger.warning('gate < 0, set to 0')
-            self.gate = 0
-        ParentProxy.GATE = self.gate
-        self.parentlist = ParentProxyList()
-        self.HOSTS = defaultdict(list)
-        self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
 
-        listen = self.userconf.dget('FWLite', 'listen', '8118')
-        if listen.isdigit():
-            self.listen = ('127.0.0.1', int(listen))
-        else:
-            self.listen = (listen.rsplit(':', 1)[0], int(listen.rsplit(':', 1)[1]))
 
+        # prep PAC
         try:
             csock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             csock.connect(('8.8.8.8', 53))
@@ -221,47 +259,6 @@ class Config(object):
                 self.PAC = open(self.userconf.dget('FWLite', 'pac', '')).read()
 
         self.PAC = self.PAC.encode()
-
-        self.profile_num = len(self.userconf.dget('FWLite', 'profile', '13'))
-
-        for k, v in self.userconf.items('plugin'):
-            self.logger.info('register plugin: %s %s' % (k, v))
-            plugin_register(k, v)
-
-        if self.userconf.dget('FWLite', 'parentproxy', ''):
-            self.addparentproxy('direct', '%s 0' % self.userconf.dget('FWLite', 'parentproxy', ''))
-            self.addparentproxy('local', 'direct 100')
-        else:
-            self.addparentproxy('direct', 'direct 0')
-
-        ParentProxy.set_via(self.parentlist.direct)
-
-        for k, v in self.userconf.items('parents'):
-            self.addparentproxy(k, v)
-
-        if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
-            self.logger.warning('No parent proxy available!')
-
-        self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
-
-        def addhost(host, ip):
-            try:
-                ipo = ip_address(ip)
-                if isinstance(ipo, IPv4Address):
-                    self.HOSTS[host].append((2, ip))
-                else:
-                    self.HOSTS[host].append((10, ip))
-            except Exception:
-                self.logger.warning('unsupported host: %s' % ip)
-                sys.stderr.write(traceback.format_exc() + '\n')
-                sys.stderr.flush()
-
-        for host, ip in self.userconf.items('hosts'):
-            addhost(host, ip)
-
-        remotedns = self.userconf.dget('dns', 'remotedns', '8.8.8.8')
-        self.logger.info('remotedns: ' + remotedns)
-        self.remotedns = [parse_hostport(dns, 53) for dns in remotedns.split('|')]
 
         self.REDIRECTOR = redirector(self)
         self.GET_PROXY = get_proxy(self)
@@ -283,3 +280,12 @@ class Config(object):
         if self.GUI:
             sys.stdout.write(text + '\n')
             sys.stdout.flush()
+
+    @property
+    def gfwlist_enable(self):
+        return self.userconf.dgetbool('FWLite', 'gfwlist', True)
+
+    @gfwlist_enable.setter
+    def gfwlist_enable(self, val):
+        self.userconf.set('FWLite', 'gfwlist', '1' if val else '0')
+        self.confsave()
