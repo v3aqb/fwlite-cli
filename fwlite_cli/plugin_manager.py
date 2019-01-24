@@ -57,8 +57,9 @@ plugin_path = {}
 
 def plugin_register(plugin, path):
     if plugin in plugin_path:
-        logger.error('%s already registered.' % plugin)
+        logger.error('%s already registered at %s' % (plugin, plugin_path[plugin]))
         return
+    logger.info('register plugin: %s %s' % (plugin, path))
     plugin_path[plugin] = path
 
 

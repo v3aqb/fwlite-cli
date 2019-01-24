@@ -26,7 +26,6 @@ import asyncio
 import ipaddress
 
 from .parent_proxy import ParentProxy
-from .base_handler import read_response_line, read_header_data
 
 logger = logging.getLogger('conn')
 logger.setLevel(logging.INFO)
@@ -35,20 +34,6 @@ formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
                               datefmt='%H:%M:%S')
 hdr.setFormatter(formatter)
 logger.addHandler(hdr)
-
-
-def do_tunnel(soc, netloc, pp):
-    s = ['CONNECT %s:%s HTTP/1.1\r\n' % (netloc[0], netloc[1]), ]
-    if pp.username:
-        a = '%s:%s' % (pp.username, pp.password)
-        s.append('Proxy-Authorization: Basic %s\r\n' % base64.b64encode(a.encode()))
-    s.append('Host: %s:%s\r\n\r\n' % (netloc[0], netloc[1]))
-    soc.sendall(''.join(s).encode())
-    remoterfile = soc.makefile('rb', 0)
-    line, version, status, reason = read_response_line(remoterfile)
-    if status != 200:
-        raise IOError(0, 'create tunnel via %s failed!' % pp.name)
-    read_header_data(remoterfile)
 
 
 def get_ip_address(self, host):
@@ -114,7 +99,7 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=F
             fut = remote_reader.readuntil(b'\r\n\r\n')
             data = await asyncio.wait_for(fut, timeout=2)
             if b'200' not in data.splitlines()[0]:
-                raise IOError(0, 'create tunnel via %s failed!' % proxy.name)
+                raise IOError(0, 'create tunnel via %s failed! %s' % (proxy.name, data.splitlines()[0]))
         return remote_reader, remote_writer, proxy.name
     elif proxy.scheme == 'socks5':
         remote_reader, remote_writer, _ = await open_connection(proxy.hostname, proxy.port, proxy.get_via(), timeout=timeout, tunnel=True)

@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
-import re
 import logging
 import urllib.parse as urlparse
 urlquote = urlparse.quote
@@ -93,5 +92,5 @@ class redirector(object):
                 continue
             if 'loopback' in line:
                 continue
-            ip, _ , host = line.strip().partition(' ')
+            ip, _, host = line.strip().partition(' ')
             self.adblock.add(host)
