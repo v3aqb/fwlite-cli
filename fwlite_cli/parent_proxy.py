@@ -45,7 +45,8 @@ class default_dict(dict):
 
 
 class ParentProxy(object):
-    via = None
+    VIA = None
+    DIRECT = None
     DEFAULT_TIMEOUT = 8
     GATE = 0
 
@@ -65,8 +66,8 @@ class ParentProxy(object):
         proxy_list = proxy.split('|')
         self.proxy = proxy
         if len(proxy_list) > 1:
-            self.via = ParentProxy('via', '|'.join(proxy_list[1:]))
-            self.via.name = '%s://%s:%s' % (self.via.scheme, self.via.hostname, self.via.port)
+            self.VIA = ParentProxy('via', '|'.join(proxy_list[1:]))
+            self.VIA.name = '%s://%s:%s' % (self.VIA.scheme, self.VIA.hostname, self.VIA.port)
         self.parse = urlparse.urlparse(proxy_list[0])
 
         self.scheme = self.parse.scheme
@@ -129,18 +130,21 @@ class ParentProxy(object):
 
     @classmethod
     def set_via(cls, proxy):
-        cls.via = proxy
+        cls.VIA = proxy
+        cls.DIRECT = cls('_DIRECT', 'direct -1')
 
     def get_via(self):
-        if self.via == self:
+        if self.VIA == self:
+            return self.DIRECT
+        if self.DIRECT == self:
             return None
-        return self.via
+        return self.VIA
 
     def __str__(self):
         return self.name or ('%s://%s:%s' % (self.parse.scheme, self.parse.hostname, self.parse.port))
 
     def __repr__(self):
-        return '<ParentProxy: %s %s>' % (self.name or 'direct', self._priority)
+        return '<ParentProxy: %s %s %s>' % (self.name or 'direct', self.proxy, self._priority)
 
 
 class ParentProxyList(object):
