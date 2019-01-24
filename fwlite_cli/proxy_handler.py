@@ -265,6 +265,19 @@ class http_handler(base_handler):
 
         self.shortpath = '%s://%s%s%s%s' % (parse.scheme, parse.netloc, parse.path.split(':')[0], '?' if parse.query else '', ':' if ':' in parse.path else '')
 
+        if 'Host' not in self.headers:
+            self.logger.warning('"Host" not in self.headers')
+            request_host = parse_hostport(parse.netloc, 80)
+        else:
+            host = parse_hostport(self.headers['Host'], 80)
+            netloc = parse_hostport(parse.netloc, 80)
+            if host != netloc:
+                self.logger.warning('Host and URI mismatch! %s %s' % (self.path, self.headers['Host']))
+                # self.headers['Host'] = parse.netloc
+            request_host = parse_hostport(self.headers['Host'], 80)
+
+        self.request_host = request_host
+
         # redirector
         new_url = self.conf.GET_PROXY.redirect(self)
         if new_url:
@@ -925,6 +938,14 @@ class http_handler(base_handler):
             return
         elif parse.path == '/api/gfwlist' and self.command == 'POST':
             self.conf.gfwlist_enable = json.loads(body)
+            self.write(200, data=data, ctype='application/json')
+            self.conf.stdout()
+            return
+        elif parse.path == '/api/adblock' and self.command == 'GET':
+            self.write(200, data=json.dumps(self.conf.adblock_enable), ctype='application/json')
+            return
+        elif parse.path == '/api/adblock' and self.command == 'POST':
+            self.conf.adblock_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout()
             return

@@ -147,6 +147,7 @@ class Config(object):
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
         self.gfwlist_path = os.path.join(self.conf_dir, 'gfwlist.txt')
         self.apnic_path = os.path.join(self.conf_dir, 'delegated-apnic-latest.txt')
+        self.adblock_path = os.path.join(self.conf_dir, 'adblock.txt')
 
         self.userconf = SConfigParser(interpolation=None)
         self.reload()
@@ -240,7 +241,19 @@ class Config(object):
                 with open(self.apnic_path, 'wb') as localfile:
                     localfile.write(data)
 
+        if not os.path.exists(self.adblock_path):
+            self.logger.warning('"adblock.txt" not found! downloading...')
+            import urllib.request
+            proxy_handler = urllib.request.ProxyHandler({})
+            opener = urllib.request.build_opener(proxy_handler)
+            urlopen = opener.open
 
+            adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://hosts.nfz.moe/127.0.0.1/basic/hosts')
+            r = urlopen(adblock_url)
+            data = r.read()
+            if r.getcode() == 200 and data:
+                with open(self.adblock_path, 'wb') as localfile:
+                    localfile.write(data)
 
         # prep PAC
         try:
@@ -280,6 +293,15 @@ class Config(object):
         if self.GUI:
             sys.stdout.write(text + '\n')
             sys.stdout.flush()
+
+    @property
+    def adblock_enable(self):
+        return self.userconf.dgetbool('FWLite', 'adblock', False)
+
+    @adblock_enable.setter
+    def adblock_enable(self, val):
+        self.userconf.set('FWLite', 'adblock', '1' if val else '0')
+        self.confsave()
 
     @property
     def gfwlist_enable(self):
