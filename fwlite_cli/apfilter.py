@@ -28,6 +28,15 @@ from threading import Thread
 from collections import defaultdict
 from .util import parse_hostport
 import urllib.parse as urlparse
+import logging
+
+logger = logging.getLogger('apfilter')
+logger.setLevel(logging.INFO)
+hdr = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                              datefmt='%H:%M:%S')
+hdr.setFormatter(formatter)
+logger.addHandler(hdr)
 
 
 class ExpiredError(Exception):
@@ -50,7 +59,7 @@ class ap_rule(object):
     def _parse(self):
         def parse(rule):
             if rule.startswith('||'):
-                regex = rule.replace('.', r'\.').replace('?', r'\?').replace('/', '').replace('*', '[^/]*').replace('^', '').replace('||', '^(?:https?://)?(?:[^/]+\.)?') + r'(?:[:/]|$)'
+                regex = rule.replace('.', r'\.').replace('/', '').replace('*', '[^/]*').replace('||', '^(?:https?://)?(?:[^/]+\.)?') + r'(?:[:/]|$)'
                 return re.compile(regex)
             elif rule.startswith('/') and rule.endswith('/'):
                 return re.compile(rule[1:-1])
@@ -98,7 +107,10 @@ class ap_filter(object):
 
     def add(self, rule, expire=None):
         rule = rule.strip()
-        if len(rule) < 3 or rule.startswith(('!', '[')) or '#' in rule or '$' in rule:
+        if len(rule) < 3 or rule.startswith(('!', '[')) or '#' in rule:
+            return
+        if rule in self.rules:
+            logger.warning('%s already in filter' % rule)
             return
         if '||' in rule and '/' in rule[:-1]:
             return self.add(rule.replace('||', '|http://'))
