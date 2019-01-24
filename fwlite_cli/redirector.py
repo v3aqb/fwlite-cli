@@ -38,10 +38,15 @@ class redirector(object):
         self.logger.addHandler(hdr)
         self._bad302 = ap_filter()
         self.reset = ap_filter()
+        self.adblock = set()
         self.redirlst = []
+
+        self.load_adblock()
 
     def redirect(self, hdlr):
         if self.reset.match(hdlr.path):
+            return 'reset'
+        if self.conf.adblock_enable and hdlr.request_host[0] in self.adblock:
             return 'reset'
         for rule, result in self.redirlst:
             if rule.match(hdlr.path):
@@ -76,3 +81,17 @@ class redirector(object):
             self.redirlst.append((ap_rule(rule), dest))
         except ValueError as e:
             self.logger.debug('create autoproxy rule failed: %s' % e)
+
+    def load_adblock(self):
+        self.logger.info('loading adblock.txt')
+        for line in open(self.conf.adblock_path):
+            if not line.strip():
+                continue
+            if line.startswith('#'):
+                continue
+            if 'localhost' in line:
+                continue
+            if 'loopback' in line:
+                continue
+            ip, _ , host = line.strip().partition(' ')
+            self.adblock.add(host)
