@@ -875,7 +875,7 @@ class http_handler(base_handler):
                 self.send_error(404, repr(e))
                 return
         elif parse.path == '/api/redirector' and self.command == 'GET':
-            data = json.dumps([(index, rule[0].rule, rule[1]) for index, rule in enumerate(self.conf.REDIRECTOR.redirlst)])
+            data = json.dumps(self.conf.REDIRECTOR.list())
             self.write(200, data=data, ctype='application/json')
             return
         elif parse.path == '/api/redirector' and self.command == 'POST':
@@ -888,10 +888,9 @@ class http_handler(base_handler):
         elif parse.path.startswith('/api/redirector/') and self.command == 'DELETE':
             try:
                 rule = urlparse.parse_qs(parse.query).get('rule', [''])[0]
-                if rule:
-                    assert base64.urlsafe_b64decode(rule).decode() == self.conf.REDIRECTOR.redirlst[int(parse.path[16:])][0].rule
-                rule, dest = self.conf.REDIRECTOR.redirlst.pop(int(parse.path[16:]))
-                self.write(200, data=json.dumps([int(parse.path[16:]), rule.rule, dest]), ctype='application/json')
+                rule = base64.urlsafe_b64decode(rule).decode()
+                self.conf.REDIRECTOR.remove(rule)
+                self.write(200, data='done', ctype='text/plain')
                 self.conf.stdout()
                 return
             except Exception as e:
