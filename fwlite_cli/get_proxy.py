@@ -19,7 +19,6 @@
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
 import base64
-import random
 import logging
 
 from repoze.lru import lru_cache

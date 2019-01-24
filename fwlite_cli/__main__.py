@@ -57,18 +57,19 @@ def main():
 
     logger.info(s)
     if not os.path.exists(args.c):
-        sys.stderr.write('config file {} not exist!\n'.format(args.c))
+        logger.info('config file {} not exist!\n'.format(args.c))
         sys.exit()
 
     conf = Config(args.c, args.gui)
 
     for i, profile in enumerate(list(conf.userconf.dget('FWLite', 'profile', '13'))):
-        server = handler_factory(conf.listen[0], conf.listen[1] + i, http_handler, int(profile), conf)
+        handler = handler_factory(conf.listen[0], conf.listen[1] + i, http_handler, int(profile), conf)
         loop = asyncio.get_event_loop()
-        coro = asyncio.start_server(server.handle, server.addr, server.port, loop=loop)
-        server = loop.run_until_complete(coro)
+        server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
+        loop.run_until_complete(server)
 
-    loop.call_soon(conf.stdout)
+    if args.gui:
+        loop.call_soon(conf.stdout)
     # loop.add_signal_handler(signal.SIGTERM, loop.stop)
     # loop.add_signal_handler(signal.SIGINT, sys.exit)
     try:

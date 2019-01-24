@@ -30,7 +30,7 @@ from ipaddress import IPv4Address, ip_address
 from .parent_proxy import ParentProxyList, ParentProxy
 from .get_proxy import get_proxy
 from .redirector import redirector
-from .util import SConfigParser, parse_hostport
+from .util import SConfigParser
 from .resolver import resolver
 from .plugin_manager import plugin_register
 
@@ -130,13 +130,14 @@ function FindProxyForURL(url, host) {
 
 '''
 
+
 def url_retreive(url, path, proxy):
     import urllib.request
     if proxy.proxy:
         if proxy.scheme == 'http' and '|' not in proxy.proxy:
             proxy_handler = urllib.request.ProxyHandler(
-                {'http':proxy.proxy,\
-                 'https':proxy.proxy})
+                {'http': proxy.proxy,
+                 'https': proxy.proxy})
         else:
             # proxy not supported
             with open(path, 'w') as localfile:
@@ -204,7 +205,6 @@ class Config(object):
             self.addparentproxy(k, v)
 
         for k, v in self.userconf.items('plugin'):
-            self.logger.info('register plugin: %s %s' % (k, v))
             plugin_register(k, v)
 
         if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
