@@ -638,7 +638,7 @@ class http_handler(base_handler):
             if new_url.isdigit() and 400 <= int(new_url) < 600:
                 self.logger.info('{} {} {} send error {}'.format(self.command, self.shortpath or self.path, self.client_address[0], new_url))
                 return
-            elif new_url.lower() in ('reset', 'adblock', 'return'):
+            elif new_url.lower() in ('reset', 'return'):
                 self.logger.info('{} {} {} reset'.format(self.command, self.shortpath or self.path, self.client_address[0]))
                 return
             elif all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
@@ -921,11 +921,10 @@ class http_handler(base_handler):
                 self.send_error(404, repr(e))
                 return
         elif parse.path == '/api/gfwlist' and self.command == 'GET':
-            self.write(200, data=json.dumps(self.conf.userconf.dgetbool('FWLite', 'gfwlist', True)), ctype='application/json')
+            self.write(200, data=json.dumps(self.conf.gfwlist_enable), ctype='application/json')
             return
         elif parse.path == '/api/gfwlist' and self.command == 'POST':
-            self.conf.userconf.set('FWLite', 'gfwlist', '1' if json.loads(body) else '0')
-            self.conf.confsave()
+            self.conf.gfwlist_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout()
             return

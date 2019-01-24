@@ -37,17 +37,12 @@ class redirector(object):
         hdr.setFormatter(formatter)
         self.logger.addHandler(hdr)
         self._bad302 = ap_filter()
-        self.adblock = ap_filter()
+        self.reset = ap_filter()
         self.redirlst = []
 
     def redirect(self, hdlr):
-        searchword = re.match(r'^http://([\w-]+)/$', hdlr.path)
-        if searchword:
-            q = searchword.group(1)
-            if 'xn--' in q:
-                q = q.encode().decode('idna')
-            self.logger.debug('Match redirect rule addressbar-search')
-            return 'https://www.google.com/search?q=%s&ie=utf-8&oe=utf-8' % urlquote(q.encode('utf-8'))
+        if self.reset.match(hdlr.path):
+            return 'reset'
         for rule, result in self.redirlst:
             if rule.match(hdlr.path):
                 self.logger.debug('Match redirect rule {}, {}'.format(rule.rule, result))
@@ -58,8 +53,6 @@ class redirector(object):
                 if result.startswith('/') and result.endswith('/'):
                     return rule._regex.sub(result[1:-1], hdlr.path)
                 return result
-        if self.adblock.match(hdlr.path):
-            return 'adblock'
 
     def bad302(self, uri):
         return self._bad302.match(uri)
@@ -76,6 +69,8 @@ class redirector(object):
                 return pp.add_ignore(rule)
             if dest.lower() == 'bad302':
                 return self._bad302.add(rule)
+            if dest.lower() == 'reset':
+                return self.reset.add(rule)
             if dest.lower() == 'adblock':
                 return self.adblock.add(rule)
             self.redirlst.append((ap_rule(rule), dest))

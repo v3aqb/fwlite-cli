@@ -166,6 +166,9 @@ class ParentProxyList(object):
         self.dict[parentproxy.name] = parentproxy
         if parentproxy.name == 'direct':
             self.direct = parentproxy
+            ParentProxy.set_via(self.direct)
+            if parentproxy.proxy:
+                self.addstr('local', 'direct -1')
             return
         if parentproxy.name == 'local':
             self.local = parentproxy
