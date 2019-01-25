@@ -170,7 +170,7 @@ class Config(object):
         self.conf_dir = os.path.dirname(self.conf_path)
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
         self.gfwlist_path = os.path.join(self.conf_dir, 'gfwlist.txt')
-        self.apnic_path = os.path.join(self.conf_dir, 'delegated-apnic-latest.txt')
+        self.china_ip_path = os.path.join(self.conf_dir, 'china_ip_list.txt')
         self.adblock_path = os.path.join(self.conf_dir, 'adblock.txt')
 
         self.userconf = SConfigParser(interpolation=None)
@@ -242,10 +242,10 @@ class Config(object):
             gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
             url_retreive(gfwlist_url, self.gfwlist_path, self.parentlist.direct)
 
-        if not os.path.exists(self.apnic_path):
-            self.logger.warning('"delegated-apnic-latest.txt" not found! downloading...')
-            apnic_url = 'https://ftp.apnic.net/stats/apnic/delegated-apnic-latest'
-            url_retreive(apnic_url, self.apnic_path, self.parentlist.direct)
+        if not os.path.exists(self.china_ip_path):
+            self.logger.warning('"china_ip_list.txt" not found! downloading...')
+            apnic_url = 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt'
+            url_retreive(apnic_url, self.china_ip_path, self.parentlist.direct)
 
         if not os.path.exists(self.adblock_path):
             self.logger.warning('"adblock.txt" not found! downloading...')
