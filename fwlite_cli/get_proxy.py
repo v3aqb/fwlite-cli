@@ -67,16 +67,14 @@ class get_proxy(object):
             except Exception as e:
                 self.logger.warning('gfwlist is corrupted! %r' % e)
 
-            self.logger.info('loading delegated-apnic-latest.txt...')
-            with open(self.conf.apnic_path) as f:
-                from ipaddress import ip_address
+            self.logger.info('loading china_ip_list.txt...')
+            with open(self.conf.china_ip_path) as f:
+                from ipaddress import ip_network
                 for line in f:
-                    if line.startswith('apnic|CN|ipv4|'):
-                        ip, cnt = line.split("|")[3:5]
-                        ip = int(ip_address(ip))
-                        cnt = int(cnt)
-                        self.china_ip_list.append((ip, cnt))
-                self.china_ip_list = sorted(self.china_ip_list)
+                    if line:
+                        ipn = ip_network(line.strip())
+                        self.china_ip_list.append(ipn)
+                self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
 
     def redirect(self, hdlr):
         return self.conf.REDIRECTOR.redirect(hdlr)
@@ -101,17 +99,15 @@ class get_proxy(object):
 
     @lru_cache(1024)
     def ip_in_china(self, host, ip):
-        ip = int(ip)
-
         def binary_search(arr, hkey):
             start = 0
             end = len(arr)
             while start <= end:
                 mid = start + (end - start) // 2
 
-                if arr[mid][0] < hkey:
+                if arr[mid].network_address < hkey:
                     start = mid + 1
-                elif arr[mid][0] > hkey:
+                elif arr[mid].network_address > hkey:
                     end = mid - 1
                 else:
                     return mid
@@ -120,8 +116,8 @@ class get_proxy(object):
 
         if index == -1:
             return False
-        maxip = self.china_ip_list[index][0] + self.china_ip_list[index][1]
-        if ip < maxip:
+        ipn = self.china_ip_list[index]
+        if ip in ipn:
             self.logger.info('%s in china' % host)
             return True
         return False
