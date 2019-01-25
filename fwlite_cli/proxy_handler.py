@@ -383,7 +383,7 @@ class http_handler(base_handler):
 
             if not self.remote_writer:
                 iplist = []
-                if self.pproxy.name == 'direct' and self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
+                if self.pproxy.name == '_D1R3CT_' and self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
                     iplist = self.conf.HOSTS.get(self.request_host[0])
                     self._proxylist.insert(0, self.pproxy)
 
@@ -565,8 +565,8 @@ class http_handler(base_handler):
                 self.retryable = False
                 # flush writer buf
                 self.wfile_write()
-                # start forwarding...
 
+                # start forwarding...
                 context = await self.forward()
                 if context.timeout:
                     # no response from server
@@ -690,7 +690,7 @@ class http_handler(base_handler):
             return
 
         iplist = None
-        if self.pproxy.name == 'direct' and self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
+        if self.pproxy.name == '_D1R3CT_' and self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
             iplist = self.conf.HOSTS.get(self.request_host[0])
             self._proxylist.insert(0, self.pproxy)
 
@@ -835,7 +835,7 @@ class http_handler(base_handler):
 
     def set_timeout(self):
         if self._proxylist:
-            if self.ppname == 'direct':
+            if self.ppname == '_D1R3CT_':
                 self.timeout = self.conf.timeout
             else:
                 self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout + 1, MAX_TIMEOUT)

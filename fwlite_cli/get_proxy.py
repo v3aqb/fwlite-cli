@@ -205,12 +205,9 @@ class get_proxy(object):
         if ifgfwed:
             if not parentlist:
                 self.logger.warning('No parent proxy available, direct connection is used')
-                return [self.conf.parentlist.get('direct')]
+                return [self.conf.parentlist.direct]
         else:
             parentlist.insert(0, self.conf.parentlist.direct)
-
-        if len(parentlist) == 1 and parentlist[0] is self.conf.parentlist.get('direct'):
-            return parentlist
 
         if len(parentlist) > self.conf.maxretry:
             parentlist = parentlist[:self.conf.maxretry]
@@ -220,10 +217,10 @@ class get_proxy(object):
         self.logger.debug('notify: %s %s %s, failed_parents: %r, final: %s' % (command, url, 'Success' if success else 'Failed', failed_parents, current_parent or 'None'))
         failed_parents = [k for k in failed_parents if 'pooled' not in k]
         if success:
-            if 'direct' in failed_parents:
+            if '_D1R3CT_' in failed_parents:
                 rule = '||%s' % requesthost[0]
                 if rule not in self.local.rules:
-                    resp_time = self.conf.parentlist.get('direct').get_avg_resp_time(requesthost[0])
+                    resp_time = self.conf.parentlist.direct.get_avg_resp_time(requesthost[0])
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
                     self.add_temp(rule, min(exp, 60))
                     self.conf.stdout()
