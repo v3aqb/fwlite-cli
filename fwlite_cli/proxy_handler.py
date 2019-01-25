@@ -293,6 +293,10 @@ class http_handler(base_handler):
                 self.close_connection = 1
                 self.logger.info('{} {} {} reset'.format(self.command, self.shortpath or self.path, self.client_address[0]))
                 return
+            elif new_url.lower() == 'adblock':
+                self.close_connection = 1
+                self.logger.debug('{} {} adblock'.format(self.command, self.shortpath or self.path))
+                return
             elif all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # TODO: sort by priority?
@@ -653,6 +657,9 @@ class http_handler(base_handler):
                 return
             elif new_url.lower() in ('reset', 'return'):
                 self.logger.info('{} {} {} reset'.format(self.command, self.shortpath or self.path, self.client_address[0]))
+                return
+            elif new_url.lower() == 'adblock':
+                self.logger.debug('{} {} adblock'.format(self.command, self.shortpath or self.path))
                 return
             elif all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
