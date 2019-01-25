@@ -910,21 +910,24 @@ class http_handler(base_handler):
             self.write(200, data=data, ctype='application/json')
             return
         elif parse.path == '/api/proxy' and self.command == 'POST':
-            'accept a json encoded tuple: (str rule, str dest)'
+            'accept a json encoded tuple: (str name, str proxy)'
             name, proxy = json.loads(body)
             self.conf.addparentproxy(name, proxy)
-            self.conf.userconf.set('parents', name, proxy)
-            self.conf.confsave()
+            if name not in ('_D1R3CT_', '_L0C4L_'):
+                self.conf.userconf.set('parents', name, proxy)
+                self.conf.confsave()
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout()
             return
         elif parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
             try:
-                self.conf.parentlist.remove(parse.path[11:])
-                if self.conf.userconf.has_option('parents', parse.path[11:]):
-                    self.conf.userconf.remove_option('parents', parse.path[11:])
+                proxy_name = parse.path[11:]
+                proxy_name = base64.urlsafe_b64decode(proxy_name).decode()
+                self.conf.parentlist.remove(proxy_name)
+                if self.conf.userconf.has_option('parents', proxy_name):
+                    self.conf.userconf.remove_option('parents', proxy_name)
                     self.conf.confsave()
-                self.write(200, data=parse.path[11:], ctype='application/json')
+                self.write(200, data=proxy_name, ctype='application/json')
                 self.conf.stdout()
                 return
             except Exception as e:
@@ -933,6 +936,7 @@ class http_handler(base_handler):
         elif parse.path.startswith('/api/proxy/') and self.command == 'GET':
             try:
                 proxy_name = parse.path[11:]
+                proxy_name = base64.urlsafe_b64decode(proxy_name).decode()
                 proxy = self.conf.parentlist.get(proxy_name)
                 self.write(200, data=proxy.proxy, ctype='text/plain')
                 return
