@@ -57,6 +57,10 @@ class ParentProxy(object):
         '''
         proxy, _, priority = proxy.partition(' ')
         priority = priority or 99
+        if name == '_D1R3CT_':
+            priority = 0
+        if name == '_L0C4L_':
+            priority = -1
 
         if proxy == 'direct':
             proxy = ''
