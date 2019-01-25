@@ -197,11 +197,14 @@ class Config(object):
 
         self.parentlist = ParentProxyList()
         if self.userconf.dget('FWLite', 'parentproxy', ''):
-            self.addparentproxy('direct', '%s 0' % self.userconf.dget('FWLite', 'parentproxy', ''))
+            self.addparentproxy('_D1R3CT_', '%s 0' % self.userconf.dget('FWLite', 'parentproxy', ''))
         else:
-            self.addparentproxy('direct', 'direct 0')
+            self.addparentproxy('_D1R3CT_', 'direct 0')
 
         for k, v in self.userconf.items('parents'):
+            if k in ('_D1R3CT_', '_L0C4L_'):
+                self.logger.error('proxy name %s is protected!')
+                continue
             self.addparentproxy(k, v)
 
         for k, v in self.userconf.items('plugin'):

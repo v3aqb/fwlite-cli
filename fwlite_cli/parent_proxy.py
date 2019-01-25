@@ -144,7 +144,7 @@ class ParentProxy(object):
         return self.name or ('%s://%s:%s' % (self.parse.scheme, self.parse.hostname, self.parse.port))
 
     def __repr__(self):
-        return '<ParentProxy: %s %s %s>' % (self.name or 'direct', self.proxy, self._priority)
+        return '<ParentProxy: %s %s>' % (self.name, self._priority)
 
 
 class ParentProxyList(object):
@@ -168,20 +168,21 @@ class ParentProxyList(object):
             self.remove(parentproxy.name)
         logger.info('add parent: %s: %s' % (parentproxy.name, s))
         self.dict[parentproxy.name] = parentproxy
-        if parentproxy.name == 'direct':
+        if parentproxy.name == '_D1R3CT_':
             self.direct = parentproxy
             ParentProxy.set_via(self.direct)
             if parentproxy.proxy:
-                self.addstr('local', 'direct -1')
+                self.addstr('_L0C4L_', 'direct -1')
             return
-        if parentproxy.name == 'local':
+        if parentproxy.name == '_L0C4L_':
             self.local = parentproxy
             return
+
         if 0 <= parentproxy._priority <= 100:
             self._parents.add(parentproxy)
 
     def remove(self, name):
-        if name == 'direct' or name not in self.dict:
+        if name in ('_D1R3CT_', '_L0C4L_') or name not in self.dict:
             return 1
         a = self.dict.get(name)
         del self.dict[name]
