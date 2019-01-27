@@ -904,7 +904,7 @@ class http_handler(base_handler):
                 self.send_error(404, repr(e))
                 return
         elif parse.path == '/api/proxy' and self.command == 'GET':
-            data = [(p.name, ('%s://%s:%s' % (p.scheme, p._host_port[0], p._host_port[1])) if p.proxy else '', p._priority) for k, p in self.conf.parentlist.dict.items()]
+            data = [(p.name, ('%s://%s:%s' % (p.scheme, p._host_port[0], p._host_port[1])) if p.proxy else '', p._priority, p.get_avg_resp_time()) for k, p in self.conf.parentlist.dict.items()]
             data = sorted(data, key=lambda item: item[0])
             data = json.dumps(sorted(data, key=lambda item: item[2]))
             self.write(200, data=data, ctype='application/json')
