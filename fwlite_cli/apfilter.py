@@ -247,7 +247,7 @@ class ap_filter(object):
             self.rules.discard(rule)
             del self.expire[rule]
             if '-GUI' in sys.argv:
-                sys.stdout.write('\n')
+                sys.stdout.write('local\n')
                 sys.stdout.flush()
 
 

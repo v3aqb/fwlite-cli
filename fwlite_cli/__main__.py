@@ -69,7 +69,7 @@ def main():
         loop.run_until_complete(server)
 
     if args.gui:
-        loop.call_soon(conf.stdout)
+        loop.call_later(1, conf.stdout, 'all')
     # loop.add_signal_handler(signal.SIGTERM, loop.stop)
     # loop.add_signal_handler(signal.SIGINT, sys.exit)
     try:

@@ -223,7 +223,7 @@ class get_proxy(object):
                     resp_time = self.conf.parentlist.direct.get_avg_resp_time(requesthost[0])
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
                     self.add_temp(rule, min(exp, 60))
-                    self.conf.stdout()
+                    self.conf.stdout('local')
 
     def add_temp(self, rule, exp=None, quiet=False):
         # add temp rule for &exp minutes
