@@ -866,16 +866,16 @@ class http_handler(base_handler):
         elif parse.path == '/api/localrule' and self.command == 'POST':
             'accept a json encoded tuple: (str rule, int exp)'
             rule, exp = json.loads(body)
-            result = self.conf.GET_PROXY.add_temp(rule, exp)
+            self.conf.GET_PROXY.add_temp(rule, exp)
             self.write(200)
-            self.conf.stdout()
+            self.conf.stdout('local')
             return
         elif parse.path.startswith('/api/localrule/') and self.command == 'DELETE':
             try:
                 rule = base64.urlsafe_b64decode(parse.path[15:].encode('latin1')).decode()
                 expire = self.conf.GET_PROXY.local.remove(rule)
                 self.write(200, data=json.dumps([rule, expire]), ctype='application/json')
-                self.conf.stdout()
+                self.conf.stdout('local')
                 return
             except Exception as e:
                 self.logger.error(traceback.format_exc())
@@ -890,7 +890,7 @@ class http_handler(base_handler):
             rule, dest = json.loads(body)
             self.conf.GET_PROXY.add_redirect(rule, dest)
             self.write(200)
-            self.conf.stdout()
+            self.conf.stdout('redir')
             return
         elif parse.path.startswith('/api/redirector/') and self.command == 'DELETE':
             try:
@@ -898,7 +898,7 @@ class http_handler(base_handler):
                 rule = base64.urlsafe_b64decode(rule).decode()
                 self.conf.REDIRECTOR.remove(rule)
                 self.write(200, data='done', ctype='text/plain')
-                self.conf.stdout()
+                self.conf.stdout('redir')
                 return
             except Exception as e:
                 self.send_error(404, repr(e))
@@ -917,7 +917,7 @@ class http_handler(base_handler):
                 self.conf.userconf.set('parents', name, proxy)
                 self.conf.confsave()
             self.write(200, data=data, ctype='application/json')
-            self.conf.stdout()
+            self.conf.stdout('proxy')
             return
         elif parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
             try:
@@ -928,7 +928,7 @@ class http_handler(base_handler):
                     self.conf.userconf.remove_option('parents', proxy_name)
                     self.conf.confsave()
                 self.write(200, data=proxy_name, ctype='application/json')
-                self.conf.stdout()
+                self.conf.stdout('proxy')
                 return
             except Exception as e:
                 self.send_error(404, repr(e))
@@ -949,7 +949,7 @@ class http_handler(base_handler):
         elif parse.path == '/api/gfwlist' and self.command == 'POST':
             self.conf.gfwlist_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
-            self.conf.stdout()
+            self.conf.stdout('setting')
             return
         elif parse.path == '/api/adblock' and self.command == 'GET':
             self.write(200, data=json.dumps(self.conf.adblock_enable), ctype='application/json')
@@ -957,24 +957,7 @@ class http_handler(base_handler):
         elif parse.path == '/api/adblock' and self.command == 'POST':
             self.conf.adblock_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
-            self.conf.stdout()
-            return
-        elif parse.path == '/api/remotedns' and self.command == 'POST':
-            'accept a json encoded tuple: (str host, str server)'
-            try:
-                from .parent_proxy import ParentProxy
-                from .resolver import TCP_Resolver
-                host, server = json.loads(body)
-                server = [parse_hostport(server.encode(), 53)]
-                port = self.conf.listen[1]
-                proxy = ParentProxy('foo', 'http://127.0.0.1:%d' % port)
-                resolver = TCP_Resolver(server, proxy)
-                result = resolver.resolve(host)
-                result = [r[1] for r in result]
-                self.write(200, data=json.dumps(result), ctype='application/json')
-            except Exception:
-                result = traceback.format_exc()
-                self.write(200, data=json.dumps(result.split()), ctype='application/json')
+            self.conf.stdout('setting')
             return
         elif parse.path == '/api/exit' and self.command == 'GET':
             from .plugin_manager import plugin_manager

@@ -165,6 +165,8 @@ class Config(object):
         hdr.setFormatter(formatter)
         self.logger.addHandler(hdr)
 
+        ParentProxy.conf = self
+
         self.GUI = gui
         self.conf_path = os.path.abspath(conf_path)
         self.conf_dir = os.path.dirname(self.conf_path)
