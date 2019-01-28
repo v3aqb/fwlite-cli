@@ -165,10 +165,18 @@ class ForwardManager:
         return port
 
     def stop(self, port):
-        return
+        asyncio.ensure_future(self.stop_w(port))
+
+    async def stop_w(self, port):
+        import sys
+        if sys.platform == 'win32':
+            if sys.version_info < (3, 7):
+                return
+
         logger.info('removing forward %s' % port)
         server = self.server[port]
         server.close()
+        await server.wait_closed()
         del self.server[port]
         del self.server_info[port]
         self.conf.stdout('forward')

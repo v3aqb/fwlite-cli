@@ -268,7 +268,6 @@ class Config(object):
 ''')
 
         if not os.path.exists(self.gfwlist_path):
-            self.logger.info(repr(self.parentlist.direct))
             self.logger.warning('"gfwlist.txt" not found! downloading...')
             gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
             url_retreive(gfwlist_url, self.gfwlist_path, self.parentlist.direct)
