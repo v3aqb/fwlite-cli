@@ -33,6 +33,8 @@ from .redirector import redirector
 from .util import SConfigParser
 from .resolver import resolver
 from .plugin_manager import plugin_register
+from .port_forward import ForwardManager
+from .plugin_manager import PluginManager
 
 
 PAC = '''
@@ -167,6 +169,7 @@ class Config(object):
 
         ParentProxy.conf = self
 
+        self._started = False
         self.GUI = gui
         self.conf_path = os.path.abspath(conf_path)
         self.conf_dir = os.path.dirname(self.conf_path)
@@ -179,6 +182,11 @@ class Config(object):
         self.reload()
 
         self.timeout = self.userconf.dgetint('FWLite', 'timeout', 4)
+        self.profile = self.userconf.dget('FWLite', 'profile', '134')
+        if '1' not in self.profile:
+            self.profile += '1'
+        if '3' not in self.profile:
+            self.profile += '3'
         self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
         self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
 
@@ -196,7 +204,16 @@ class Config(object):
             self.gate = 0
         ParentProxy.GATE = self.gate
 
-        self.parentlist = ParentProxyList()
+        for k, v in self.userconf.items('plugin'):
+            plugin_register(k, v)
+
+        self.plugin_manager = PluginManager(self)
+        self.port_forward = ForwardManager(self)
+        self.parentlist = ParentProxyList(self)
+        # add proxy created my fwlite self
+        for i, profile in enumerate(self.profile):
+            self.addparentproxy('FWLITE:%s' % profile, 'http://127.0.0.1:%d' % (self.listen[1] + i))
+
         if self.userconf.dget('FWLite', 'parentproxy', ''):
             self.addparentproxy('_D1R3CT_', '%s 0' % self.userconf.dget('FWLite', 'parentproxy', ''))
         else:
@@ -208,11 +225,22 @@ class Config(object):
                 continue
             self.addparentproxy(k, v)
 
-        for k, v in self.userconf.items('plugin'):
-            plugin_register(k, v)
-
         if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
             self.logger.warning('No parent proxy available!')
+
+        for k, v in self.userconf.items('port_forward'):
+            # k: port
+            # v: target / target proxy
+            # using proxy FWLITE:1
+            try:
+                target, _, proxy = v.partition(' ')
+                target = (v.rsplit(':', 1)[0], int(v.rsplit(':', 1)[1]))
+                proxy = proxy or ('FWLITE:' + self.profile[0])
+                port = int(k)
+                self.port_forward.add(target, proxy, port)
+            except Exception as e:
+                self.logger.error(repr(e))
+                self.logger.error(traceback.format_exc())
 
         self.HOSTS = defaultdict(list)
 
@@ -224,9 +252,8 @@ class Config(object):
                 else:
                     self.HOSTS[host].append((10, ip))
             except Exception:
-                self.logger.warning('unsupported host: %s' % ip)
-                sys.stderr.write(traceback.format_exc() + '\n')
-                sys.stderr.flush()
+                self.logger.error('unsupported host: %s' % ip)
+                self.logger.error(traceback.format_exc())
 
         for host, ip in self.userconf.items('hosts'):
             addhost(host, ip)
@@ -291,6 +318,10 @@ class Config(object):
         self.parentlist.addstr(name, proxy)
 
     def stdout(self, text=''):
+        if text == 'all':
+            self._started = True
+        if not self._started:
+            return
         if self.GUI:
             sys.stdout.write(text + '\n')
             sys.stdout.flush()

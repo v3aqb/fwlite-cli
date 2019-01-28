@@ -489,7 +489,6 @@ class http_handler(base_handler):
                         self.remote_writer.write(data)
                 # read response line
                 timelog = time.clock()
-                fut = self.remote_reader.readline()
                 response_line, protocol_version, response_status, response_reason = \
                     await self.read_resp_line()
                 rtime = time.clock() - timelog
@@ -497,11 +496,10 @@ class http_handler(base_handler):
             while response_status == 100:
                 hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
                 self._wfile_write(response_line + hdata)
-                fut = self.remote_reader.readline()
                 response_line, protocol_version, response_status, response_reason = \
                     await self.read_resp_line()
 
-            header_data, response_header = read_headers(self.remote_reader, timeout=self.timeout)
+            header_data, response_header = await read_headers(self.remote_reader, timeout=self.timeout)
 
             # check response headers
             conntype = response_header.get('Connection', "")
@@ -907,6 +905,12 @@ class http_handler(base_handler):
         elif parse.path == '/api/proxy' and self.command == 'POST':
             'accept a json encoded tuple: (str name, str proxy)'
             name, proxy = json.loads(body)
+            if 'FWLITE:' in name:
+                self.send_error(401)
+                return
+            if name == '_L0C4L_':
+                self.send_error(401)
+                return
             self.conf.addparentproxy(name, proxy)
             if name not in ('_D1R3CT_', '_L0C4L_'):
                 self.conf.userconf.set('parents', name, proxy)
@@ -938,6 +942,24 @@ class http_handler(base_handler):
             except Exception as e:
                 self.send_error(404, repr(e))
                 return
+        elif parse.path == '/api/forward' and self.command == 'GET':
+            data = [('%s:%s' % target, proxy, port) for target, proxy, port in self.conf.port_forward.list()]
+            data = json.dumps(data)
+            self.write(200, data=data, ctype='application/json')
+            return
+        elif parse.path == '/api/forward' and self.command == 'POST':
+            'accept a json encoded tuple: (str target, str proxy, int port)'
+            target, proxy, port = json.loads(body)
+            target = parse_hostport(target)
+            self.conf.port_forward.add(target, proxy, port)
+            self.write(200, data=data, ctype='application/json')
+            return
+        elif parse.path.startswith('/api/forward/') and self.command == 'DELETE':
+            data = parse.path[13:]
+            port = int(data)
+            self.conf.port_forward.stop(port)
+            self.write(200)
+            return
         elif parse.path == '/api/gfwlist' and self.command == 'GET':
             self.write(200, data=json.dumps(self.conf.gfwlist_enable), ctype='application/json')
             return
@@ -955,8 +977,7 @@ class http_handler(base_handler):
             self.conf.stdout('setting')
             return
         elif parse.path == '/api/exit' and self.command == 'GET':
-            from .plugin_manager import plugin_manager
-            plugin_manager.cleanup()
+            self.conf.plugin_manager.cleanup()
             self.write(200, data='Done!', ctype='text/html')
             import sys
             sys.exit()
