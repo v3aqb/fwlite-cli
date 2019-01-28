@@ -24,8 +24,6 @@ import base64
 import json
 import time
 import traceback
-import email
-from http.client import HTTPMessage
 
 import urllib.parse as urlparse
 from ipaddress import ip_address
@@ -34,7 +32,7 @@ import asyncio
 import asyncio.streams
 
 from .connection import open_connection
-from .base_handler import base_handler, read_header_data
+from .base_handler import base_handler, read_header_data, read_headers
 from .httputil import httpconn_pool
 
 MAX_TIMEOUT = 16
@@ -327,7 +325,7 @@ class http_handler(base_handler):
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
-                if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + self.conf.profile_num):
+                if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.profile)):
                     await self.api(parse)
                     return
             else:
@@ -446,7 +444,7 @@ class http_handler(base_handler):
                     self.logger.warning('read response line error: %r' % e)
                 else:
                     if response_status == 100:
-                        hdata = await read_header_data(self.remote_reader)
+                        hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
                         self._wfile_write(response_line + hdata)
                     else:
                         skip = True
@@ -497,16 +495,13 @@ class http_handler(base_handler):
                 rtime = time.clock() - timelog
             # read response headers
             while response_status == 100:
-                # hdata = await read_header_data(self.remote_reader)
-                fut = self.remote_reader.readuntil(b'\r\n\r\n')
-                hdata = await asyncio.wait_for(fut, self.timeout)
+                hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
                 self._wfile_write(response_line + hdata)
                 fut = self.remote_reader.readline()
                 response_line, protocol_version, response_status, response_reason = \
                     await self.read_resp_line()
-            fut = self.remote_reader.readuntil(b'\r\n\r\n')
-            header_data = await asyncio.wait_for(fut, self.timeout)
-            response_header = email.parser.Parser(_class=HTTPMessage).parsestr(header_data.decode('iso-8859-1'))
+
+            header_data, response_header = read_headers(self.remote_reader, timeout=self.timeout)
 
             # check response headers
             conntype = response_header.get('Connection', "")
@@ -669,7 +664,7 @@ class http_handler(base_handler):
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
-                if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + self.conf.profile_num):
+                if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.profile)):
                     # prevent loop
                     return
             else:

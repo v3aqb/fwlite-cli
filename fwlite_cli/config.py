@@ -179,7 +179,6 @@ class Config(object):
         self.reload()
 
         self.timeout = self.userconf.dgetint('FWLite', 'timeout', 4)
-        self.profile_num = len(self.userconf.dget('FWLite', 'profile', '13'))
         self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
         self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
 

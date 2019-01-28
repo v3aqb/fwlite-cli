@@ -62,7 +62,7 @@ def main():
 
     conf = Config(args.c, args.gui)
 
-    for i, profile in enumerate(list(conf.userconf.dget('FWLite', 'profile', '13'))):
+    for i, profile in enumerate(conf.profile):
         handler = handler_factory(conf.listen[0], conf.listen[1] + i, http_handler, int(profile), conf)
         loop = asyncio.get_event_loop()
         server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
