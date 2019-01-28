@@ -55,6 +55,12 @@ plugin_args = {'kcptun': ['key value',    # pre-shared secret between client and
 plugin_path = {}
 
 
+def is_udp(plugin_info):
+    if plugin_info[0] == 'kcptun':
+        return True
+    return False
+
+
 def plugin_register(plugin, path):
     if plugin in plugin_path:
         logger.error('%s already registered at %s' % (plugin, plugin_path[plugin]))
@@ -64,6 +70,10 @@ def plugin_register(plugin, path):
 
 
 def plugin_command(host_port, plugin_info, port):
+    '''
+    host_port: plugin server address
+    port: plugin client listening port
+    '''
     plugin = plugin_info[0]
     plugin_args = plugin_info[1:]
 
@@ -99,33 +109,57 @@ def plugin_command(host_port, plugin_info, port):
 
 class PluginManager:
 
-    def __init__(self):
+    def __init__(self, conf):
+        self.conf = conf
         self.plugin_info = {}
         self.subprocess = {}
         self.plugin_port = {}
         atexit.register(self.cleanup)
 
-    def add(self, host_port, plugin_info):
+    def add(self, host_port, plugin_info, proxy):
         # log plugin info
-        assert host_port not in self.plugin_info
-        self.plugin_info[host_port] = plugin_info
+        assert (host_port, proxy) not in self.plugin_port
+        if proxy.proxy and is_udp(plugin_info):
+            raise ValueError('cannot proxy UDP plugin')
+        self.plugin_info[(host_port, proxy)] = plugin_info
+        if proxy.proxy:
+            # start tunnel
+            tunnel_port = self.tunnel_manager.add(host_port, proxy)
+
+            # adjust tunnel port
+            new_host_port = ('127.0.0.1', tunnel_port)
+            # assign free socket for plugin
+            s = socket.socket()
+            s.bind(('127.0.0.1', 0))
+            _, port = s.getsockname()
+            s.close()
+            key = '%s:%s' % host_port
+            key += '-%s' % proxy.proxy
+            self.plugin_port[key] = port
+            # start process
+            self.start(new_host_port, proxy)
+            return
         # assign free socket
         s = socket.socket()
         s.bind(('127.0.0.1', 0))
         _, port = s.getsockname()
         s.close()
-        self.plugin_port[host_port] = port
+        key = '%s:%s' % host_port
+        key += '-%s' % proxy.proxy
+        self.plugin_port[key] = port
         # start process
-        self.start(host_port)
+        self.start(host_port, proxy)
 
-    def get(self, host_port):
+    def get(self, host_port, proxy):
         # return plugin client address
-        return self.plugin_port[host_port]
+        key = '%s:%s' % host_port
+        key += '-%s' % proxy.proxy
+        return self.plugin_port[key]
 
-    def start(self, host_port):
+    def start(self, host_port, proxy):
         try:
             # construct command line
-            args = plugin_command(host_port, self.plugin_info[host_port], self.plugin_port[host_port])
+            args = plugin_command(host_port, self.plugin_info[(host_port, proxy)], self.plugin_port[(host_port, proxy)])
             logger.info(' '.join(args))
             # start subprocess
             process = subprocess.Popen(args)
@@ -133,27 +167,12 @@ class PluginManager:
         except Exception as e:
             logger.error(repr(e))
 
-    def restart(self, host_port):
-        self.subprocess[host_port].kill()
-        self.start(host_port)
+    def restart(self, host_port, proxy):
+        self.subprocess[(host_port, proxy)].kill()
+        self.start(host_port, proxy)
 
     def cleanup(self):
         # kill all subprocess
         all_processes = [v for k, v in self.subprocess.items()]
         for p in all_processes:  # list of your processes
             p.kill()
-
-
-plugin_manager = PluginManager()
-
-
-if __name__ == '__main__':
-    import time
-    import sys
-
-    plugin_register('goquiet', 'goquiet.exe')
-
-    plugin_manager.add(('127.0.0.1', 443), ['goquiet', 'ServerName=www.baidu.com', 'Key=123456', 'TicketTimeHint=360'])
-
-    time.sleep(60)
-    sys.exit()

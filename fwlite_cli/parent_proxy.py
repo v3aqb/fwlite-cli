@@ -61,6 +61,8 @@ class ParentProxy(object):
             priority = 0
         if name == '_L0C4L_':
             priority = -1
+        if name.startswith('FWLITE:'):
+            priority = -1
 
         if proxy == 'direct':
             proxy = ''
@@ -85,10 +87,9 @@ class ParentProxy(object):
         plugin = self.query.get('plugin', [None, ])[0]
         self.plugin_info = plugin.split(';') if plugin else None
         if self.plugin_info:
-            from .plugin_manager import plugin_manager
-            plugin_manager.add(self._host_port, self.plugin_info)
+            self.conf.plugin_manager.add(self._host_port, self.plugin_info, self.VIA)
             self.hostname = '127.0.0.1'
-            self.port = plugin_manager.get(self._host_port)
+            self.port = self.conf.plugin_manager.get(self._host_port, self.VIA)
 
         self.id = self.query.get('id', [self.name, ])[0]
 
@@ -153,7 +154,8 @@ class ParentProxy(object):
 
 
 class ParentProxyList(object):
-    def __init__(self):
+    def __init__(self, conf):
+        self.conf = conf
         self.direct = None
         self.local = None
         self._parents = set()
@@ -188,7 +190,9 @@ class ParentProxyList(object):
 
     def remove(self, name):
         if name in ('_D1R3CT_', '_L0C4L_') or name not in self.dict:
-            return 1
+            return
+        if 'FWLITE:' in name:
+            return
         a = self.dict.get(name)
         del self.dict[name]
         self._parents.discard(a)
