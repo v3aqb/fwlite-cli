@@ -117,7 +117,7 @@ class ParentProxy(object):
         self.avg_resp_time = 0.87 * self.get_avg_resp_time() + (1 - 0.87) * rtime
         self.avg_resp_time_by_host[host] = 0.87 * self.avg_resp_time_by_host[host] + (1 - 0.87) * rtime
         self.avg_resp_time_ts = self.avg_resp_time_by_host_ts[host] = time.time()
-        logger.info('%s to %s: %.3fs avg: %.3fs %.3fs' % (self.name, host, rtime, self.avg_resp_time, self.avg_resp_time_by_host[host]))
+        logger.debug('%s to %s: %.3fs avg: %.3fs %.3fs' % (self.name, host, rtime, self.avg_resp_time, self.avg_resp_time_by_host[host]))
         self.conf.stdout('proxy')
 
     def get_avg_resp_time(self, host=None):
