@@ -61,6 +61,7 @@ class ParentProxy(object):
             priority = 0
         if name == '_L0C4L_':
             priority = -1
+            proxy = ''
         if name.startswith('FWLITE:'):
             priority = -1
 
@@ -174,7 +175,8 @@ class ParentProxyList(object):
             logger.warning('%s already in ParentProxyList, overwrite' % parentproxy.name)
             self.remove(parentproxy.name)
         logger.info('add parent: %s: %s' % (parentproxy.name, s))
-        self.dict[parentproxy.name] = parentproxy
+        if parentproxy.name not in ('_L0C4L_', ):
+            self.dict[parentproxy.name] = parentproxy
         if parentproxy.name == '_D1R3CT_':
             self.direct = parentproxy
             ParentProxy.set_via(self.direct)
