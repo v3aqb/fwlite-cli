@@ -11,6 +11,7 @@ features
 --------
 
 - Detect blocked sites automatically
+
   - autoproxy-gfwlist
   - user-defined rules
   - connect timeout
@@ -18,13 +19,20 @@ features
   - connection reset
 - Multiple work profile
 - Support Network which require a Proxy ([issue #39](https://github.com/v3aqb/fwlite/issues/39))
-- Support websocket protocol
 - Supported parent proxy
-  - HTTP Proxy
-  - Socks5 Proxy
-  - [Shadowsocks] by @clowwindy (with AEAD support)
+
+  - HTTP
+  - socks5
+  - shadowsocks (with AEAD support)
+  - hxsocks2
+- Supported SIP003 plugin
+
+  - simple-obfs
+  - kcptun
+  - GoQuiet
 - Prioritize parent proxies by response time
 - Redirector
+- Port Forward
 - Simple PAC for WPAD
 
 install
