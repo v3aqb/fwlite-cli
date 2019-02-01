@@ -458,7 +458,7 @@ class hxs2_connection(object):
 
     async def getKey(self):
         logger.debug('hxsocks2 getKey')
-        host, port, usn, psw = (self.proxy.hostname, self.proxy.port, self.proxy.username, self.proxy.password)
+        usn, psw = (self.proxy.username, self.proxy.password)
         logger.info('%s connect to server' % self.name)
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
@@ -519,6 +519,7 @@ class hxs2_connection(object):
             signature = data.read(siglen)
 
             # TODO: ask user if a certificate should be accepted or not.
+            host, port = self.proxy._host_port
             server_id = '%s_%d' % (host, port)
             if server_id not in known_hosts:
                 logger.info('hxs: server %s new cert %s saved.' % (server_id, hashlib.sha256(server_cert).hexdigest()[:8]))

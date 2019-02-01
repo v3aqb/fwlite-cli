@@ -118,7 +118,12 @@ class PluginManager:
 
     def add(self, host_port, plugin_info, proxy):
         # log plugin info
-        assert (host_port, proxy) not in self.plugin_port
+        key = '%s:%s' % host_port
+        key += '-%s' % proxy.proxy
+        if key in self.plugin_port:
+            logger.warning('plugin registered!')
+            return self.plugin_port[key]
+
         if proxy.proxy and is_udp(plugin_info):
             raise ValueError('cannot proxy UDP plugin')
         self.plugin_info[(host_port, proxy)] = plugin_info
@@ -144,22 +149,18 @@ class PluginManager:
         s.bind(('127.0.0.1', 0))
         _, port = s.getsockname()
         s.close()
-        key = '%s:%s' % host_port
-        key += '-%s' % proxy.proxy
+
         self.plugin_port[key] = port
         # start process
         self.start(host_port, proxy)
-
-    def get(self, host_port, proxy):
-        # return plugin client address
-        key = '%s:%s' % host_port
-        key += '-%s' % proxy.proxy
-        return self.plugin_port[key]
+        return port
 
     def start(self, host_port, proxy):
         try:
             # construct command line
-            args = plugin_command(host_port, self.plugin_info[(host_port, proxy)], self.plugin_port[(host_port, proxy)])
+            key = '%s:%s' % host_port
+            key += '-%s' % proxy.proxy
+            args = plugin_command(host_port, self.plugin_info[(host_port, proxy)], self.plugin_port[key])
             logger.info(' '.join(args))
             # start subprocess
             process = subprocess.Popen(args)
