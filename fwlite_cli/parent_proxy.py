@@ -88,9 +88,8 @@ class ParentProxy(object):
         plugin = self.query.get('plugin', [None, ])[0]
         self.plugin_info = plugin.split(';') if plugin else None
         if self.plugin_info:
-            self.conf.plugin_manager.add(self._host_port, self.plugin_info, self.VIA)
+            self.port = self.conf.plugin_manager.add(self._host_port, self.plugin_info, self.VIA)
             self.hostname = '127.0.0.1'
-            self.port = self.conf.plugin_manager.get(self._host_port, self.VIA)
 
         self.id = self.query.get('id', [self.name, ])[0]
 
@@ -141,7 +140,7 @@ class ParentProxy(object):
         cls.DIRECT = cls('_DIRECT', 'direct -1')
 
     def get_via(self):
-        if self.VIA == self:
+        if self.VIA == self or self.plugin_info:
             return self.DIRECT
         if self.DIRECT == self:
             return None
