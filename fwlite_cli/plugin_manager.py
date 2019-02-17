@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
+import time
 import socket
 import subprocess
 import shlex
@@ -30,34 +32,16 @@ formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
 hdr.setFormatter(formatter)
 logger.addHandler(hdr)
 
-plugin_args = {'kcptun': ['key value',    # pre-shared secret between client and server (default: "it's a secrect") [$KCPTUN_KEY]
-                          'crypt',        # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, sm4, none (default: "aes")
-                          'mode',         # profiles: fast3, fast2, fast, normal, manual (default: "fast")
-                          'conn',         # set num of UDP connections to server (default: 1)
-                          'autoexpire',   # set auto expiration time(in seconds) for a single UDP connection, 0 to disable (default: 0)
-                          'scavengettl',  # set how long an expired connection can live(in sec), -1 to disable (default: 600)
-                          'mtu',          # set maximum transmission unit for UDP packets (default: 1350)
-                          'sndwnd',       # set send window size(num of packets) (default: 128)
-                          'rcvwnd',       # set receive window size(num of packets) (default: 512)
-                          'datashard',
-                          'ds',           # set reed-solomon erasure coding - datashard (default: 10)
-                          'parityshard',  # set reed-solomon erasure coding - parityshard (default: 3)
-                          'ps',
-                          'dscp',         # set DSCP(6bit) (default: 0)
-                          'nocomp',       # disable compression
-                          'sockbuf',      # (default: 4194304)
-                          'keepalive',    # (default: 10)]}
-                          ],
-               'simple-obfs': ['obfs', 'obfs-host'],
-               'goquiet': ['ServerName', 'key', 'TicketTimeHint'],
-               }
-
 plugin_path = {}
+NON_SIP003 = ['kcptun']
 
 
 def is_udp(plugin_info):
     if plugin_info[0] == 'kcptun':
         return True
+    if plugin_info[0] == 'v2ray-plugin':
+        if 'mode=quic' in plugin_info:
+            return True
     return False
 
 
@@ -91,19 +75,6 @@ def plugin_command(host_port, plugin_info, port):
             else:
                 cmd.append('--' + args)
         cmd.append('--quiet')
-    elif 'simple-obfs' in plugin.lower():
-        cmd.extend(['-s', '%s' % host_port[0]])
-        cmd.extend(['-p', '%d' % host_port[1]])
-        cmd.extend(['-l', '%d' % port])
-        for args in plugin_args:
-            cmd.extend(args.split('='))
-    elif 'goquiet' in plugin.lower():
-        #    gq-client -s 127.0.0.1 -l 1984 -c "ServerName=www.baidu.com;key=123456;TicketTimeHint=3600"
-        # or gq-client -s 127.0.0.1 -l 1984 -c "<path-to-conf>"
-        cmd.extend(['-s', '%s:%d' % host_port])
-        cmd.extend(['-l', '%d' % port])
-        args = ';'.join(plugin_args)
-        cmd.extend(['-c', '%s' % args])
     return cmd
 
 
@@ -126,7 +97,9 @@ class PluginManager:
 
         if proxy.proxy and is_udp(plugin_info):
             raise ValueError('cannot proxy UDP plugin')
-        self.plugin_info[(host_port, proxy)] = plugin_info
+        key = '%s:%s' % host_port
+        key += '-%s' % proxy.proxy
+        self.plugin_info[key] = plugin_info
         if proxy.proxy:
             # start tunnel
             tunnel_port = self.tunnel_manager.add(host_port, proxy)
@@ -138,12 +111,11 @@ class PluginManager:
             s.bind(('127.0.0.1', 0))
             _, port = s.getsockname()
             s.close()
-            key = '%s:%s' % host_port
-            key += '-%s' % proxy.proxy
+
             self.plugin_port[key] = port
             # start process
             self.start(new_host_port, proxy)
-            return
+            return port
         # assign free socket
         s = socket.socket()
         s.bind(('127.0.0.1', 0))
@@ -156,20 +128,43 @@ class PluginManager:
         return port
 
     def start(self, host_port, proxy):
+
+        # host_port: plugin server address
+        # proxy: keyword need to get plugin_info
+
+        key = '%s:%s' % host_port
+        key += '-%s' % proxy.proxy
+        port = self.plugin_port[key]
+        plugin_info = self.plugin_info[key]
+        plugin = plugin_info[0]
+        plugin_args = ';'.join(plugin_info[1:])
+
         try:
-            # construct command line
-            key = '%s:%s' % host_port
-            key += '-%s' % proxy.proxy
-            args = plugin_command(host_port, self.plugin_info[(host_port, proxy)], self.plugin_port[key])
-            logger.info(' '.join(args))
-            # start subprocess
-            process = subprocess.Popen(args)
-            self.subprocess[host_port] = process
+            if plugin in NON_SIP003:
+                args = plugin_command(host_port, self.plugin_info[key], self.plugin_port[key])
+                process = subprocess.Popen(args)
+                self.subprocess[host_port] = process
+            else:
+                # set environment variable
+                # SS_REMOTE_HOST, SS_REMOTE_PORT, SS_LOCAL_HOST, SS_LOCAL_PORT, [SS_PLUGIN_OPTIONS]
+                os.environ["SS_REMOTE_HOST"] = host_port[0]
+                os.environ["SS_REMOTE_PORT"] = str(host_port[1])
+                os.environ["SS_LOCAL_HOST"] = '127.0.0.1'
+                os.environ["SS_LOCAL_PORT"] = str(port)
+                os.environ["SS_PLUGIN_OPTIONS"] = plugin_args
+
+                cmd = shlex.split(plugin_path[plugin])
+                process = subprocess.Popen(cmd)
+                self.subprocess[key] = process
+
+                time.sleep(0.2)
         except Exception as e:
             logger.error(repr(e))
 
     def restart(self, host_port, proxy):
-        self.subprocess[(host_port, proxy)].kill()
+        key = '%s:%s' % host_port
+        key += '-%s' % proxy.proxy
+        self.subprocess[key].kill()
         self.start(host_port, proxy)
 
     def cleanup(self):
