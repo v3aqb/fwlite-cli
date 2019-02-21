@@ -97,12 +97,11 @@ class PluginManager:
 
         if proxy.proxy and is_udp(plugin_info):
             raise ValueError('cannot proxy UDP plugin')
-        key = '%s:%s' % host_port
-        key += '-%s' % proxy.proxy
+
         self.plugin_info[key] = plugin_info
         if proxy.proxy:
             # start tunnel
-            tunnel_port = self.tunnel_manager.add(host_port, proxy)
+            tunnel_port = self.conf.port_forward.add(host_port, proxy)
 
             # adjust tunnel port
             new_host_port = ('127.0.0.1', tunnel_port)
@@ -114,7 +113,7 @@ class PluginManager:
 
             self.plugin_port[key] = port
             # start process
-            self.start(new_host_port, proxy)
+            self.start(new_host_port, key)
             return port
         # assign free socket
         s = socket.socket()
@@ -124,16 +123,14 @@ class PluginManager:
 
         self.plugin_port[key] = port
         # start process
-        self.start(host_port, proxy)
+        self.start(host_port, key)
         return port
 
-    def start(self, host_port, proxy):
+    def start(self, host_port, key):
 
         # host_port: plugin server address
         # proxy: keyword need to get plugin_info
 
-        key = '%s:%s' % host_port
-        key += '-%s' % proxy.proxy
         port = self.plugin_port[key]
         plugin_info = self.plugin_info[key]
         plugin = plugin_info[0]
