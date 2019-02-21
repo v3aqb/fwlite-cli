@@ -143,18 +143,21 @@ class ForwardManager:
         self.server_info = {}
 
     def add(self, target, proxy, port=0):
-        asyncio.ensure_future(self.add_forward(target, proxy, port))
+        s = None
+        if port == 0:
+            s = socket.socket()
+            s.bind(('127.0.0.1', port))
+            _, port = s.getsockname()
 
-    async def add_forward(self, target, proxy, port=0, *args):
+        logger.info('add port_forward %s %s %s' % (target, proxy, port))
+        asyncio.ensure_future(self.add_forward(target, proxy, port, s))
+        return port
+
+    async def add_forward(self, target, proxy, port, soc=None):
         if isinstance(proxy, str):
             proxy = self.conf.parentlist.get(proxy)
-
-        logger.info('add port_forward %s %s %s' % (target, proxy.name, port))
-        s = socket.socket()
-        s.bind(('127.0.0.1', port))
-        _, port = s.getsockname()
-        s.close()
-
+        if soc:
+            soc.close()
         # start server on port
         handler = forward_handler(target, proxy, timeout=120)
         loop = asyncio.get_event_loop()
@@ -162,7 +165,6 @@ class ForwardManager:
         self.server[port] = server
         self.server_info[port] = (target, proxy.name)
         self.conf.stdout('forward')
-        return port
 
     def stop(self, port):
         asyncio.ensure_future(self.stop_w(port))
