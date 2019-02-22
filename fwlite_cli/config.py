@@ -223,7 +223,10 @@ class Config(object):
             if k in ('_D1R3CT_', '_L0C4L_'):
                 self.logger.error('proxy name %s is protected!')
                 continue
-            self.addparentproxy(k, v)
+            try:
+                self.addparentproxy(k, v)
+            except Exception as e:
+                self.logger.error('add proxy failed! %r' % e)
 
         if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
             self.logger.warning('No parent proxy available!')
