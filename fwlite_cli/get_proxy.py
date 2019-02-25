@@ -129,8 +129,8 @@ class get_proxy(object):
         if self.conf.rproxy:
             return None
 
-        if int(ip) == 0:
-            return True
+        # if int(ip) == 0:
+        #     return True
 
         if ip.is_loopback:
             return False
@@ -138,7 +138,7 @@ class get_proxy(object):
         if level == 5:
             return True
 
-        if ip.is_private:
+        if int(ip) and ip.is_private:
             return False
 
         if level == 4:
