@@ -552,8 +552,12 @@ class http_handler(base_handler):
                     content_length -= len(data)
                     self.wfile_write(data)
             else:
-                # websocket?
-                self.logger.warning('websocket?')
+                # http/1.0 response, content_lenth not in header
+                #     read response body until connection closed
+                # if Upgrade in headers, websocket?
+                #     forward tcp
+                if 'Upgrade' in response_header:
+                    self.logger.info('Upgrade: %s' % response_header['Upgrade'])
                 self.close_connection = True
                 self.retryable = False
                 # flush writer buf
