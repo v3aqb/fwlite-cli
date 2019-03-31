@@ -109,8 +109,8 @@ class ParentProxy(object):
         result = self._priority
 
         score = self.get_avg_resp_time() + self.get_avg_resp_time(host)
-        logger.debug('penalty %s to %s: %.2f' % (self.name, host, score * 5))
-        result += score * 5
+        logger.debug('penalty %s to %s: %.2f' % (self.name, host, score * 2))
+        result += score * 2
         logger.debug('proxy %s to %s expected response time: %.3f' % (self.name, host, score))
         return result
 
