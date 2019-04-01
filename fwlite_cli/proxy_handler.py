@@ -36,6 +36,13 @@ from .base_handler import base_handler, read_header_data, read_headers
 from .httputil import httpconn_pool
 
 MAX_TIMEOUT = 16
+WELCOME = '''<!DOCTYPE html>
+<html>
+<body>
+<p>fwlite running...</p>
+<p><a href="http://%s:%d/api/log">Check Log</a></p>
+</body>
+</html>'''
 
 
 class ClientError(Exception):
@@ -131,9 +138,7 @@ class http_handler(base_handler):
 
         For PAC and rpc-api only.
         '''
-        if msg is None:
-            msg = b''
-        if not isinstance(msg, bytes):
+        if msg and not isinstance(msg, bytes):
             msg = msg.encode('UTF-8')
         if not isinstance(data, bytes):
             data = data.encode('UTF-8')
@@ -326,6 +331,9 @@ class http_handler(base_handler):
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
                 if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.profile)):
+                    if parse.path == '/' and self.command == 'GET':
+                        self.write(200, data=WELCOME % ('127.0.0.1', self.request_host[1]), ctype='text/html; charset=utf-8')
+                        return
                     await self.api(parse)
                     return
             else:
@@ -334,11 +342,14 @@ class http_handler(base_handler):
 
         if str(self.request_ip) == self.client_writer.get_extra_info('sockname')[0]:
             if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.userconf.dget('FWLite', 'profile', '134'))):
-                if self.conf.userconf.dgetbool('FWLite', 'remoteapi', False):
-                    await self.api(parse)
-                    await self.client_writer.drain()
+                if parse.path == '/' and self.command == 'GET':
+                    self.write(200, data=WELCOME % (self.request_host[0], self.request_host[1]), ctype='text/html; charset=utf-8')
                     return
-                self.send_error(403)
+                if not self.conf.remoteapi:
+                    self.send_error(403)
+                    return
+                await self.api(parse)
+                await self.client_writer.drain()
                 return
 
         if 'X-Forwarded-For' in self.headers:
@@ -845,6 +856,7 @@ class http_handler(base_handler):
         /api/localrule: GET POST DELETE
         '''
         self.logger.debug('{} {}'.format(self.command, self.path))
+        # read request body
         content_length = int(self.headers.get('Content-Length', 0))
         if content_length > 102400:
             return
@@ -985,7 +997,7 @@ class http_handler(base_handler):
             self.write(200, data='Done!', ctype='text/html')
             import sys
             sys.exit()
-        elif parse.path == '/' and self.command == 'GET':
-            self.write(200, data='Hello World!', ctype='text/html')
+        elif parse.path == '/api/log' and self.command == 'GET':
+            self.write(200, data=self.conf.get_log(), ctype='text/plain; charset=utf-8')
             return
         self.send_error(404)

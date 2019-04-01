@@ -20,7 +20,6 @@ from __future__ import absolute_import, print_function, division
 
 import os
 import sys
-import logging
 import argparse
 
 import asyncio
@@ -31,34 +30,27 @@ from . import __version__
 
 
 def main():
-    s = 'FWLite %s with asyncio, ' % __version__
-    import platform
-    s += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
-
-    if sys.platform == 'win32':
-        loop = asyncio.ProactorEventLoop()
-        asyncio.set_event_loop(loop)
-
-    logger = logging.getLogger('FW_Lite')
-    logger.setLevel(logging.INFO)
-    hdr = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                                  datefmt='%H:%M:%S')
-    hdr.setFormatter(formatter)
-    logger.addHandler(hdr)
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', required=True, help="path to config file")
     parser.add_argument('-gui', action='store_true')
     args = parser.parse_args()
 
+    if not os.path.exists(args.c):
+        sys.stderr.write('config file {} not exist!\n'.format(args.c))
+        sys.exit()
+
+    s = 'FWLite %s with asyncio, ' % __version__
+    import platform
+    s += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
+
     if args.gui:
         s += ' with GUI'
 
-    logger.info(s)
-    if not os.path.exists(args.c):
-        logger.info('config file {} not exist!\n'.format(args.c))
-        sys.exit()
+    sys.stderr.write(s + '\n')
+
+    if sys.platform == 'win32':
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
 
     conf = Config(args.c, args.gui)
 
