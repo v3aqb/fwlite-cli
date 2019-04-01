@@ -868,6 +868,23 @@ class http_handler(base_handler):
             content_length -= len(data)
             body.write(data)
         body = body.getvalue()
+
+        # check password
+        if self.conf.remotepass:
+            if 'Authorization' not in self.headers:
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", 'Basic')
+                self.end_headers()
+                return
+            else:
+                auth = self.headers['Authorization'].split()[1]
+                _password = base64.b64decode(auth).decode().split(':', 1)[1]
+                if _password != self.conf.remotepass:
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Basic')
+                    self.end_headers()
+                    return
+
         if parse.path == '/api/localrule' and self.command == 'GET':
             data = json.dumps([(rule, self.conf.GET_PROXY.local.expire[rule]) for rule in self.conf.GET_PROXY.local.rules])
             self.write(code=200, data=data, ctype='application/json')
