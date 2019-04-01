@@ -212,6 +212,9 @@ class Config(object):
         self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
         self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
         self.remoteapi = self.userconf.dgetbool('FWLite', 'remoteapi', False)
+        self.remotepass = self.userconf.dget('FWLite', 'remotepass', '')
+        if self.remoteapi and not self.remotepass:
+            self.logger.warning('Remote API Enabled WITHOUT password protection!')
 
         listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
