@@ -23,7 +23,7 @@ import socket
 import logging
 import logging.handlers
 import traceback
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from ipaddress import IPv4Address, ip_address
 
@@ -157,8 +157,30 @@ def url_retreive(url, path, proxy):
             localfile.write(data)
 
 
+class _stderr():
+    # replace stderr
+
+    def __init__(self, maxlen=100):
+        self.store = deque(maxlen=maxlen)
+
+    def write(self, data):
+        sys.__stderr__.write(data)
+        lines = data.strip().splitlines()
+        self.store.extend(lines)
+
+    def flush(self):
+        sys.__stderr__.flush()
+
+    def getvalue(self):
+        data = '\r\n'.join(self.store)
+        # self.store.clear()
+        return data
+
+
 class Config(object):
     def __init__(self, conf_path, gui):
+        self.patch_stderr()
+
         self.logger = logging.getLogger('config')
         self.logger.setLevel(logging.INFO)
         hdr = logging.StreamHandler()
@@ -189,6 +211,7 @@ class Config(object):
             self.profile += '3'
         self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
         self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
+        self.remoteapi = self.userconf.dgetbool('FWLite', 'remoteapi', False)
 
         listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
@@ -345,3 +368,10 @@ class Config(object):
     def gfwlist_enable(self, val):
         self.userconf.set('FWLite', 'gfwlist', '1' if val else '0')
         self.confsave()
+
+    def patch_stderr(self):
+        self.stderr = _stderr()
+        sys.stderr = self.stderr
+
+    def get_log(self):
+        return self.stderr.getvalue()
