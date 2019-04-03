@@ -91,9 +91,9 @@ class redirector(object):
                 continue
             if line.startswith('#'):
                 continue
-            if 'localhost' in line:
+            if line.startswith('local'):
                 continue
-            if 'loopback' in line:
+            if line in ('broadcasthost', 'loopback'):
                 continue
             ip, _, host = line.strip().partition(' ')
             self.adblock.add(host)
