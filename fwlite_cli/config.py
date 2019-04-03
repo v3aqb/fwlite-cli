@@ -308,7 +308,7 @@ class Config(object):
 
         if not os.path.exists(self.adblock_path):
             self.logger.warning('"adblock.txt" not found! downloading...')
-            adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://hosts.nfz.moe/127.0.0.1/basic/hosts')
+            adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
             url_retreive(adblock_url, self.adblock_path, self.parentlist.direct)
 
         # prep PAC
