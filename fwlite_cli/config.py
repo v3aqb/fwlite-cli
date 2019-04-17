@@ -296,21 +296,6 @@ class Config(object):
 ! /^http://www.baidu.com/.*wd=([^&]*).*$/ /https://www.google.com/search?q=\1/
 ''')
 
-        if not os.path.exists(self.gfwlist_path):
-            self.logger.warning('"gfwlist.txt" not found! downloading...')
-            gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
-            url_retreive(gfwlist_url, self.gfwlist_path, self.parentlist.direct)
-
-        if not os.path.exists(self.china_ip_path):
-            self.logger.warning('"china_ip_list.txt" not found! downloading...')
-            apnic_url = 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt'
-            url_retreive(apnic_url, self.china_ip_path, self.parentlist.direct)
-
-        if not os.path.exists(self.adblock_path):
-            self.logger.warning('"adblock.txt" not found! downloading...')
-            adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
-            url_retreive(adblock_url, self.adblock_path, self.parentlist.direct)
-
         # prep PAC
         try:
             csock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -353,6 +338,35 @@ class Config(object):
         if self.GUI:
             sys.stdout.write(text + '\n')
             sys.stdout.flush()
+
+    def download(self):
+        proxy = self.parentlist.get('FWLITE:' + self.profile[0])
+
+        if not os.path.exists(self.gfwlist_path):
+            self.logger.warning('"gfwlist.txt" not found! downloading...')
+            gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
+            url_retreive(gfwlist_url, self.gfwlist_path, proxy)
+
+        if not os.path.exists(self.china_ip_path):
+            self.logger.warning('"china_ip_list.txt" not found! downloading...')
+            apnic_url = 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt'
+            url_retreive(apnic_url, self.china_ip_path, proxy)
+
+        if not os.path.exists(self.adblock_path):
+            self.logger.warning('"adblock.txt" not found! downloading...')
+            adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
+            url_retreive(adblock_url, self.adblock_path, proxy)
+
+    def load(self):
+        self.GET_PROXY.load()
+        self.REDIRECTOR.load()
+
+    async def post_start(self):
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self.download)
+        self.load()
+        self.stdout('all')
 
     @property
     def adblock_enable(self):

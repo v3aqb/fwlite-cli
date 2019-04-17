@@ -60,8 +60,7 @@ def main():
         server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
         loop.run_until_complete(server)
 
-    if args.gui:
-        loop.call_later(1, conf.stdout, 'all')
+    loop.run_until_complete(conf.post_start())
     # loop.add_signal_handler(signal.SIGTERM, loop.stop)
     # loop.add_signal_handler(signal.SIGINT, sys.exit)
     try:

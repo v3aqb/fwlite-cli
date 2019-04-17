@@ -42,8 +42,6 @@ class redirector(object):
         self.adblock = set()
         self.redirlst = []
 
-        self.load_adblock()
-
     def redirect(self, hdlr):
         if self.reset.match(hdlr.path):
             return 'reset'
@@ -84,7 +82,7 @@ class redirector(object):
         except ValueError as e:
             logger.error('add redirect rule failed: %s' % e)
 
-    def load_adblock(self):
+    def load(self):
         logger.info('loading adblock.txt')
         for line in open(self.conf.adblock_path):
             if not line.strip():

@@ -54,6 +54,7 @@ class get_proxy(object):
             else:
                 self.add_rule(line, local=True)
 
+    def load(self):
         if self.conf.rproxy is False:
             self.logger.info('loading gfwlist...')
             try:
@@ -102,6 +103,8 @@ class get_proxy(object):
         def binary_search(arr, hkey):
             start = 0
             end = len(arr)
+            if end == 0:
+                return -1
             while start <= end:
                 mid = start + (end - start) // 2
 

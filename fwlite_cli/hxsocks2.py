@@ -552,3 +552,6 @@ class hxs2_connection(object):
         fut = self.remote_reader.readexactly(size)
         data = await asyncio.wait_for(fut, timeout=timeout)
         return data
+
+    def count(self):
+        return len(self._client_writer)
