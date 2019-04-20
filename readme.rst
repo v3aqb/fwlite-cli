@@ -7,6 +7,10 @@ Support Python 3.5 and above.
 
 Current Version: 0
 
+Portable package for `Windows`_
+
+`fwlite-gui`_
+
 features
 --------
 
@@ -14,24 +18,28 @@ features
 
   - autoproxy-gfwlist
   - user-defined rules
+  - connection reset
   - connect timeout
   - read timeout
-  - connection reset
 - Multiple work profile
-- Support Network which require a Proxy ([issue #39](https://github.com/v3aqb/fwlite/issues/39))
+
+  - 0: direct
+  - 1: auto (gfwlist)
+  - 3: bypass ip in china
+  - 4: bypass ip in LAN
+  - 5: bypass localhost
+- Support Network which require a Proxy (`fwlite#39`_)
 - Supported parent proxy
 
   - HTTP
   - socks5
   - shadowsocks (with AEAD support)
   - hxsocks2
-- Supported SIP003 plugin
-
-  - simple-obfs
-  - kcptun (https://github.com/xtaci/kcptun)
-  - GoQuiet
+- Support SIP003 plugin (`fwlite-cli#1`_)
 - Prioritize parent proxies by response time
 - Redirector
+- Adblock (Hosts based)
+- Proxy chain
 - Port Forward
 - Simple PAC for WPAD
 
@@ -84,3 +92,8 @@ Run
 ::
 
     fwlite-cli -c <path_to_config_file>
+
+.. _Windows: https://github.com/v3aqb/fwlite
+.. _fwlite#39: https://github.com/v3aqb/fwlite/issues/39
+.. _fwlite-gui: https://github.com/v3aqb/fwlite-gui
+.. _fwlite-cli#1: https://github.com/v3aqb/fwlite-cli/issues/1
