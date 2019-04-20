@@ -45,10 +45,25 @@ def is_udp(plugin_info):
     return False
 
 
+def find_path(path):
+    if not os.path.isabs(path):
+        if not os.path.dirname(path):
+            from ctypes.util import find_library
+            if find_library(path):
+                return path
+        new_path = os.path.normpath('../' + path)
+        if os.path.exists(new_path):
+            return new_path
+    logger.warning('%s not exist.' % path)
+    return path
+
+
 def plugin_register(plugin, path):
     if plugin in plugin_path:
         logger.error('%s already registered at %s' % (plugin, plugin_path[plugin]))
         return
+    if not os.path.exists(path):
+        path = find_path(path)
     logger.info('register plugin: %s %s' % (plugin, path))
     plugin_path[plugin] = path
 

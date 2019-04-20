@@ -195,6 +195,7 @@ class Config(object):
         self.GUI = gui
         self.conf_path = os.path.abspath(conf_path)
         self.conf_dir = os.path.dirname(self.conf_path)
+        os.chdir(self.conf_dir)
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
         self.gfwlist_path = os.path.join(self.conf_dir, 'gfwlist.txt')
         self.china_ip_path = os.path.join(self.conf_dir, 'china_ip_list.txt')

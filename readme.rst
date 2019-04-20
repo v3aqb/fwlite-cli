@@ -28,7 +28,7 @@ features
 - Supported SIP003 plugin
 
   - simple-obfs
-  - kcptun
+  - kcptun (https://github.com/xtaci/kcptun)
   - GoQuiet
 - Prioritize parent proxies by response time
 - Redirector
