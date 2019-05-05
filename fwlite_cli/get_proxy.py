@@ -55,8 +55,10 @@ class get_proxy(object):
                 self.add_rule(line, local=True)
 
     def load(self):
+        from .apfilter import ap_filter
         if self.conf.rproxy is False:
             self.logger.info('loading gfwlist...')
+            self.gfwlist = ap_filter()
             try:
                 with open(self.conf.gfwlist_path) as f:
                     data = f.read()
@@ -69,6 +71,7 @@ class get_proxy(object):
                 self.logger.warning('gfwlist is corrupted! %r' % e)
 
             self.logger.info('loading china_ip_list.txt...')
+            self.china_ip_list = []
             with open(self.conf.china_ip_path) as f:
                 from ipaddress import ip_network
                 for line in f:
@@ -179,7 +182,7 @@ class get_proxy(object):
             decide which parentproxy to use.
             url:  'www.google.com:443'
                   'http://www.inxian.com'
-            host: ('www.google.com', 443) (without port number is allowed)
+            host: ('www.google.com', 443)
             level: 0 -- direct
                    1 -- auto:        proxy if local_rule, direct if ip in china or override, proxy if gfwlist
                    2 -- encrypt all: proxy if local_rule, direct if ip in china or override, proxy if gfwlist or not https
