@@ -343,20 +343,19 @@ class Config(object):
     def download(self):
         proxy = self.parentlist.get('FWLITE:' + self.profile[0])
 
-        if not os.path.exists(self.gfwlist_path):
-            self.logger.warning('"gfwlist.txt" not found! downloading...')
-            gfwlist_url = self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt')
-            url_retreive(gfwlist_url, self.gfwlist_path, proxy)
+        file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt'),
+                     self.china_ip_path: 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt',
+                     self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
+                     }
 
-        if not os.path.exists(self.china_ip_path):
-            self.logger.warning('"china_ip_list.txt" not found! downloading...')
-            apnic_url = 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt'
-            url_retreive(apnic_url, self.china_ip_path, proxy)
-
-        if not os.path.exists(self.adblock_path):
-            self.logger.warning('"adblock.txt" not found! downloading...')
-            adblock_url = self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
-            url_retreive(adblock_url, self.adblock_path, proxy)
+        for path, url in file_list.items():
+            if not os.path.exists(path):
+                file_name = os.path.basename(path)
+                self.logger.warning('"%s" not found! downloading...' % file_name)
+                try:
+                    url_retreive(url, path, proxy)
+                except Exception:
+                    self.logger.warning('download "%s" failed!' % file_name)
 
     def load(self):
         self.GET_PROXY.load()
