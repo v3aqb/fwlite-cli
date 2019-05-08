@@ -340,7 +340,7 @@ class Config(object):
             sys.stdout.write(text + '\n')
             sys.stdout.flush()
 
-    def download(self):
+    async def download(self):
         proxy = self.parentlist.get('FWLITE:' + self.profile[0])
 
         file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt'),
@@ -348,23 +348,32 @@ class Config(object):
                      self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
                      }
 
+        def _dl(path, url, proxy):
+            file_name = os.path.basename(path)
+            self.logger.warning('"%s" not found! downloading...' % file_name)
+            try:
+                url_retreive(url, path, proxy)
+            except Exception:
+                self.logger.warning('download "%s" failed!' % file_name)
+                open(path, 'a').close()
+
+        task_list = []
+        import asyncio
+        loop = asyncio.get_event_loop()
+
         for path, url in file_list.items():
-            if not os.path.exists(path):
-                file_name = os.path.basename(path)
-                self.logger.warning('"%s" not found! downloading...' % file_name)
-                try:
-                    url_retreive(url, path, proxy)
-                except Exception:
-                    self.logger.warning('download "%s" failed!' % file_name)
+            if not os.path.exists(path) or not open(path).read():
+                task = loop.run_in_executor(None, _dl, path, url, proxy)
+                task_list.append(task)
+
+        await asyncio.gather(*task_list)
 
     def load(self):
         self.GET_PROXY.load()
         self.REDIRECTOR.load()
 
     async def post_start(self):
-        import asyncio
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self.download)
+        await self.download()
         self.load()
         self.stdout('all')
 
