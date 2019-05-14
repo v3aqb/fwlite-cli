@@ -61,7 +61,7 @@ class resolver:
         logger.debug('entering %s.resolve(%s)' % (self.__class__.__name__, host))
         try:
             ip = ip_address(host)
-            return [(2 if ip._version == 4 else 10, host), ]
+            return [(2 if ip.version == 4 else 10, host), ]
         except Exception:
             pass
         if self.is_poisoned(host):
@@ -88,6 +88,7 @@ class resolver:
         except Exception:
             try:
                 result = await self.resolve(host, 0, dirty=True)
+                result = [ip for ip in result if ip[0] == 4]
                 return ip_address(result[0][1])
             except asyncio.CancelledError:
                 raise

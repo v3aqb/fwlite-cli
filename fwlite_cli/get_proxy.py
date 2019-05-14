@@ -118,6 +118,11 @@ class get_proxy(object):
                 else:
                     return mid
             return end
+
+        if ip.version == 6:
+            # TODO: ipv6 support
+            return None
+
         index = binary_search(self.china_ip_list, ip)
 
         if index == -1:
