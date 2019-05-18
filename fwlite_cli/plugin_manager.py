@@ -51,7 +51,7 @@ def find_path(path):
             from ctypes.util import find_library
             if find_library(path):
                 return path
-        new_path = os.path.normpath('../' + path)
+        new_path = '../' + path
         if os.path.exists(new_path):
             return new_path
     logger.warning('%s not exist.' % path)
