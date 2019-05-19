@@ -62,15 +62,23 @@ class base_handler(BaseHTTPRequestHandler):
     server_version = "BaseHTTPServer/" + __version__
     default_request_version = "HTTP/1.1"
 
-    def __init__(self, server):
+    def __init__(self, server):  #pylint: disable=super-init-not-called
+        # Not calling super-init, not for TCPServer
         self.server = server
         self.logger = server.logger
+        self.requestline = ''
+        self.request_version = ''
+        self.command = ''
+        self.close_connection = True
+        self.req_count = 0
+        self.path = ''
+        self.headers = None
 
     async def handle(self, client_reader, client_writer):
         self.client_reader = client_reader
         self.client_writer = client_writer
         self.client_address = client_writer.get_extra_info('peername')
-        self.logger.debug('incoming connection {}'.format(self.client_address))
+        self.logger.debug('incoming connection %s', self.client_address)
 
         self.wfile = client_writer
 
@@ -83,28 +91,29 @@ class base_handler(BaseHTTPRequestHandler):
             await self._handle()
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            self.logger.error(repr(e))
+        except Exception as err:
+            self.logger.error('base_handler')
+            self.logger.error(repr(err))
             self.logger.error(traceback.format_exc())
 
         self.client_writer.close()
 
     async def _handle(self):
-        self.req_count = 0
         await self.handle_one_request()
         while not self.close_connection:
             await self.handle_one_request()
         if self.remote_writer:
             self.remote_writer.close()
 
-    async def handle_one_request(self):
+    def pre_request_init(self):
         self.req_count += 1
-        self.request_line = ''
+        self.requestline = ''
         self.request_version = ''
         self.command = ''
         self.close_connection = True
-        self.retry_count = 0
-        self.failed_parents = []
+
+    async def handle_one_request(self):
+        self.pre_request_init()
 
         try:
             # read request line
@@ -112,8 +121,8 @@ class base_handler(BaseHTTPRequestHandler):
 
             # read headers
             _, self.headers = await read_headers(self.client_reader)
-        except (asyncio.TimeoutError, ConnectionResetError) as e:
-            self.logger.debug('base_handler read request failed! %r' % e)
+        except (asyncio.TimeoutError, ConnectionResetError) as err:
+            self.logger.debug('base_handler read request failed! %r', err)
             self.close_connection = True
             return
 
@@ -148,3 +157,6 @@ class base_handler(BaseHTTPRequestHandler):
             await self.client_writer.drain()
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             self.close_connection = True
+
+    def log_message(self, _format, *args):
+        pass

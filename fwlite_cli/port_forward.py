@@ -5,15 +5,20 @@ import time
 import logging
 
 logger = logging.getLogger('tunnel')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
 
 
-bufsize = 8196
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+set_logger()
+
+
+BUFSIZE = 8196
 
 
 class ForwardContext:
@@ -27,15 +32,15 @@ class ForwardContext:
         self.readable = True
         # result
         self.timeout = None
-        self.retryable = True
         self.timelog = 0
+        self.err = None
 
 
 async def forward_from_client(read_from, write_to, context, timeout=60):
     while True:
-        intv = 1 if context.retryable else 5
+        intv = 5
         try:
-            fut = read_from.read(bufsize)
+            fut = read_from.read(BUFSIZE)
             data = await asyncio.wait_for(fut, timeout=intv)
         except asyncio.TimeoutError:
             if time.time() - context.last_active > timeout or context.remote_eof:
@@ -65,15 +70,13 @@ async def forward_from_client(read_from, write_to, context, timeout=60):
 async def forward_from_remote(read_from, write_to, context, timeout=60):
     count = 0
     while True:
-        intv = 1 if context.retryable else 5
+        intv = 5
         try:
-            fut = read_from.read(bufsize)
+            fut = read_from.read(BUFSIZE)
             data = await asyncio.wait_for(fut, intv)
             count += 1
         except asyncio.TimeoutError:
             if time.time() - context.last_active > timeout or context.local_eof:
-                data = b''
-            elif context.retryable and time.time() - context.last_active > timeout:
                 data = b''
             else:
                 continue
@@ -127,12 +130,12 @@ class forward_handler:
             await asyncio.wait(tasks)
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            context.err = e
+        except Exception as err:
+            context.err = err
         for writer in (remote_writer, client_writer):
             try:
-                remote_writer.close()
-            except Exception:
+                writer.close()
+            except OSError:
                 pass
 
 
@@ -143,14 +146,14 @@ class ForwardManager:
         self.server_info = {}
 
     def add(self, target, proxy, port=0):
-        s = None
+        soc = None
         if port == 0:
-            s = socket.socket()
-            s.bind(('127.0.0.1', port))
-            _, port = s.getsockname()
+            soc = socket.socket()
+            soc.bind(('127.0.0.1', port))
+            _, port = soc.getsockname()
 
-        logger.info('add port_forward %s %s %s' % (target, proxy, port))
-        asyncio.ensure_future(self.add_forward(target, proxy, port, s))
+        logger.info('add port_forward %s %s %s', target, proxy, port)
+        asyncio.ensure_future(self.add_forward(target, proxy, port, soc))
         return port
 
     async def add_forward(self, target, proxy, port, soc=None):
@@ -175,7 +178,7 @@ class ForwardManager:
             if sys.version_info < (3, 7):
                 return
 
-        logger.info('removing forward %s' % port)
+        logger.info('removing forward %s', port)
         server = self.server[port]
         server.close()
         await server.wait_closed()

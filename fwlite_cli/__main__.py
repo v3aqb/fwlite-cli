@@ -39,14 +39,14 @@ def main():
         sys.stderr.write('config file {} not exist!\n'.format(args.c))
         sys.exit()
 
-    s = 'FWLite %s with asyncio, ' % __version__
+    hello = 'FWLite %s with asyncio, ' % __version__
     import platform
-    s += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
+    hello += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
 
     if args.gui:
-        s += ' with GUI'
+        hello += ' with GUI'
 
-    sys.stderr.write(s + '\n')
+    sys.stderr.write(hello + '\n')
 
     if sys.platform == 'win32':
         loop = asyncio.ProactorEventLoop()
@@ -55,14 +55,13 @@ def main():
     conf = Config(args.c, args.gui)
 
     for i, profile in enumerate(conf.profile):
-        handler = handler_factory(conf.listen[0], conf.listen[1] + i, http_handler, int(profile), conf)
+        profile = int(profile)
+        handler = handler_factory(conf.listen[0], conf.listen[1] + i, http_handler, profile, conf)
         loop = asyncio.get_event_loop()
         server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
         loop.run_until_complete(server)
 
     loop.run_until_complete(conf.post_start())
-    # loop.add_signal_handler(signal.SIGTERM, loop.stop)
-    # loop.add_signal_handler(signal.SIGINT, sys.exit)
     try:
         loop.run_forever()
     finally:

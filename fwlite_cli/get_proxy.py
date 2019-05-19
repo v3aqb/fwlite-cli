@@ -36,9 +36,6 @@ class get_proxy(object):
 
     def __init__(self, conf):
         self.conf = conf
-        self.config()
-
-    def config(self):
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
         self.local = ap_filter()
@@ -68,7 +65,7 @@ class get_proxy(object):
                     for line in data.splitlines():
                         self.add_rule(line)
             except Exception as e:
-                self.logger.warning('gfwlist is corrupted! %r' % e)
+                self.logger.warning('gfwlist is corrupted! %r', e)
 
             self.logger.info('loading china_ip_list.txt...')
             self.china_ip_list = []
@@ -98,8 +95,8 @@ class get_proxy(object):
         try:
             apfilter = self.local if local else self.gfwlist
             apfilter.add(line)
-        except ValueError as e:
-            self.logger.debug('create autoproxy rule failed: %s' % e)
+        except ValueError as err:
+            self.logger.debug('create autoproxy rule failed: %s', err)
 
     @lru_cache(1024)
     def ip_in_china(self, host, ip):
@@ -129,7 +126,7 @@ class get_proxy(object):
             return False
         ipn = self.china_ip_list[index]
         if ip in ipn:
-            self.logger.info('%s in china' % host)
+            self.logger.info('%s in china', host)
             return True
         return False
 
@@ -155,9 +152,9 @@ class get_proxy(object):
         if level == 4:
             return True
 
-        a = self.local.match(uri, host)
-        if a is not None:
-            return a
+        result = self.local.match(uri, host)
+        if result is not None:
+            return result
 
         if self.ignore.match(uri, host):
             return None
@@ -224,8 +221,8 @@ class get_proxy(object):
             parentlist = parentlist[:self.conf.maxretry]
         return parentlist
 
-    def notify(self, command, url, requesthost, success, failed_parents, current_parent, time=0):
-        self.logger.debug('notify: %s %s %s, failed_parents: %r, final: %s' % (command, url, 'Success' if success else 'Failed', failed_parents, current_parent or 'None'))
+    def notify(self, command, url, requesthost, success, failed_parents, current_parent):
+        self.logger.debug('notify: %s %s %s, failed_parents: %r, final: %s', command, url, 'Success' if success else 'Failed', failed_parents, current_parent or 'None')
         failed_parents = [k for k in failed_parents if 'pooled' not in k]
         if success:
             if '_D1R3CT_' in failed_parents:
@@ -236,9 +233,9 @@ class get_proxy(object):
                     self.add_temp(rule, min(exp, 60))
                     self.conf.stdout('local')
 
-    def add_temp(self, rule, exp=None, quiet=False):
+    def add_temp(self, rule, exp=None):
         # add temp rule for &exp minutes
         rule = rule.strip()
         if rule not in self.local.rules:
             self.local.add(rule, (exp * 60) if exp else None)
-            self.logger.info('add autoproxy rule: %s%s' % (rule, (' expire in %.1f min' % exp) if exp else ''))
+            self.logger.info('add autoproxy rule: %s%s', rule, (' expire in %.1f min' % exp) if exp else '')

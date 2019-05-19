@@ -23,33 +23,21 @@ import struct
 import logging
 
 import asyncio
-import ipaddress
 
 from .parent_proxy import ParentProxy
 
 logger = logging.getLogger('conn')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
 
 
-def get_ip_address(self, host):
-    try:
-        return ipaddress(host)
-    except Exception:
-        return ipaddress('1.1.1.1')
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
 
-
-def request_is_loopback(addr):
-    try:
-        ip = get_ip_address(addr)
-        if ip.is_loopback:
-            return ip
-    except Exception:
-        pass
+set_logger()
 
 
 async def _open_connection(addr, port, timeout, iplist):
@@ -58,13 +46,13 @@ async def _open_connection(addr, port, timeout, iplist):
         iplist = sorted(iplist, key=lambda item: item[0])
         err = None
         for res in iplist:
-            af, addr = res
+            _, addr = res
             try:
                 fut = asyncio.open_connection(addr, port)
                 remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
                 return remote_reader, remote_writer
-            except Exception as e:
-                err = e
+            except Exception as exc:
+                err = exc
         raise err
 
     fut = asyncio.open_connection(addr, port)
@@ -72,36 +60,32 @@ async def _open_connection(addr, port, timeout, iplist):
     return remote_reader, remote_writer
 
 
-async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=False):
+async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel=False):
     if not isinstance(proxy, ParentProxy):
-        logger.warning('parentproxy is not a ParentProxy instance, please check. %s' % (proxy))
+        logger.warning('parentproxy is not a ParentProxy instance, please check. %s', proxy)
         proxy = ParentProxy(proxy or 'null', proxy or '')
-
-    # do security check here
-    if request_is_loopback(addr):
-        raise ValueError('connect to localhost denied!')
 
     # create connection
     if not proxy.proxy:
         remote_reader, remote_writer = await _open_connection(addr, port, timeout, iplist)
         return remote_reader, remote_writer, proxy.name
-    elif proxy.scheme == 'http':
+    if proxy.scheme == 'http':
         remote_reader, remote_writer, _ = await open_connection(proxy.hostname, proxy.port, proxy.get_via(), timeout=timeout, tunnel=True)
         if tunnel:
             # send connect request
-            s = ['CONNECT %s:%s HTTP/1.1\r\n' % (addr, port), ]
+            req = ['CONNECT %s:%s HTTP/1.1\r\n' % (addr, port), ]
             if proxy.username:
-                a = '%s:%s' % (proxy.username, proxy.password)
-                s.append('Proxy-Authorization: Basic %s\r\n' % base64.b64encode(a.encode()))
-            s.append('Host: %s:%s\r\n\r\n' % (addr, port))
-            remote_writer.write(''.join(s).encode())
+                auth = '%s:%s' % (proxy.username, proxy.password)
+                req.append('Proxy-Authorization: Basic %s\r\n' % base64.b64encode(auth.encode()))
+            req.append('Host: %s:%s\r\n\r\n' % (addr, port))
+            remote_writer.write(''.join(req).encode())
 
             fut = remote_reader.readuntil(b'\r\n\r\n')
             data = await asyncio.wait_for(fut, timeout=2)
             if b'200' not in data.splitlines()[0]:
                 raise IOError(0, 'create tunnel via %s failed! %s' % (proxy.name, data.splitlines()[0]))
         return remote_reader, remote_writer, proxy.name
-    elif proxy.scheme == 'socks5':
+    if proxy.scheme == 'socks5':
         remote_reader, remote_writer, _ = await open_connection(proxy.hostname, proxy.port, proxy.get_via(), timeout=timeout, tunnel=True)
         remote_writer.write(b"\x05\x02\x00\x02" if proxy.username else b"\x05\x01\x00")
         data = await remote_reader.readexactly(2)
@@ -129,13 +113,12 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=[], tunnel=F
             await remote_reader.readexactly(16)
         await remote_reader.readexactly(2)  # read port
         return remote_reader, remote_writer, proxy.name
-    elif proxy.scheme == 'ss':
+    if proxy.scheme == 'ss':
         from .ssocks import ss_connect
         remote_reader, remote_writer = await ss_connect(proxy, timeout, addr, port)
         return remote_reader, remote_writer, proxy.name
-    elif proxy.scheme == 'hxs2':
+    if proxy.scheme == 'hxs2':
         from .hxsocks2 import hxs2_connect
         remote_reader, remote_writer, name = await hxs2_connect(proxy, timeout, addr, port)
         return remote_reader, remote_writer, name
-    else:
-        raise IOError(0, 'parentproxy %s not supported!' % proxy.name)
+    raise IOError(0, 'parentproxy %s not supported!' % proxy.name)
