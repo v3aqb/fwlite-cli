@@ -19,7 +19,6 @@
 import logging
 import re
 import io
-import struct
 import base64
 import json
 import time
@@ -34,6 +33,7 @@ import asyncio.streams
 from .connection import open_connection
 from .base_handler import base_handler, read_header_data, read_headers
 from .httputil import httpconn_pool
+from .util import extract_server_name, parse_hostport
 
 MAX_TIMEOUT = 16
 WELCOME = '''<!DOCTYPE html>
@@ -48,36 +48,7 @@ WELCOME = '''<!DOCTYPE html>
 class ClientError(Exception):
     def __init__(self, err):
         self.err = err
-
-
-def parse_hostport(host, default_port=80):
-    m = re.match(r'(.+):(\d+)$', host)
-    if m:
-        return m.group(1).strip('[]'), int(m.group(2))
-    else:
-        return host.strip('[]'), default_port
-
-
-def extract_server_name(packet):
-    # https://github.com/phuslu/sniproxy/blob/master/sniproxy_py3.py
-    if packet.startswith(b'\x16\x03'):
-        stream = io.BytesIO(packet)
-        stream.read(0x2b)
-        session_id_length = ord(stream.read(1))
-        stream.read(session_id_length)
-        cipher_suites_length, = struct.unpack('>h', stream.read(2))
-        stream.read(cipher_suites_length + 2)
-        extensions_length, = struct.unpack('>h', stream.read(2))
-        while True:
-            data = stream.read(2)
-            if not data:
-                break
-            etype, = struct.unpack('>h', data)
-            elen, = struct.unpack('>h', stream.read(2))
-            edata = stream.read(elen)
-            if etype == 0:
-                server_name = edata[5:].decode()
-                return server_name
+        super().__init__()
 
 
 class ForwardContext:
@@ -93,6 +64,7 @@ class ForwardContext:
         self.timeout = None
         self.retryable = True
         self.timelog = 0
+        self.err = None
 
 
 class handler_factory:
@@ -112,25 +84,50 @@ class handler_factory:
         hdr.setFormatter(formatter)
         self.logger.addHandler(hdr)
 
-        self.logger.warning('starting server: {}'.format(port, profile))
+        self.logger.warning('starting server: %s %s', port, profile)
 
     async def handle(self, reader, writer):
         _handler = self._class(self)
         await _handler.handle(reader, writer)
 
 
-class http_handler(base_handler):
-    HTTPCONN_POOL = httpconn_pool()
-
+class base_proxy_handler(base_handler):
     def __init__(self, server):
-        self.ssrealip = None
+        self.conf = server.conf
+
         self.shortpath = ''
         self._proxylist = None
-        self.conf = server.conf
         self.ppname = ''
+        self.pproxy = None
         self.rbuffer = []
+        self.wbuffer = []
+        self.wbuffer_size = 0
         self.retryable = True
-        base_handler.__init__(self, server)
+        self.request_host = None
+        self.remote_reader = None
+        self.remote_writer = None
+        self.request_ip = None
+        self.retry_count = 0
+        self.failed_parents = []
+        super().__init__(server)
+
+    def pre_request_init(self):
+        super().pre_request_init()
+
+        self.shortpath = ''
+        self._proxylist = None
+        self.ppname = ''
+        self.pproxy = None
+        self.rbuffer = []
+        self.wbuffer = []
+        self.wbuffer_size = 0
+        self.retryable = True
+        self.request_host = None
+        self.remote_reader = None
+        self.remote_writer = None
+        self.request_ip = None
+        self.retry_count = 0
+        self.failed_parents = []
 
     def write(self, code=200, msg=None, ctype=None, data=b''):
         '''
@@ -166,8 +163,8 @@ class http_handler(base_handler):
             return data
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            err = e
+        except Exception as exc:
+            err = exc
         raise ClientError(err)
 
     async def client_reader_readexactly(self, size, timeout=1):
@@ -178,8 +175,8 @@ class http_handler(base_handler):
             return data
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            err = e
+        except Exception as exc:
+            err = exc
         raise ClientError(err)
 
     async def client_reader_readline(self, timeout=1):
@@ -190,8 +187,8 @@ class http_handler(base_handler):
             return data
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            err = e
+        except Exception as exc:
+            err = exc
         raise ClientError(err)
 
     async def client_reader_readuntil(self, sep, timeout=1):
@@ -202,8 +199,8 @@ class http_handler(base_handler):
             return data
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            err = e
+        except Exception as exc:
+            err = exc
         raise ClientError(err)
 
     def _wfile_write(self, data):
@@ -227,9 +224,6 @@ class http_handler(base_handler):
             if data:
                 self._wfile_write(data)
 
-    def log_message(self, format, *args):
-        pass
-
     async def read_resp_line(self):
         fut = self.remote_reader.readline()
         response_line = await asyncio.wait_for(fut, self.timeout)
@@ -242,6 +236,10 @@ class http_handler(base_handler):
         response_reason = b' '.join(split[2:])
         response_status = int(response_status)
         return response_line, protocol_version, response_status, response_reason
+
+
+class http_handler(base_proxy_handler):
+    HTTPCONN_POOL = httpconn_pool()
 
     async def do_GET(self):
         # self.logger.info('req_count %s' % self.req_count)
@@ -275,7 +273,7 @@ class http_handler(base_handler):
             host = parse_hostport(self.headers['Host'], 80)
             netloc = parse_hostport(parse.netloc, 80)
             if host != netloc:
-                self.logger.warning('Host and URI mismatch! %s %s' % (self.path, self.headers['Host']))
+                self.logger.warning('Host and URI mismatch! %s %s', self.path, self.headers['Host'])
                 # self.headers['Host'] = parse.netloc
             request_host = parse_hostport(self.headers['Host'], 80)
 
@@ -284,28 +282,28 @@ class http_handler(base_handler):
         # redirector
         new_url = self.conf.GET_PROXY.redirect(self)
         if new_url:
-            self.logger.debug('redirect %s, %s %s' % (new_url, self.command, self.shortpath or self.path))
+            self.logger.debug('redirect %s, %s %s', new_url, self.command, self.shortpath or self.path)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
                 self.send_error(int(new_url))
                 return
-            elif new_url.lower() == 'return':
+            if new_url.lower() == 'return':
                 # request handled by redirector, return
-                self.logger.info('{} {} {} return'.format(self.command, self.shortpath or self.path, self.client_address[0]))
+                self.logger.info('%s %s %s return', self.command, self.shortpath or self.path, self.client_address[0])
                 return
-            elif new_url.lower() == 'reset':
+            if new_url.lower() == 'reset':
                 self.close_connection = 1
-                self.logger.info('{} {} {} reset'.format(self.command, self.shortpath or self.path, self.client_address[0]))
+                self.logger.info('%s %s %s reset', self.command, self.shortpath or self.path, self.client_address[0])
                 return
-            elif new_url.lower() == 'adblock':
+            if new_url.lower() == 'adblock':
                 self.close_connection = 1
-                self.logger.debug('{} {} adblock'.format(self.command, self.shortpath or self.path))
+                self.logger.debug('%s %s adblock', self.command, self.shortpath or self.path)
                 return
-            elif all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
+            if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # TODO: sort by priority?
                 # random.shuffle(self._proxylist)
             else:
-                self.logger.info('redirect {} {}'.format(self.shortpath or self.path, new_url))
+                self.logger.info('redirect %s %s', self.shortpath or self.path, new_url)
                 self.redirect(new_url)
                 return
 
@@ -319,7 +317,7 @@ class http_handler(base_handler):
             host = parse_hostport(self.headers['Host'], 80)
             netloc = parse_hostport(parse.netloc, 80)
             if host != netloc:
-                self.logger.warning('Host and URI mismatch! %s %s' % (self.path, self.headers['Host']))
+                self.logger.warning('Host and URI mismatch! %s %s', self.path, self.headers['Host'])
                 # self.headers['Host'] = parse.netloc
             request_host = parse_hostport(self.headers['Host'], 80)
 
@@ -355,9 +353,9 @@ class http_handler(base_handler):
         if 'X-Forwarded-For' in self.headers:
             del self.headers['X-Forwarded-For']
 
-        for h in ['Proxy-Connection', 'Proxy-Authenticate']:
-            if h in self.headers:
-                del self.headers[h]
+        for header in ['Proxy-Connection', 'Proxy-Authenticate']:
+            if header in self.headers:
+                del self.headers[header]
 
         await self._do_GET()
 
@@ -388,7 +386,7 @@ class http_handler(base_handler):
                     self._proxylist.insert(0, self.conf.parentlist.get(self.ppname))
                     sock, self.ppname = result
                     self.remote_reader, self.remote_writer = sock
-                    self.logger.info('{} {} via {}. {}'.format(self.command, self.shortpath or self.path, self.ppname, self.client_address[1]))
+                    self.logger.info('%s %s via %s. %s', self.command, self.shortpath or self.path, self.ppname, self.client_address[1])
 
             if not self.remote_writer:
                 iplist = []
@@ -396,7 +394,7 @@ class http_handler(base_handler):
                     iplist = self.conf.HOSTS.get(self.request_host[0])
                     self._proxylist.insert(0, self.pproxy)
 
-                self.logger.info('{} {} via {}. {}'.format(self.command, self.shortpath or self.path, self.pproxy.name, self.client_address[1]))
+                self.logger.info('%s %s via %s. %s', self.command, self.shortpath or self.path, self.pproxy.name, self.client_address[1])
 
                 addr, port = self.request_host
                 # addr, port, proxy=None, timeout=3, iplist=[], tunnel=False
@@ -409,14 +407,14 @@ class http_handler(base_handler):
             self.wbuffer = []
             self.wbuffer_size = 0
             # prep request header
-            s = []
+            req = []
             if self.pproxy.proxy.startswith('http'):
-                s.append('%s %s %s\r\n' % (self.command, self.path, self.request_version))
+                req.append('%s %s %s\r\n' % (self.command, self.path, self.request_version))
                 if self.pproxy.username:
-                    a = '%s:%s' % (self.pproxy.username, self.pproxy.password)
-                    s.append('Proxy-Authorization: Basic %s' % base64.b64encode(a.encode()))
+                    auth = '%s:%s' % (self.pproxy.username, self.pproxy.password)
+                    req.append('Proxy-Authorization: Basic %s' % base64.b64encode(auth.encode()))
             else:
-                s.append('%s /%s %s\r\n' % (self.command, '/'.join(self.path.split('/')[3:]), self.request_version))
+                req.append('%s /%s %s\r\n' % (self.command, '/'.join(self.path.split('/')[3:]), self.request_version))
             # Does the client want to close connection after this request?
             conntype = self.headers.get('Connection', "")
             if self.request_version >= "HTTP/1.1":
@@ -425,18 +423,18 @@ class http_handler(base_handler):
                 self.close_connection |= 'keep_alive' in conntype.lower()
             if 'Upgrade' in self.headers:
                 self.close_connection = True
-                self.logger.warning('Upgrade header found! (%s)' % self.headers['Upgrade'])
+                self.logger.warning('Upgrade header found! (%s)', self.headers['Upgrade'])
                 # del self.headers['Upgrade']
             else:
                 # always try to keep connection alive
                 self.headers['Connection'] = 'keep_alive'
 
-            for k, v in self.headers.items():
-                if isinstance(v, bytes):
-                    v = v.decode('latin1')
-                s.append("%s: %s\r\n" % ("-".join([w.capitalize() for w in k.split("-")]), v))
-            s.append("\r\n")
-            data = ''.join(s).encode('latin1')
+            for key, val in self.headers.items():
+                if isinstance(val, bytes):
+                    val = val.decode('latin1')
+                req.append("%s: %s\r\n" % ("-".join([w.capitalize() for w in key.split("-")]), val))
+            req.append("\r\n")
+            data = ''.join(req).encode('latin1')
 
             # send request header
             self.remote_writer.write(data)
@@ -446,13 +444,13 @@ class http_handler(base_handler):
             skip = False
             if 'Expect' in self.headers:
                 try:
-                    response_line, protocol_version, response_status, response_reason = \
+                    response_line, protocol_version, response_status, _ = \
                         await self.read_resp_line()
                 except asyncio.CancelledError:
                     raise
-                except Exception as e:
+                except Exception as err:
                     # TODO: probably the server don't handle Expect well.
-                    self.logger.warning('read response line error: %r' % e)
+                    self.logger.warning('read response line error: %r', err)
                 else:
                     if response_status == 100:
                         hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
@@ -487,9 +485,9 @@ class http_handler(base_handler):
                     if content_length > 102400:
                         self.retryable = False
                     if self.rbuffer:
-                        s = b''.join(self.rbuffer)
-                        content_length -= len(s)
-                        self.remote_writer.write(s)
+                        data = b''.join(self.rbuffer)
+                        content_length -= len(data)
+                        self.remote_writer.write(data)
                     while content_length:
                         data = await self.client_reader_readexactly(min(self.bufsize, content_length))
                         if not data:
@@ -500,14 +498,13 @@ class http_handler(base_handler):
                         self.remote_writer.write(data)
                 # read response line
                 timelog = time.clock()
-                response_line, protocol_version, response_status, response_reason = \
-                    await self.read_resp_line()
+                response_line, protocol_version, response_status, _ = await self.read_resp_line()
                 rtime = time.clock() - timelog
             # read response headers
             while response_status == 100:
                 hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
                 self._wfile_write(response_line + hdata)
-                response_line, protocol_version, response_status, response_reason = \
+                response_line, protocol_version, response_status, _ = \
                     await self.read_resp_line()
 
             header_data, response_header = await read_headers(self.remote_reader, timeout=self.timeout)
@@ -551,7 +548,7 @@ class http_handler(base_handler):
                     flag = trunk_lenth != 2
                     while trunk_lenth:
                         data = await self.remote_reader.read(min(self.bufsize, trunk_lenth))
-                        # self.logger.info('chunk data received %d %s' % (len(data), self.path))
+                        # self.logger.info('chunk data received %d %s', len(data), self.path)
                         trunk_lenth -= len(data)
                         self.wfile_write(data)
             elif content_length is not None:
@@ -559,7 +556,7 @@ class http_handler(base_handler):
                     data = await self.remote_reader.read(min(self.bufsize, content_length))
                     if not data:
                         raise IOError(0, 'remote socket closed')
-                    # self.logger.info('content_length data received %d %s' % (len(data), self.path))
+                    # self.logger.info('content_length data received %d %s', len(data), self.path)
                     content_length -= len(data)
                     self.wfile_write(data)
             else:
@@ -568,7 +565,7 @@ class http_handler(base_handler):
                 # if Upgrade in headers, websocket?
                 #     forward tcp
                 if 'Upgrade' in response_header:
-                    self.logger.info('Upgrade: %s' % response_header['Upgrade'])
+                    self.logger.info('Upgrade: %s', response_header['Upgrade'])
                 self.close_connection = True
                 self.retryable = False
                 # flush writer buf
@@ -581,7 +578,7 @@ class http_handler(base_handler):
                     pass
 
             self.wfile_write()
-            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True if response_status < 400 else False, self.failed_parents, self.ppname, rtime)
+            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True if response_status < 400 else False, self.failed_parents, self.ppname)
             self.pproxy.log(self.request_host[0], rtime)
             if remote_close or self.close_connection:
                 self.remote_writer.write_eof()
@@ -607,14 +604,14 @@ class http_handler(base_handler):
                 self.remote_writer.close()
                 self.remote_writer = None
             await self.on_GET_Error(e)
-        except Exception as e:
+        except Exception as err:
             self.close_connection = True
-            self.logger.error(repr(e))
+            self.logger.error(repr(err))
             self.logger.error(traceback.format_exc())
 
-    async def on_GET_Error(self, e):
+    async def on_GET_Error(self, err):
         if self.ppname:
-            self.logger.warning('{} {} via {} failed: {}'.format(self.command, self.shortpath, self.ppname, repr(e)))
+            self.logger.warning('%s %s via %s failed: %s', self.command, self.shortpath, self.ppname, repr(err))
             self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
             await self._do_GET(True)
             return
@@ -630,7 +627,9 @@ class http_handler(base_handler):
 
         self._wfile_write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
 
-        # TODO: ClientError
+        self.rbuffer = []
+
+        # fix SNI
         try:
             data = await self.client_reader_read(4)
 
@@ -639,35 +638,34 @@ class http_handler(base_handler):
                 data += await self.client_reader_read(8196)
                 try:
                     server_name = extract_server_name(data)
-                    self.logger.debug('sni: %s' % server_name)
-                    self.logger.debug('path: %s' % self.path)
+                    self.logger.debug('sni: %s', server_name)
+                    self.logger.debug('path: %s', self.path)
                     if server_name and server_name not in self.path:
-                        host, _, port = self.path.partition(':')
+                        _, _, port = self.path.partition(':')
                         self.path = '%s:%s' % (server_name, port)
-                        self.logger.info('CONNECT: SNI rewrite path: %s' % self.path)
+                        self.logger.info('CONNECT: SNI rewrite path: %s', self.path)
                 except Exception:
                     pass
         except ClientError:
             return
 
-        self.request_host = parse_hostport(self.path)
-
-        self.rbuffer = []
         if data:
             self.rbuffer.append(data)
+
+        self.request_host = parse_hostport(self.path)
 
         # redirector
         new_url = self.conf.GET_PROXY.redirect(self)
         if new_url:
-            self.logger.debug('redirect %s, %s %s' % (new_url, self.command, self.path))
+            self.logger.debug('redirect %s, %s %s', new_url, self.command, self.path)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
-                self.logger.info('{} {} {} send error {}'.format(self.command, self.shortpath or self.path, self.client_address[0], new_url))
+                self.logger.info('%s %s %s send error %s', self.command, self.shortpath or self.path, self.client_address[0], new_url)
                 return
             elif new_url.lower() in ('reset', 'return'):
-                self.logger.info('{} {} {} reset'.format(self.command, self.shortpath or self.path, self.client_address[0]))
+                self.logger.info('%s %s %s reset', self.command, self.shortpath or self.path, self.client_address[0])
                 return
             elif new_url.lower() == 'adblock':
-                self.logger.debug('{} {} adblock'.format(self.command, self.shortpath or self.path))
+                self.logger.debug('%s %s adblock', self.command, self.shortpath or self.path)
                 return
             elif all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
@@ -705,17 +703,17 @@ class http_handler(base_handler):
         self.set_timeout()
 
         try:
-            self.logger.info('{} {} via {}. {}'.format(self.command, self.path, self.pproxy.name, self.client_address[1]))
+            self.logger.info('%s %s via %s. %s', self.command, self.path, self.pproxy.name, self.client_address[1])
             addr, port = parse_hostport(self.path, 443)
             self.remote_reader, self.remote_writer, self.ppname = await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
         except asyncio.CancelledError:
             raise
-        except (asyncio.TimeoutError, ConnectionRefusedError, asyncio.IncompleteReadError, ConnectionResetError) as e:
-            self.logger.warning('%s %s via %s failed on connect! %r' % (self.command, self.path, self.ppname, e))
+        except (asyncio.TimeoutError, ConnectionRefusedError, asyncio.IncompleteReadError, ConnectionResetError) as err:
+            self.logger.warning('%s %s via %s failed on connect! %r', self.command, self.path, self.ppname, err)
             self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
-        self.logger.debug('%s connected' % self.path)
+        self.logger.debug('%s connected', self.path)
 
         if self.ppname != self.pproxy.name:
             self._proxylist.insert(0, self.pproxy)
@@ -725,7 +723,7 @@ class http_handler(base_handler):
 
         # check, report, retry
         if context.retryable and not context.local_eof:
-            # self.logger.warning('%s %s via %s forward failed! retry...' % (self.command, self.path, self.ppname))
+            # self.logger.warning('%s %s via %s forward failed! retry...', self.command, self.path, self.ppname)
             self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
@@ -740,10 +738,10 @@ class http_handler(base_handler):
             await asyncio.wait(tasks)
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            self.logger.error(repr(e))
+        except Exception as err:
+            self.logger.error(repr(err))
             self.logger.error(traceback.format_exc())
-            context.err = e
+            context.err = err
         self.remote_writer.close()
         return context
 
@@ -786,7 +784,7 @@ class http_handler(base_handler):
         except ConnectionResetError:
             pass
 
-    async def forward_from_remote(self, read_from, write_to, context, timeout=60, rtimeout=60):
+    async def forward_from_remote(self, read_from, write_to, context, timeout=60):
         count = 0
         while True:
             intv = 1 if context.retryable else 5
@@ -813,7 +811,7 @@ class http_handler(base_handler):
                 if count == 3 and self.command == 'CONNECT':
                     # log server response time
                     self.pproxy.log(self.request_host[0], rtime)
-                    self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, True, self.failed_parents, self.ppname, rtime)
+                    self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, True, self.failed_parents, self.ppname)
                 context.retryable = False
                 write_to.write(data)
                 await write_to.drain()
@@ -855,7 +853,7 @@ class http_handler(base_handler):
         path: supported command
         /api/localrule: GET POST DELETE
         '''
-        self.logger.debug('{} {}'.format(self.command, self.path))
+        self.logger.debug('api %s %s', self.command, self.path)
         # read request body
         content_length = int(self.headers.get('Content-Length', 0))
         if content_length > 102400:
@@ -876,49 +874,49 @@ class http_handler(base_handler):
                 self.send_header("WWW-Authenticate", 'Basic')
                 self.end_headers()
                 return
-            else:
-                auth = self.headers['Authorization'].split()[1]
-                _password = base64.b64decode(auth).decode().split(':', 1)[1]
-                if _password != self.conf.remotepass:
-                    self.send_response(401)
-                    self.send_header("WWW-Authenticate", 'Basic')
-                    self.end_headers()
-                    return
+
+            auth = self.headers['Authorization'].split()[1]
+            _password = base64.b64decode(auth).decode().split(':', 1)[1]
+            if _password != self.conf.remotepass:
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", 'Basic')
+                self.end_headers()
+                return
 
         if parse.path == '/api/localrule' and self.command == 'GET':
             data = json.dumps([(rule, self.conf.GET_PROXY.local.expire[rule]) for rule in self.conf.GET_PROXY.local.rules])
             self.write(code=200, data=data, ctype='application/json')
             return
-        elif parse.path == '/api/localrule' and self.command == 'POST':
+        if parse.path == '/api/localrule' and self.command == 'POST':
             'accept a json encoded tuple: (str rule, int exp)'
             rule, exp = json.loads(body)
             self.conf.GET_PROXY.add_temp(rule, exp)
             self.write(200)
             self.conf.stdout('local')
             return
-        elif parse.path.startswith('/api/localrule/') and self.command == 'DELETE':
+        if parse.path.startswith('/api/localrule/') and self.command == 'DELETE':
             try:
                 rule = base64.urlsafe_b64decode(parse.path[15:].encode('latin1')).decode()
                 expire = self.conf.GET_PROXY.local.remove(rule)
                 self.write(200, data=json.dumps([rule, expire]), ctype='application/json')
                 self.conf.stdout('local')
                 return
-            except Exception as e:
+            except Exception as err:
                 self.logger.error(traceback.format_exc())
-                self.send_error(404, repr(e))
+                self.send_error(404, repr(err))
                 return
-        elif parse.path == '/api/redirector' and self.command == 'GET':
+        if parse.path == '/api/redirector' and self.command == 'GET':
             data = json.dumps(self.conf.REDIRECTOR.list())
             self.write(200, data=data, ctype='application/json')
             return
-        elif parse.path == '/api/redirector' and self.command == 'POST':
+        if parse.path == '/api/redirector' and self.command == 'POST':
             'accept a json encoded tuple: (str rule, str dest)'
             rule, dest = json.loads(body)
             self.conf.GET_PROXY.add_redirect(rule, dest)
             self.write(200)
             self.conf.stdout('redir')
             return
-        elif parse.path.startswith('/api/redirector/') and self.command == 'DELETE':
+        if parse.path.startswith('/api/redirector/') and self.command == 'DELETE':
             try:
                 rule = urlparse.parse_qs(parse.query).get('rule', [''])[0]
                 rule = base64.urlsafe_b64decode(rule).decode()
@@ -926,16 +924,16 @@ class http_handler(base_handler):
                 self.write(200, data='done', ctype='text/plain')
                 self.conf.stdout('redir')
                 return
-            except Exception as e:
-                self.send_error(404, repr(e))
+            except Exception as err:
+                self.send_error(404, repr(err))
                 return
-        elif parse.path == '/api/proxy' and self.command == 'GET':
+        if parse.path == '/api/proxy' and self.command == 'GET':
             data = [(p.name, ('%s://%s:%s' % (p.scheme, p._host_port[0], p._host_port[1])) if p.proxy else '', p._priority, p.get_avg_resp_time()) for k, p in self.conf.parentlist.dict.items()]
             data = sorted(data, key=lambda item: item[0])
             data = json.dumps(sorted(data, key=lambda item: item[2]))
             self.write(200, data=data, ctype='application/json')
             return
-        elif parse.path == '/api/proxy' and self.command == 'POST':
+        if parse.path == '/api/proxy' and self.command == 'POST':
             'accept a json encoded tuple: (str name, str proxy)'
             name, proxy = json.loads(body)
             if 'FWLITE:' in name:
@@ -951,7 +949,7 @@ class http_handler(base_handler):
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout('proxy')
             return
-        elif parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
+        if parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
             try:
                 proxy_name = parse.path[11:]
                 proxy_name = base64.urlsafe_b64decode(proxy_name).decode()
@@ -965,7 +963,7 @@ class http_handler(base_handler):
             except Exception as e:
                 self.send_error(404, repr(e))
                 return
-        elif parse.path.startswith('/api/proxy/') and self.command == 'GET':
+        if parse.path.startswith('/api/proxy/') and self.command == 'GET':
             try:
                 proxy_name = parse.path[11:]
                 proxy_name = base64.urlsafe_b64decode(proxy_name).decode()
@@ -975,46 +973,46 @@ class http_handler(base_handler):
             except Exception as e:
                 self.send_error(404, repr(e))
                 return
-        elif parse.path == '/api/forward' and self.command == 'GET':
+        if parse.path == '/api/forward' and self.command == 'GET':
             data = [('%s:%s' % target, proxy, port) for target, proxy, port in self.conf.port_forward.list()]
             data = json.dumps(data)
             self.write(200, data=data, ctype='application/json')
             return
-        elif parse.path == '/api/forward' and self.command == 'POST':
-            'accept a json encoded tuple: (str target, str proxy, int port)'
+        if parse.path == '/api/forward' and self.command == 'POST':
+            # accept a json encoded tuple: (str target, str proxy, int port)
             target, proxy, port = json.loads(body)
             target = parse_hostport(target)
             self.conf.port_forward.add(target, proxy, port)
             self.write(200, data=data, ctype='application/json')
             return
-        elif parse.path.startswith('/api/forward/') and self.command == 'DELETE':
+        if parse.path.startswith('/api/forward/') and self.command == 'DELETE':
             data = parse.path[13:]
             port = int(data)
             self.conf.port_forward.stop(port)
             self.write(200)
             return
-        elif parse.path == '/api/gfwlist' and self.command == 'GET':
+        if parse.path == '/api/gfwlist' and self.command == 'GET':
             self.write(200, data=json.dumps(self.conf.gfwlist_enable), ctype='application/json')
             return
-        elif parse.path == '/api/gfwlist' and self.command == 'POST':
+        if parse.path == '/api/gfwlist' and self.command == 'POST':
             self.conf.gfwlist_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout('setting')
             return
-        elif parse.path == '/api/adblock' and self.command == 'GET':
+        if parse.path == '/api/adblock' and self.command == 'GET':
             self.write(200, data=json.dumps(self.conf.adblock_enable), ctype='application/json')
             return
-        elif parse.path == '/api/adblock' and self.command == 'POST':
+        if parse.path == '/api/adblock' and self.command == 'POST':
             self.conf.adblock_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
             self.conf.stdout('setting')
             return
-        elif parse.path == '/api/exit' and self.command == 'GET':
+        if parse.path == '/api/exit' and self.command == 'GET':
             self.conf.plugin_manager.cleanup()
             self.write(200, data='Done!', ctype='text/html')
             import sys
             sys.exit()
-        elif parse.path == '/api/log' and self.command == 'GET':
+        if parse.path == '/api/log' and self.command == 'GET':
             self.write(200, data=self.conf.get_log(), ctype='text/plain; charset=utf-8')
             return
         self.send_error(404)

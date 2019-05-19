@@ -43,7 +43,7 @@ class httpconn_pool(object):
     logger.addHandler(hdr)
 
     def __init__(self, timeout=60):
-        self.POOL = defaultdict(deque)  # {upstream_name: [(soc, ppname), ...]}
+        self.pool = defaultdict(deque)  # {upstream_name: [(soc, ppname), ...]}
         self.socs = {}  # keep track of sock info
         self.intv = 10
         self.count = timeout // self.intv
@@ -57,16 +57,16 @@ class httpconn_pool(object):
     def put(self, upstream_name, soc, ppname):
         # soc: (reader, writer)
         self.logger.debug('adding')
-        self.logger.debug('  upstream_name: %r %r' % upstream_name)
-        self.logger.debug('  soc: %r %r' % soc)
-        self.logger.debug('  ppname: %r' % ppname)
-        self.POOL[upstream_name].append((soc, ppname))
+        self.logger.debug('  upstream_name: %r %r', *upstream_name)
+        self.logger.debug('  soc: %r %r', *soc)
+        self.logger.debug('  ppname: %r', ppname)
+        self.pool[upstream_name].append((soc, ppname))
         self.socs[soc] = (self.timerwheel_index, ppname, upstream_name)
         self.timerwheel[self.timerwheel_index].add(soc)
 
     def get(self, upstream_name):
-        self.logger.debug('get: %r %r' % upstream_name)
-        lst = self.POOL.get(upstream_name)
+        self.logger.debug('get: %r %r', *upstream_name)
+        lst = self.pool.get(upstream_name)
         while lst:
             sock, pproxy = lst.popleft()
             if is_connection_dropped([sock]):
@@ -79,8 +79,8 @@ class httpconn_pool(object):
     def _remove(self, soc):
         twindex, ppn, upsname = self.socs.pop(soc)
         self.timerwheel[twindex].discard(soc)
-        if (soc, ppn) in self.POOL[upsname]:
-            self.POOL[upsname].remove((soc, ppn))
+        if (soc, ppn) in self.pool[upsname]:
+            self.pool[upsname].remove((soc, ppn))
 
     async def _purge(self):
         while 1:
@@ -96,7 +96,7 @@ class httpconn_pool(object):
                     self._remove(soc)
                 remove_lst = []
                 if pcount:
-                    self.logger.debug('closing %s for connection droped.' % pcount)
+                    self.logger.debug('closing %s for connection droped.', pcount)
 
                 self.timerwheel_index = next(self.timerwheel_iter)
                 for soc in list(self.timerwheel[self.timerwheel_index]):

@@ -21,18 +21,21 @@
 import time
 import logging
 
-import urllib.parse as urlparse
-urlquote = urlparse.quote
-urlunquote = urlparse.unquote
+import urllib
+from urllib.parse import quote, unquote
 
 
 logger = logging.getLogger('parent_proxy')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
+
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+set_logger()
 
 
 class default_dict(dict):
@@ -49,6 +52,7 @@ class ParentProxy(object):
     DIRECT = None
     DEFAULT_TIMEOUT = 8
     GATE = 0
+    conf = None
 
     def __init__(self, name, proxy):
         '''
@@ -75,16 +79,16 @@ class ParentProxy(object):
         if len(proxy_list) > 1:
             self.VIA = ParentProxy('via', '|'.join(proxy_list[1:]))
             self.VIA.name = '%s://%s:%s' % (self.VIA.scheme, self.VIA.hostname, self.VIA.port)
-        self.parse = urlparse.urlparse(proxy_list[0])
+        self.parse = urllib.parse.urlparse(proxy_list[0])
 
         self.scheme = self.parse.scheme
-        self.username = urlunquote(self.parse.username) if self.parse.username else None
-        self.password = urlunquote(self.parse.password) if self.parse.password else None
+        self.username = unquote(self.parse.username) if self.parse.username else None
+        self.password = unquote(self.parse.password) if self.parse.password else None
         self.hostname = self.parse.hostname
         self.port = self.parse.port
         self._host_port = (self.hostname, self.port)  # for plugin only
 
-        self.query = urlparse.parse_qs(self.parse.query)
+        self.query = urllib.parse.parse_qs(self.parse.query)
         plugin = self.query.get('plugin', [None, ])[0]
         self.plugin_info = plugin.split(';') if plugin else None
         if self.plugin_info:
@@ -109,16 +113,17 @@ class ParentProxy(object):
         result = self._priority
 
         score = self.get_avg_resp_time() + self.get_avg_resp_time(host)
-        logger.debug('penalty %s to %s: %.2f' % (self.name, host, score * 2))
+        logger.debug('penalty %s to %s: %.2f', self.name, host, score * 2)
         result += score * 2
-        logger.debug('proxy %s to %s expected response time: %.3f' % (self.name, host, score))
+        logger.debug('proxy %s to %s expected response time: %.3f', self.name, host, score)
         return result
 
     def log(self, host, rtime):
         self.avg_resp_time = 0.87 * self.get_avg_resp_time() + (1 - 0.87) * rtime
         self.avg_resp_time_by_host[host] = 0.87 * self.avg_resp_time_by_host[host] + (1 - 0.87) * rtime
         self.avg_resp_time_ts = self.avg_resp_time_by_host_ts[host] = time.time()
-        logger.debug('%s to %s: %.3fs avg: %.3fs %.3fs' % (self.name, host, rtime, self.avg_resp_time, self.avg_resp_time_by_host[host]))
+        logger.debug('%s to %s: %.3fs avg: %.3fs %.3fs', self.name, host, rtime,
+                     self.avg_resp_time, self.avg_resp_time_by_host[host])
         self.conf.stdout('proxy')
 
     def get_avg_resp_time(self, host=None):
@@ -167,13 +172,14 @@ class ParentProxyList(object):
     def add(self, parentproxy):
         assert isinstance(parentproxy, ParentProxy)
         if parentproxy.parse.scheme:
-            s = '%s://%s:%s' % (parentproxy.parse.scheme, parentproxy.parse.hostname, parentproxy.parse.port)
+            pxy = '%s://%s:%s' % (parentproxy.parse.scheme, parentproxy.parse.hostname,
+                                  parentproxy.parse.port)
         else:
-            s = 'None'
+            pxy = 'None'
         if parentproxy.name in self.dict:
-            logger.warning('%s already in ParentProxyList, overwrite' % parentproxy.name)
+            logger.warning('%s already in ParentProxyList, overwrite', parentproxy.name)
             self.remove(parentproxy.name)
-        logger.info('add parent: %s: %s' % (parentproxy.name, s))
+        logger.info('add parent: %s: %s', parentproxy.name, pxy)
         if parentproxy.name not in ('_L0C4L_', ):
             self.dict[parentproxy.name] = parentproxy
         if parentproxy.name == '_D1R3CT_':
@@ -194,9 +200,9 @@ class ParentProxyList(object):
             return
         if 'FWLITE:' in name:
             return
-        a = self.dict.get(name)
+        pxy = self.dict.get(name)
         del self.dict[name]
-        self._parents.discard(a)
+        self._parents.discard(pxy)
 
     def parents(self):
         return list(self._parents)

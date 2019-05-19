@@ -19,12 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections import OrderedDict, defaultdict
 import re
 import io
 import struct
-import random
-import time
 import configparser
 
 
@@ -77,11 +74,10 @@ class SConfigParser(configparser.ConfigParser):
 def parse_hostport(host, default_port=80):
     if isinstance(host, bytes):
         host = host.decode()
-    m = re.match(r'(.+):(\d+)$', host)
-    if m:
-        return m.group(1).strip('[]'), int(m.group(2))
-    else:
-        return host.strip('[]'), default_port
+    match = re.match(r'(.+):(\d+)$', host)
+    if match:
+        return match.group(1).strip('[]'), int(match.group(2))
+    return host.strip('[]'), default_port
 
 
 def extract_server_name(packet):
@@ -114,79 +110,3 @@ def sizeof_fmt(num):
             return "%.1f%s" % (num, x)
         num /= 1024.0
     return "%.1f%s" % (num, 'TB')
-
-
-class ivError(Exception):
-    pass
-
-
-class iv_store(object):
-
-    def __init__(self, maxlen, timeout):
-        self.maxlen = maxlen
-        self.timeout = timeout
-        self.store = OrderedDict()
-        self.last_time_used = time.time()
-
-    def add(self, item):
-        self.last_time_used = time.time()
-        if random.random() < 0.01:
-            self._clean()
-        if item in self:
-            raise ivError
-        self.store[item] = self.last_time_used
-        while len(self.store) > self.maxlen:
-            self.store.popitem()
-
-    def __contains__(self, item):
-        if random.random() < 0.01:
-            self._clean()
-        self.last_time_used = time.time()
-        try:
-            if self.store[item] < time.time() - self.timeout:
-                while True:
-                    a, _ = self.store.popitem()
-                    if a == item:
-                        break
-                return False
-            else:
-                return True
-        except KeyError:
-            return False
-
-    def _clean(self):
-        garbage = []
-        for k in self.store:
-            if self.store[k] < time.time() - self.timeout:
-                garbage.append(k)
-            else:
-                break
-        for k in garbage:
-            del self.store[k]
-
-    def __str__(self):
-        return str([k for k in self.store])
-
-    def __repr__(self):
-        return str([k for k in self.store])
-
-
-class iv_checker(object):
-    # check reused iv, removing out-dated data automatically
-
-    def __init__(self, maxlen, timeout):
-        self.timeout = timeout * 10
-        self.store = defaultdict(lambda: iv_store(maxlen, timeout * 2))
-
-    def check(self, key, iv):
-        if random.random() < 0.01:
-            self._clean()
-        self.store[key].add(iv)
-
-    def _clean(self):
-        garbage = []
-        for k, v in self.store.items():
-            if v.last_time_used < time.time() - self.timeout:
-                garbage.append(k)
-        for k in garbage:
-            del self.store[k]

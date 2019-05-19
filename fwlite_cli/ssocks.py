@@ -32,12 +32,17 @@ from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor
 from .parent_proxy import ParentProxy
 
 logger = logging.getLogger('ss')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
+
+
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+set_logger()
 
 
 class IncompleteChunk(Exception):
@@ -75,6 +80,13 @@ class ss_conn:
             ssmethod, sspassword = base64.b64decode(ssmethod).decode().split(':', 1)
         ssmethod = ssmethod.lower()
 
+        self._address = None
+        self._port = 0
+        self.client_reader = None
+        self.client_writer = None
+        self.remote_reader = None
+        self.remote_writer = None
+
         self.aead = is_aead(ssmethod)
         self.crypto = Encryptor(sspassword, ssmethod)
         self.connected = False
@@ -108,8 +120,8 @@ class ss_conn:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            self.logger.error(repr(e))
-            self.logger.error(traceback.format_exc())
+            logger.error(repr(e))
+            logger.error(traceback.format_exc())
         for writer in (self.remote_writer, self.client_writer):
             try:
                 writer.close()

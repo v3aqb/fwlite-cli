@@ -25,14 +25,19 @@ import atexit
 import logging
 
 logger = logging.getLogger('plugin_manager')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
 
-plugin_path = {}
+
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+set_logger()
+
+PLUGIN_PATH = {}
 NON_SIP003 = ['kcptun']
 
 
@@ -54,18 +59,18 @@ def find_path(path):
         new_path = '../' + path
         if os.path.exists(new_path):
             return new_path
-    logger.warning('%s not exist.' % path)
+    logger.warning('%s not exist.', path)
     return path
 
 
 def plugin_register(plugin, path):
-    if plugin in plugin_path:
-        logger.error('%s already registered at %s' % (plugin, plugin_path[plugin]))
+    if plugin in PLUGIN_PATH:
+        logger.error('%s already registered at %s', plugin, PLUGIN_PATH[plugin])
         return
     if not os.path.exists(path):
         path = find_path(path)
-    logger.info('register plugin: %s %s' % (plugin, path))
-    plugin_path[plugin] = path
+    logger.info('register plugin: %s %s', plugin, path)
+    PLUGIN_PATH[plugin] = path
 
 
 def plugin_command(host_port, plugin_info, port):
@@ -76,17 +81,17 @@ def plugin_command(host_port, plugin_info, port):
     plugin = plugin_info[0]
     plugin_args = plugin_info[1:]
 
-    if plugin not in plugin_path:
+    if plugin not in PLUGIN_PATH:
         raise ValueError('plugin "%s" not registered!' % plugin)
 
-    cmd = shlex.split(plugin_path[plugin])
+    cmd = shlex.split(PLUGIN_PATH[plugin])
     if 'kcptun' in plugin.lower():
         cmd.extend(['--localaddr', ':%d' % port])
         cmd.extend(['--remoteaddr', '%s:%d' % host_port])
         for args in plugin_args:
             if '=' in args:
-                k, v = args.split('=')
-                cmd.extend(['--' + k, v])
+                key, val = args.split('=')
+                cmd.extend(['--' + key, val])
             else:
                 cmd.append('--' + args)
         cmd.append('--quiet')
@@ -108,6 +113,8 @@ class PluginManager:
         key += '-%s' % proxy.proxy
         if key in self.plugin_port:
             logger.warning('plugin registered!')
+            # TODO: check if plugin is running
+            #       if not, assume port used, start plugin
             return self.plugin_port[key]
 
         if proxy.proxy and is_udp(plugin_info):
@@ -121,20 +128,20 @@ class PluginManager:
             # adjust tunnel port
             new_host_port = ('127.0.0.1', tunnel_port)
             # assign free socket for plugin
-            s = socket.socket()
-            s.bind(('127.0.0.1', 0))
-            _, port = s.getsockname()
-            s.close()
+            soc = socket.socket()
+            soc.bind(('127.0.0.1', 0))
+            _, port = soc.getsockname()
+            soc.close()
 
             self.plugin_port[key] = port
             # start process
             self.start(new_host_port, key)
             return port
         # assign free socket
-        s = socket.socket()
-        s.bind(('127.0.0.1', 0))
-        _, port = s.getsockname()
-        s.close()
+        soc = socket.socket()
+        soc.bind(('127.0.0.1', 0))
+        _, port = soc.getsockname()
+        soc.close()
 
         self.plugin_port[key] = port
         # start process
@@ -165,13 +172,13 @@ class PluginManager:
                 os.environ["SS_LOCAL_PORT"] = str(port)
                 os.environ["SS_PLUGIN_OPTIONS"] = plugin_args
 
-                cmd = shlex.split(plugin_path[plugin])
+                cmd = shlex.split(PLUGIN_PATH[plugin])
                 process = subprocess.Popen(cmd)
                 self.subprocess[key] = process
 
                 time.sleep(0.2)
-        except Exception as e:
-            logger.error(repr(e))
+        except Exception as err:
+            logger.error(repr(err))
 
     def restart(self, host_port, proxy):
         key = '%s:%s' % host_port
@@ -182,5 +189,5 @@ class PluginManager:
     def cleanup(self):
         # kill all subprocess
         all_processes = [v for k, v in self.subprocess.items()]
-        for p in all_processes:  # list of your processes
-            p.kill()
+        for process in all_processes:  # list of your processes
+            process.kill()

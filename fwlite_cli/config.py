@@ -150,9 +150,9 @@ def url_retreive(url, path, proxy):
     opener = urllib.request.build_opener(proxy_handler)
     urlopen = opener.open
 
-    r = urlopen(url)
-    data = r.read()
-    if r.getcode() == 200 and data:
+    req = urlopen(url)
+    data = req.read()
+    if req.getcode() == 200 and data:
         with open(path, 'wb') as localfile:
             localfile.write(data)
 
@@ -168,7 +168,8 @@ class _stderr():
         lines = data.strip().splitlines()
         self.store.extend(lines)
 
-    def flush(self):
+    @staticmethod
+    def flush():
         sys.__stderr__.flush()
 
     def getvalue(self):
@@ -177,7 +178,7 @@ class _stderr():
         return data
 
 
-class Config(object):
+class Config():
     def __init__(self, conf_path, gui):
         self.patch_stderr()
 
@@ -231,8 +232,8 @@ class Config(object):
             self.gate = 0
         ParentProxy.GATE = self.gate
 
-        for k, v in self.userconf.items('plugin'):
-            plugin_register(k, v)
+        for key, val in self.userconf.items('plugin'):
+            plugin_register(key, val)
 
         self.plugin_manager = PluginManager(self)
         self.port_forward = ForwardManager(self)
@@ -242,34 +243,32 @@ class Config(object):
             self.addparentproxy('FWLITE:%s' % profile, 'http://127.0.0.1:%d' % (self.listen[1] + i))
 
         if self.userconf.dget('FWLite', 'parentproxy', ''):
-            self.addparentproxy('_D1R3CT_', '%s 0' % self.userconf.dget('FWLite', 'parentproxy', ''))
+            self.addparentproxy('_D1R3CT_', '%s 0' % self.userconf.dget('FWLite', 'parentproxy'))
         else:
             self.addparentproxy('_D1R3CT_', 'direct 0')
 
-        for k, v in self.userconf.items('parents'):
-            if k in ('_D1R3CT_', '_L0C4L_'):
-                self.logger.error('proxy name %s is protected!')
+        for key, val in self.userconf.items('parents'):
+            if key in ('_D1R3CT_', '_L0C4L_'):
+                self.logger.error('proxy name %s is protected!', key)
                 continue
             try:
-                self.addparentproxy(k, v)
-            except Exception as e:
-                self.logger.error('add proxy failed! %r' % e)
+                self.addparentproxy(key, val)
+            except Exception as err:
+                self.logger.error('add proxy failed! %r', err)
 
-        if not self.rproxy and len([k for k in self.parentlist.parents() if k._priority < 100]) == 0:
+        if not self.rproxy and not [parent for parent in self.parentlist.parents() if parent._priority < 100]:
             self.logger.warning('No parent proxy available!')
 
-        for k, v in self.userconf.items('port_forward'):
-            # k: port
-            # v: target / target proxy
-            # using proxy FWLITE:1
+        for port, target_proxy in self.userconf.items('port_forward'):
+            # default using proxy FWLITE:1
             try:
-                target, _, proxy = v.partition(' ')
-                target = (v.rsplit(':', 1)[0], int(v.rsplit(':', 1)[1]))
+                target, _, proxy = target_proxy.partition(' ')
+                target = (target.rsplit(':', 1)[0], int(target.rsplit(':', 1)[1]))
                 proxy = proxy or ('FWLITE:' + self.profile[0])
-                port = int(k)
+                port = int(port)
                 self.port_forward.add(target, proxy, port)
-            except Exception as e:
-                self.logger.error(repr(e))
+            except Exception as err:
+                self.logger.error(repr(err))
                 self.logger.error(traceback.format_exc())
 
         self.HOSTS = defaultdict(list)
@@ -282,7 +281,7 @@ class Config(object):
                 else:
                     self.HOSTS[host].append((10, ip))
             except Exception:
-                self.logger.error('unsupported host: %s' % ip)
+                self.logger.error('unsupported host: %s', ip)
                 self.logger.error(traceback.format_exc())
 
         for host, ip in self.userconf.items('hosts'):
@@ -350,11 +349,11 @@ class Config(object):
 
         def _dl(path, url, proxy):
             file_name = os.path.basename(path)
-            self.logger.warning('"%s" not found! downloading...' % file_name)
+            self.logger.warning('"%s" not found! downloading...', file_name)
             try:
                 url_retreive(url, path, proxy)
             except Exception:
-                self.logger.warning('download "%s" failed!' % file_name)
+                self.logger.warning('download "%s" failed!', file_name)
                 open(path, 'a').close()
 
         task_list = []

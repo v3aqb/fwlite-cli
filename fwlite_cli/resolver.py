@@ -22,12 +22,17 @@ from ipaddress import ip_address
 
 
 logger = logging.getLogger('resolver')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
+
+
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+set_logger()
 
 
 async def getaddrinfo(host, port):
@@ -49,26 +54,26 @@ class resolver:
 
     def is_poisoned(self, domain):
         if not self.apfilter_list:
-            return
+            return None
         url = 'http://%s/' % domain
         for apfilter in self.apfilter_list:
             if apfilter.match(url, domain):
                 return True
+        return False
 
     async def resolve(self, host, port, dirty=False):
         ''' return
         '''
-        logger.debug('entering %s.resolve(%s)' % (self.__class__.__name__, host))
+        logger.debug('entering %s.resolve(%s)', self.__class__.__name__, host)
         try:
             ip = ip_address(host)
             return [(2 if ip.version == 4 else 10, host), ]
-        except Exception:
+        except ValueError:
             pass
         if self.is_poisoned(host):
             if dirty:
                 return []
-            else:
-                raise NotImplementedError
+            raise NotImplementedError
         try:
             # resolve
             result = await resolve(host, port)
@@ -77,15 +82,15 @@ class resolver:
             return result
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            logger.warning('resolving %s failed: %r' % (host, e))
+        except Exception as err:
+            logger.warning('resolving %s failed: %r', host, err)
             return []
 
     async def get_ip_address(self, host):
-        logger.debug('entering %s.get_ip_address(%s)' % (self.__class__.__name__, host))
+        logger.debug('entering %s.get_ip_address(%s)', self.__class__.__name__, host)
         try:
             return ip_address(host)
-        except Exception:
+        except ValueError:
             try:
                 result = await self.resolve(host, 0, dirty=True)
                 result = [ip for ip in result if ip[0] == 4]

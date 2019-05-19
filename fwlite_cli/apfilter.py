@@ -26,22 +26,29 @@ import re
 import time
 from threading import Thread
 from collections import defaultdict
-from .util import parse_hostport
-import urllib.parse as urlparse
+import urllib.parse
 import logging
 
+from .util import parse_hostport
+
 logger = logging.getLogger('apfilter')
-logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
+
+
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+set_logger()
 
 
 class ExpiredError(Exception):
     def __init__(self, rule):
         self.rule = rule
+        super().__init__()
 
 
 class ap_rule(object):
@@ -61,20 +68,20 @@ class ap_rule(object):
             if rule.startswith('||'):
                 regex = rule.replace('.', r'\.').replace('/', '').replace('*', '[^/]*').replace('||', '^(?:https?://)?(?:[^/]+\.)?') + r'(?:[:/]|$)'
                 return re.compile(regex)
-            elif rule.startswith('/') and rule.endswith('/'):
+            if rule.startswith('/') and rule.endswith('/'):
                 return re.compile(rule[1:-1])
-            elif rule.startswith('|https://'):
-                i = rule.find('/', 9)
-                regex = rule[9:] if i == -1 else rule[9:i]
+            if rule.startswith('|https://'):
+                index = rule.find('/', 9)
+                regex = rule[9:] if index == -1 else rule[9:index]
                 regex = r'^(?:https://)?%s(?:[:/])' % regex.replace('.', r'\.').replace('*', '[^/]*')
                 return re.compile(regex)
-            else:
-                regex = rule.replace('.', r'\.').replace('?', r'\?').replace('*', '.*').replace('^', r'[\/:]')
-                regex = re.sub(r'^\|', r'^', regex)
-                regex = re.sub(r'\|$', r'$', regex)
-                if not rule.startswith(('|', 'http://')):
-                    regex = re.sub(r'^', r'^http://.*', regex)
-                return re.compile(regex)
+
+            regex = rule.replace('.', r'\.').replace('?', r'\?').replace('*', '.*').replace('^', r'[\/:]')
+            regex = re.sub(r'^\|', r'^', regex)
+            regex = re.sub(r'\|$', r'$', regex)
+            if not rule.startswith(('|', 'http://')):
+                regex = re.sub(r'^', r'^http://.*', regex)
+            return re.compile(regex)
 
         return parse(self.rule[2:]) if self.override else parse(self.rule)
 
@@ -110,10 +117,11 @@ class ap_filter(object):
         if len(rule) < 3 or rule.startswith(('!', '[')) or '#' in rule:
             return
         if rule in self.rules:
-            logger.warning('%s already in filter' % rule)
+            logger.warning('%s already in filter', rule)
             return
         if '||' in rule and '/' in rule[:-1]:
-            return self.add(rule.replace('||', '|http://'))
+            self.add(rule.replace('||', '|http://'))
+            return
         if rule.startswith('||') and '*' not in rule:
             self._add_domain(rule)
         elif rule.startswith('@@||') and '*' not in rule:
@@ -141,14 +149,14 @@ class ap_filter(object):
     def _add_fast(self, rule):
         rule_t = rule[1:] if rule.startswith('|') else rule
         lst = [s for s in rule_t.split('*') if len(s) > self.KEYLEN]
-        o = ap_rule(rule)
+        rule_o = ap_rule(rule)
         key = lst[-1][self.KEYLEN * -1:]
-        self.fast[key].append(o)
+        self.fast[key].append(rule_o)
 
     def _add_slow(self, rule):
-        o = ap_rule(rule)
-        lst = self.excludes if o.override else self.slow
-        lst.append(o)
+        rule_o = ap_rule(rule)
+        lst = self.excludes if rule_o.override else self.slow
+        lst.append(rule_o)
 
     def _add_exclude_domain(self, rule):
         rule = rule.rstrip('/^')
@@ -161,7 +169,7 @@ class ap_filter(object):
     def match(self, url, host=None, domain_only=False):
         if host is None:
             if '://' in url:
-                host = urlparse.urlparse(url).hostname
+                host = urllib.parse.urlparse(url).hostname
             else:  # www.google.com:443
                 host = parse_hostport(url)[0]
         if '://' not in url:
@@ -190,9 +198,9 @@ class ap_filter(object):
         if url.startswith('http://'):
             i, j = 0, self.KEYLEN
             while j <= len(url):
-                s = url[i:j]
-                if s in self.fast:
-                    if self._listmatch(self.fast[s], url):
+                key = url[i:j]
+                if key in self.fast:
+                    if self._listmatch(self.fast[key], url):
                         return True
                 i, j = i + 1, j + 1
 
@@ -211,17 +219,17 @@ class ap_filter(object):
                 self.exclude_domains.discard(rule[4:])
             elif rule.startswith(('|https://', '@', '/')):
                 lst = self.excludes if rule.startswith('@') else self.slow
-                for o in lst[:]:
-                    if o.rule == rule:
-                        lst.remove(o)
+                for rule_o in lst[:]:
+                    if rule_o.rule == rule:
+                        lst.remove(rule_o)
                         break
             elif rule.startswith('|http://') and any(len(s) > (self.KEYLEN) for s in rule[1:].split('*')):
                 rule_t = rule[1:]
                 lst = [s for s in rule_t.split('*') if len(s) > self.KEYLEN]
                 key = lst[-1][self.KEYLEN * -1:]
-                for o in self.fast[key][:]:
-                    if o.rule == rule:
-                        self.fast[key].remove(o)
+                for rule_o in self.fast[key][:]:
+                    if rule_o.rule == rule:
+                        self.fast[key].remove(rule_o)
                         if not self.fast[key]:
                             del self.fast[key]
                         break
@@ -232,17 +240,17 @@ class ap_filter(object):
             elif any(len(s) > (self.KEYLEN) for s in rule.split('*')):
                 lst = [s for s in rule.split('*') if len(s) > self.KEYLEN]
                 key = lst[-1][self.KEYLEN * -1:]
-                for o in self.fast[key][:]:
-                    if o.rule == rule:
-                        self.fast[key].remove(o)
+                for rule_o in self.fast[key][:]:
+                    if rule_o.rule == rule:
+                        self.fast[key].remove(rule_o)
                         if not self.fast[key]:
                             del self.fast[key]
                         break
             else:
                 lst = self.excludes if rule.startswith('@') else self.slow
-                for o in lst[:]:
-                    if o.rule == rule:
-                        lst.remove(o)
+                for rule_o in lst[:]:
+                    if rule_o.rule == rule:
+                        lst.remove(rule_o)
                         break
             self.rules.discard(rule)
             del self.expire[rule]
@@ -251,7 +259,7 @@ class ap_filter(object):
                 sys.stdout.flush()
 
 
-if __name__ == "__main__":
+def test():
     gfwlist = ap_filter()
     t = time.clock()
     with open('gfwlist.txt') as f:
@@ -279,7 +287,7 @@ if __name__ == "__main__":
     print('result for riseup.net:443: %r' % gfwlist.match('riseup.net:443', 'riseup.net'))
 
     url = sys.argv[1] if len(sys.argv) > 1 else 'http://news.163.com/16/1226/18/C97U4AI50001875N.html'
-    host = urlparse.urlparse(url).hostname
+    host = urllib.parse.urlparse(url).hostname
     print('%s, %s' % (url, host))
     print(gfwlist.match(url, host))
     t = time.clock()
@@ -294,3 +302,7 @@ if __name__ == "__main__":
     l = sorted(l, key=lambda x: len(gfwlist.fast[x]))
     for i in l[-10:]:
         print('%r : %d' % (i, len(gfwlist.fast[i])))
+
+
+if __name__ == "__main__":
+    test()
