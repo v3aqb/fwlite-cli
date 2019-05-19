@@ -21,6 +21,7 @@ import re
 import io
 import base64
 import json
+import socket
 import time
 import traceback
 
@@ -595,7 +596,7 @@ class http_handler(base_proxy_handler):
             return
         except asyncio.CancelledError:
             raise
-        except (asyncio.TimeoutError, ConnectionRefusedError, ConnectionResetError, ValueError, asyncio.IncompleteReadError) as e:
+        except (asyncio.TimeoutError, ConnectionRefusedError, ConnectionResetError, ValueError, asyncio.IncompleteReadError, socket.gaierror) as e:
             if self.remote_writer:
                 try:
                     self.remote_writer.write_eof()
@@ -606,6 +607,7 @@ class http_handler(base_proxy_handler):
             await self.on_GET_Error(e)
         except Exception as err:
             self.close_connection = True
+            self.logger.error('http_handler')
             self.logger.error(repr(err))
             self.logger.error(traceback.format_exc())
 
@@ -661,13 +663,13 @@ class http_handler(base_proxy_handler):
             if new_url.isdigit() and 400 <= int(new_url) < 600:
                 self.logger.info('%s %s %s send error %s', self.command, self.shortpath or self.path, self.client_address[0], new_url)
                 return
-            elif new_url.lower() in ('reset', 'return'):
+            if new_url.lower() in ('reset', 'return'):
                 self.logger.info('%s %s %s reset', self.command, self.shortpath or self.path, self.client_address[0])
                 return
-            elif new_url.lower() == 'adblock':
+            if new_url.lower() == 'adblock':
                 self.logger.debug('%s %s adblock', self.command, self.shortpath or self.path)
                 return
-            elif all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
+            if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # random.shuffle(self._proxylist)
 
@@ -708,7 +710,7 @@ class http_handler(base_proxy_handler):
             self.remote_reader, self.remote_writer, self.ppname = await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
         except asyncio.CancelledError:
             raise
-        except (asyncio.TimeoutError, ConnectionRefusedError, asyncio.IncompleteReadError, ConnectionResetError) as err:
+        except (asyncio.TimeoutError, ConnectionRefusedError, asyncio.IncompleteReadError, ConnectionResetError, socket.gaierror) as err:
             self.logger.warning('%s %s via %s failed on connect! %r', self.command, self.path, self.ppname, err)
             self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
