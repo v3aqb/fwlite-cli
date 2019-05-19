@@ -35,6 +35,7 @@ def set_logger():
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
+
 set_logger()
 
 PLUGIN_PATH = {}

@@ -23,7 +23,7 @@ from asyncio import Lock
 from collections import defaultdict, deque
 
 
-def is_connection_dropped(conn_lst):  # modified from urllib3
+def is_connection_dropped(conn_lst):
     """
     Returns sockets that is dropped and should be closed.
 
@@ -33,7 +33,7 @@ def is_connection_dropped(conn_lst):  # modified from urllib3
     return [item for item in conn_lst if item[0].at_eof()]
 
 
-class httpconn_pool(object):
+class ConnectionPool:
     logger = logging.getLogger('httpconn_pool')
     logger.setLevel(logging.INFO)
     hdr = logging.StreamHandler()

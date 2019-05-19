@@ -37,6 +37,7 @@ def set_logger():
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
+
 set_logger()
 
 
@@ -121,4 +122,4 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel
         from .hxsocks2 import hxs2_connect
         remote_reader, remote_writer, name = await hxs2_connect(proxy, timeout, addr, port)
         return remote_reader, remote_writer, name
-    raise IOError(0, 'parentproxy %s not supported!' % proxy.name)
+    raise ValueError(0, 'parentproxy %s not supported!' % proxy.name)

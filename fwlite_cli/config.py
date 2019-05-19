@@ -31,13 +31,13 @@ from .parent_proxy import ParentProxyList, ParentProxy
 from .get_proxy import get_proxy
 from .redirector import redirector
 from .util import SConfigParser
-from .resolver import resolver
+from .resolver import Resolver
 from .plugin_manager import plugin_register
 from .port_forward import ForwardManager
 from .plugin_manager import PluginManager
 
 
-PAC = '''
+PAC = r'''
 var wall_proxy = "__PROXY__";
 var direct = "DIRECT;";
 
@@ -157,7 +157,7 @@ def url_retreive(url, path, proxy):
             localfile.write(data)
 
 
-class _stderr():
+class _stderr:
     # replace stderr
 
     def __init__(self, maxlen=100):
@@ -178,7 +178,7 @@ class _stderr():
         return data
 
 
-class Config():
+class Config:
     def __init__(self, conf_path, gui):
         self.patch_stderr()
 
@@ -256,7 +256,7 @@ class Config():
             except Exception as err:
                 self.logger.error('add proxy failed! %r', err)
 
-        if not self.rproxy and not [parent for parent in self.parentlist.parents() if parent._priority < 100]:
+        if not self.rproxy and not [parent for parent in self.parentlist.parents() if parent.priority < 100]:
             self.logger.warning('No parent proxy available!')
 
         for port, target_proxy in self.userconf.items('port_forward'):
@@ -318,7 +318,7 @@ class Config():
         self.GET_PROXY = get_proxy(self)
         bad_ip = set(self.userconf.dget('dns', 'bad_ip', '').split('|'))
         apf = None if self.rproxy else [self.GET_PROXY.gfwlist, self.GET_PROXY.local]
-        self.resolver = resolver(apf, bad_ip)
+        self.resolver = Resolver(apf, bad_ip)
 
     def reload(self):
         self.userconf.read(self.conf_path)

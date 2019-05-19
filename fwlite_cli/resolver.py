@@ -20,7 +20,6 @@ import asyncio
 import logging
 from ipaddress import ip_address
 
-
 logger = logging.getLogger('resolver')
 
 
@@ -31,6 +30,7 @@ def set_logger():
                                   datefmt='%H:%M:%S')
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
+
 
 set_logger()
 
@@ -47,7 +47,7 @@ async def resolve(host, port):
     return [(i[0], i[4][0]) for i in result]
 
 
-class resolver:
+class Resolver:
     def __init__(self, apfilter_list, bad_ip):
         self.apfilter_list = apfilter_list
         self.bad_ip = bad_ip
@@ -91,11 +91,11 @@ class resolver:
         try:
             return ip_address(host)
         except ValueError:
-            try:
-                result = await self.resolve(host, 0, dirty=True)
-                result = [ip for ip in result if ip[0] == 4]
-                return ip_address(result[0][1])
-            except asyncio.CancelledError:
-                raise
-            except IndexError:
-                return ip_address(u'0.0.0.0')
+            pass
+
+        try:
+            result = await self.resolve(host, 0, dirty=True)
+            result = [ip for ip in result if ip[0] == 4]
+            return ip_address(result[0][1])
+        except IndexError:
+            return ip_address(u'0.0.0.0')

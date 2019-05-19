@@ -42,6 +42,7 @@ def set_logger():
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
+
 set_logger()
 
 
@@ -66,7 +67,7 @@ class ap_rule(object):
     def _parse(self):
         def parse(rule):
             if rule.startswith('||'):
-                regex = rule.replace('.', r'\.').replace('/', '').replace('*', '[^/]*').replace('||', '^(?:https?://)?(?:[^/]+\.)?') + r'(?:[:/]|$)'
+                regex = rule.replace('.', r'\.').replace('/', '').replace('*', '[^/]*').replace('||', r'^(?:https?://)?(?:[^/]+\.)?') + r'(?:[:/]|$)'
                 return re.compile(regex)
             if rule.startswith('/') and rule.endswith('/'):
                 return re.compile(rule[1:-1])
@@ -186,6 +187,7 @@ class ap_filter(object):
             return True
         if self._listmatch(self.slow, url):
             return True
+        return None
 
     def _domainmatch(self, host):
         lst = ['.'.join(host.split('.')[i:]) for i in range(len(host.split('.')))]
@@ -193,6 +195,7 @@ class ap_filter(object):
             return False
         if any(host in self.domains for host in lst):
             return True
+        return None
 
     def _fastmatch(self, url):
         if url.startswith('http://'):
@@ -203,60 +206,63 @@ class ap_filter(object):
                     if self._listmatch(self.fast[key], url):
                         return True
                 i, j = i + 1, j + 1
+        return None
 
-    def _listmatch(self, lst, url):
+    @staticmethod
+    def _listmatch(lst, url):
         return any(r.match(url) for r in lst)
 
     def remove(self, rule, delay=None):
         if delay:
             time.sleep(delay)
-        if rule in self.rules:
-            if rule.startswith('||') and '*' not in rule:
-                rule = rule.rstrip('/')
-                self.domains.discard(rule[2:])
-            elif rule.startswith('@@||') and '*' not in rule:
-                rule = rule.rstrip('/')
-                self.exclude_domains.discard(rule[4:])
-            elif rule.startswith(('|https://', '@', '/')):
-                lst = self.excludes if rule.startswith('@') else self.slow
-                for rule_o in lst[:]:
-                    if rule_o.rule == rule:
-                        lst.remove(rule_o)
-                        break
-            elif rule.startswith('|http://') and any(len(s) > (self.KEYLEN) for s in rule[1:].split('*')):
-                rule_t = rule[1:]
-                lst = [s for s in rule_t.split('*') if len(s) > self.KEYLEN]
-                key = lst[-1][self.KEYLEN * -1:]
-                for rule_o in self.fast[key][:]:
-                    if rule_o.rule == rule:
-                        self.fast[key].remove(rule_o)
-                        if not self.fast[key]:
-                            del self.fast[key]
-                        break
-            elif rule.startswith('|http://') and '*' not in rule:
-                temp = set(self.url_startswith)
-                temp.discard(rule[1:])
-                self.url_startswith = tuple(temp)
-            elif any(len(s) > (self.KEYLEN) for s in rule.split('*')):
-                lst = [s for s in rule.split('*') if len(s) > self.KEYLEN]
-                key = lst[-1][self.KEYLEN * -1:]
-                for rule_o in self.fast[key][:]:
-                    if rule_o.rule == rule:
-                        self.fast[key].remove(rule_o)
-                        if not self.fast[key]:
-                            del self.fast[key]
-                        break
-            else:
-                lst = self.excludes if rule.startswith('@') else self.slow
-                for rule_o in lst[:]:
-                    if rule_o.rule == rule:
-                        lst.remove(rule_o)
-                        break
-            self.rules.discard(rule)
-            del self.expire[rule]
-            if '-GUI' in sys.argv:
-                sys.stdout.write('local\n')
-                sys.stdout.flush()
+        if rule not in self.rules:
+            return
+        if rule.startswith('||') and '*' not in rule:
+            rule = rule.rstrip('/')
+            self.domains.discard(rule[2:])
+        elif rule.startswith('@@||') and '*' not in rule:
+            rule = rule.rstrip('/')
+            self.exclude_domains.discard(rule[4:])
+        elif rule.startswith(('|https://', '@', '/')):
+            lst = self.excludes if rule.startswith('@') else self.slow
+            for rule_o in lst[:]:
+                if rule_o.rule == rule:
+                    lst.remove(rule_o)
+                    break
+        elif rule.startswith('|http://') and any(len(s) > (self.KEYLEN) for s in rule[1:].split('*')):
+            rule_t = rule[1:]
+            lst = [s for s in rule_t.split('*') if len(s) > self.KEYLEN]
+            key = lst[-1][self.KEYLEN * -1:]
+            for rule_o in self.fast[key][:]:
+                if rule_o.rule == rule:
+                    self.fast[key].remove(rule_o)
+                    if not self.fast[key]:
+                        del self.fast[key]
+                    break
+        elif rule.startswith('|http://') and '*' not in rule:
+            temp = set(self.url_startswith)
+            temp.discard(rule[1:])
+            self.url_startswith = tuple(temp)
+        elif any(len(s) > (self.KEYLEN) for s in rule.split('*')):
+            lst = [s for s in rule.split('*') if len(s) > self.KEYLEN]
+            key = lst[-1][self.KEYLEN * -1:]
+            for rule_o in self.fast[key][:]:
+                if rule_o.rule == rule:
+                    self.fast[key].remove(rule_o)
+                    if not self.fast[key]:
+                        del self.fast[key]
+                    break
+        else:
+            lst = self.excludes if rule.startswith('@') else self.slow
+            for rule_o in lst[:]:
+                if rule_o.rule == rule:
+                    lst.remove(rule_o)
+                    break
+        self.rules.discard(rule)
+        del self.expire[rule]
+        if '-GUI' in sys.argv:
+            sys.stdout.write('local\n')
+            sys.stdout.flush()
 
 
 def test():
@@ -298,10 +304,10 @@ def test():
     print('O(1): %d' % (len(gfwlist.rules) - (len(gfwlist.excludes) + len(gfwlist.slow) + len(gfwlist.url_startswith))))
     print('O(n): %d' % (len(gfwlist.excludes) + len(gfwlist.slow) + len(gfwlist.url_startswith)))
     print('total: %d' % len(gfwlist.rules))
-    l = gfwlist.fast.keys()
-    l = sorted(l, key=lambda x: len(gfwlist.fast[x]))
-    for i in l[-10:]:
-        print('%r : %d' % (i, len(gfwlist.fast[i])))
+    fast_key_list = gfwlist.fast.keys()
+    fast_key_list = sorted(fast_key_list, key=lambda x: len(gfwlist.fast[x]))
+    for key in fast_key_list[-10:]:
+        print('%r : %d' % (key, len(gfwlist.fast[key])))
 
 
 if __name__ == "__main__":

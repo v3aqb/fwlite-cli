@@ -31,16 +31,16 @@ from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor
 
 from .parent_proxy import ParentProxy
 
-logger = logging.getLogger('ss')
-
 
 def set_logger():
+    logger = logging.getLogger('ss')
     logger.setLevel(logging.INFO)
     hdr = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
                                   datefmt='%H:%M:%S')
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
+
 
 set_logger()
 
@@ -57,7 +57,7 @@ async def ss_connect(proxy, timeout, addr, port):
     sock_a, sock_b = socket.socketpair()
 
     # connect to ss server
-    context = ss_conn(proxy, sock_b)
+    context = SSConn(proxy, sock_b)
     await context.connect(addr, port, timeout)
 
     # start forward
@@ -68,10 +68,11 @@ async def ss_connect(proxy, timeout, addr, port):
     return reader, writer
 
 
-class ss_conn:
+class SSConn:
     bufsize = 8192
 
     def __init__(self, proxy, sock_b):
+        self.logger = logging.getLogger('ss')
         self.proxy = proxy
         self.sock_b = sock_b
         ssmethod, sspassword = self.proxy.username, self.proxy.password
@@ -120,8 +121,9 @@ class ss_conn:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(repr(e))
-            logger.error(traceback.format_exc())
+            self.logger.error('SSConn.forward')
+            self.logger.error(repr(e))
+            self.logger.error(traceback.format_exc())
         for writer in (self.remote_writer, self.client_writer):
             try:
                 writer.close()

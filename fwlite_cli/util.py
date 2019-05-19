@@ -89,7 +89,7 @@ def extract_server_name(packet):
         stream.read(session_id_length)
         cipher_suites_length, = struct.unpack('>h', stream.read(2))
         stream.read(cipher_suites_length + 2)
-        extensions_length, = struct.unpack('>h', stream.read(2))
+        struct.unpack('>h', stream.read(2))  # extensions_length
         while True:
             data = stream.read(2)
             if not data:
@@ -100,6 +100,7 @@ def extract_server_name(packet):
             if etype == 0:
                 server_name = edata[5:].decode()
                 return server_name
+    return None
 
 
 def sizeof_fmt(num):

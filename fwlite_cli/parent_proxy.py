@@ -22,10 +22,10 @@ import time
 import logging
 
 import urllib
-from urllib.parse import quote, unquote
-
+from urllib.parse import unquote
 
 logger = logging.getLogger('parent_proxy')
+
 
 def set_logger():
     logger.setLevel(logging.INFO)
@@ -35,10 +35,11 @@ def set_logger():
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
+
 set_logger()
 
 
-class default_dict(dict):
+class DefaultDict(dict):
     def __init__(self, default):
         self.default = default
         super().__init__(self)
@@ -47,7 +48,7 @@ class default_dict(dict):
         return self.default
 
 
-class ParentProxy(object):
+class ParentProxy:
     VIA = None
     DIRECT = None
     DEFAULT_TIMEOUT = 8
@@ -87,6 +88,10 @@ class ParentProxy(object):
         self.hostname = self.parse.hostname
         self.port = self.parse.port
         self._host_port = (self.hostname, self.port)  # for plugin only
+        if self.proxy:
+            self.short = '%s://%s:%s' % (self.scheme, self._host_port[0], self._host_port[1])
+        else:
+            self.short = 'direct'
 
         self.query = urllib.parse.parse_qs(self.parse.query)
         plugin = self.query.get('plugin', [None, ])[0]
@@ -95,22 +100,20 @@ class ParentProxy(object):
             self.port = self.conf.plugin_manager.add(self._host_port, self.plugin_info, self.VIA)
             self.hostname = '127.0.0.1'
 
-        self.id = self.query.get('id', [self.name, ])[0]
-
-        self._priority = float(priority)
+        self.priority = int(float(priority))
         self.timeout = self.DEFAULT_TIMEOUT
         self.gate = self.GATE
 
         self.avg_resp_time = self.gate
         self.avg_resp_time_ts = 0
-        self.avg_resp_time_by_host = default_dict(self.gate)
-        self.avg_resp_time_by_host_ts = default_dict(0)
+        self.avg_resp_time_by_host = DefaultDict(self.gate)
+        self.avg_resp_time_by_host_ts = DefaultDict(0)
 
         self.country_code = self.query.get('location', [''])[0] or None
         self.last_ckeck = 0
 
-    def priority(self, method=None, host=None):
-        result = self._priority
+    def get_priority(self, method=None, host=None):
+        result = self.priority
 
         score = self.get_avg_resp_time() + self.get_avg_resp_time(host)
         logger.debug('penalty %s to %s: %.2f', self.name, host, score * 2)
@@ -152,13 +155,13 @@ class ParentProxy(object):
         return self.VIA
 
     def __str__(self):
-        return self.name or ('%s://%s:%s' % (self.parse.scheme, self.parse.hostname, self.parse.port))
+        return self.name or self.short
 
     def __repr__(self):
-        return '<ParentProxy: %s %s>' % (self.name, self._priority)
+        return '<ParentProxy: %s %s>' % (self.name, self.priority)
 
 
-class ParentProxyList(object):
+class ParentProxyList:
     def __init__(self, conf):
         self.conf = conf
         self.direct = None
@@ -192,7 +195,7 @@ class ParentProxyList(object):
             self.local = parentproxy
             return
 
-        if 0 <= parentproxy._priority <= 100:
+        if 0 <= parentproxy.priority <= 100:
             self._parents.add(parentproxy)
 
     def remove(self, name):
