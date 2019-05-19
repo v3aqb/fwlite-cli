@@ -15,6 +15,7 @@ def set_logger():
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
+
 set_logger()
 
 
@@ -32,7 +33,6 @@ class ForwardContext:
         self.readable = True
         # result
         self.timeout = None
-        self.timelog = 0
         self.err = None
 
 
@@ -104,7 +104,7 @@ async def forward_from_remote(read_from, write_to, context, timeout=60):
         pass
 
 
-class forward_handler:
+class ForwardHandler:
     def __init__(self, target, proxy, ctimeout=3, timeout=120):
         self.addr, self.port = target
         self.proxy = proxy
@@ -162,7 +162,7 @@ class ForwardManager:
         if soc:
             soc.close()
         # start server on port
-        handler = forward_handler(target, proxy, timeout=120)
+        handler = ForwardHandler(target, proxy, timeout=120)
         loop = asyncio.get_event_loop()
         server = await asyncio.start_server(handler.handle, '127.0.0.1', port, loop=loop)
         self.server[port] = server
@@ -187,4 +187,5 @@ class ForwardManager:
         self.conf.stdout('forward')
 
     def list(self):
-        return [(target_proxy[0], target_proxy[1], port) for port, target_proxy in self.server_info.items()]
+        return [(target_proxy[0], target_proxy[1], port)
+                for port, target_proxy in self.server_info.items()]

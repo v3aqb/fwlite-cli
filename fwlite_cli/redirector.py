@@ -31,10 +31,11 @@ def set_logger():
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
+
 set_logger()
 
 
-class redirector(object):
+class redirector:
     def __init__(self, conf):
         from .apfilter import ap_filter
         self.conf = conf
@@ -53,33 +54,39 @@ class redirector(object):
             if rule.match(hdlr.path):
                 logger.debug('Match redirect rule %s, %s', rule.rule, result)
                 if rule.override:
-                    return None
+                    break
                 if result == 'forcehttps':
                     return hdlr.path.replace('http://', 'https://', 1)
                 if result.startswith('/') and result.endswith('/'):
                     return rule._regex.sub(result[1:-1], hdlr.path)
                 return result
+        return None
 
     def bad302(self, uri):
         return self._bad302.match(uri)
 
-    def add_redirect(self, rule, dest, pp=None):
+    def add_redirect(self, rule, dest, getp=None):
         from .apfilter import ap_rule
         logger.info('add redir: %s %s', rule, dest)
-        if pp is None:
-            pp = self.conf.GET_PROXY
+        if getp is None:
+            # in case GET_PROXY is initializing
+            getp = self.conf.GET_PROXY
         try:
             if rule in [a.rule for a, b in self.redirlst]:
                 logger.warning('multiple redirector rule! %s', rule)
                 return
             if dest.lower() == 'auto':
-                return pp.add_ignore(rule)
+                getp.add_ignore(rule)
+                return
             if dest.lower() == 'bad302':
-                return self._bad302.add(rule)
+                self._bad302.add(rule)
+                return
             if dest.lower() == 'reset':
-                return self.reset.add(rule)
+                self.reset.add(rule)
+                return
             if dest.lower() == 'adblock':
-                return self.adblock.add(rule)
+                self.adblock.add(rule)
+                return
             self.redirlst.append((ap_rule(rule), dest))
         except ValueError as err:
             logger.error('add redirect rule failed: %s', err)

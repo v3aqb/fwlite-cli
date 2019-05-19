@@ -21,7 +21,6 @@ import re
 import io
 import base64
 import json
-import socket
 import time
 import traceback
 
@@ -32,8 +31,8 @@ import asyncio
 import asyncio.streams
 
 from .connection import open_connection
-from .base_handler import base_handler, read_header_data, read_headers
-from .httputil import httpconn_pool
+from .base_handler import BaseHandler, read_header_data, read_headers
+from .httputil import ConnectionPool
 from .util import extract_server_name, parse_hostport
 
 MAX_TIMEOUT = 16
@@ -64,7 +63,6 @@ class ForwardContext:
         # result
         self.timeout = None
         self.retryable = True
-        self.timelog = 0
         self.err = None
 
 
@@ -92,7 +90,7 @@ class handler_factory:
         await _handler.handle(reader, writer)
 
 
-class base_proxy_handler(base_handler):
+class BaseProxyHandler(BaseHandler):
     def __init__(self, server):
         self.conf = server.conf
 
@@ -239,8 +237,8 @@ class base_proxy_handler(base_handler):
         return response_line, protocol_version, response_status, response_reason
 
 
-class http_handler(base_proxy_handler):
-    HTTPCONN_POOL = httpconn_pool()
+class http_handler(BaseProxyHandler):
+    HTTPCONN_POOL = ConnectionPool()
 
     async def do_GET(self):
         # self.logger.info('req_count %s' % self.req_count)
@@ -265,7 +263,10 @@ class http_handler(base_proxy_handler):
 
         parse = urlparse.urlparse(self.path)
 
-        self.shortpath = '%s://%s%s%s%s' % (parse.scheme, parse.netloc, parse.path.split(':')[0], '?' if parse.query else '', ':' if ':' in parse.path else '')
+        self.shortpath = '%s://%s%s%s' % (parse.scheme,
+                                          parse.netloc,
+                                          parse.path.split(':')[0],
+                                          '?' if parse.query else '')
 
         if 'Host' not in self.headers:
             self.logger.warning('"Host" not in self.headers')
@@ -283,28 +284,28 @@ class http_handler(base_proxy_handler):
         # redirector
         new_url = self.conf.GET_PROXY.redirect(self)
         if new_url:
-            self.logger.debug('redirect %s, %s %s', new_url, self.command, self.shortpath or self.path)
+            self.logger.debug('redirect %s, %s %s', new_url, self.command, self.shortpath)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
                 self.send_error(int(new_url))
                 return
             if new_url.lower() == 'return':
                 # request handled by redirector, return
-                self.logger.info('%s %s %s return', self.command, self.shortpath or self.path, self.client_address[0])
+                self.logger.info('%s %s return', self.command, self.shortpath)
                 return
             if new_url.lower() == 'reset':
                 self.close_connection = 1
-                self.logger.info('%s %s %s reset', self.command, self.shortpath or self.path, self.client_address[0])
+                self.logger.info('%s %s reset', self.command, self.shortpath)
                 return
             if new_url.lower() == 'adblock':
                 self.close_connection = 1
-                self.logger.debug('%s %s adblock', self.command, self.shortpath or self.path)
+                self.logger.debug('%s %s adblock', self.command, self.shortpath)
                 return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # TODO: sort by priority?
                 # random.shuffle(self._proxylist)
             else:
-                self.logger.info('redirect %s %s', self.shortpath or self.path, new_url)
+                self.logger.info('redirect %s %s', self.shortpath, new_url)
                 self.redirect(new_url)
                 return
 
@@ -324,14 +325,19 @@ class http_handler(base_proxy_handler):
 
         self.request_host = request_host
 
-        # self.shortpath = '%s://%s%s%s%s' % (parse.scheme, parse.netloc, parse.path.split(':')[0], '?' if parse.query else '', ':' if ':' in parse.path else '')
+        self.shortpath = '%s://%s%s%s' % (parse.scheme,
+                                          parse.netloc,
+                                          parse.path.split(':')[0],
+                                          '?' if parse.query else '')
         self.request_ip = await self.conf.resolver.get_ip_address(self.request_host[0])
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
-                if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.profile)):
+                if self.request_host[1] in range(self.conf.listen[1],
+                                                 self.conf.listen[1] + len(self.conf.profile)):
                     if parse.path == '/' and self.command == 'GET':
-                        self.write(200, data=WELCOME % ('127.0.0.1', self.request_host[1]), ctype='text/html; charset=utf-8')
+                        self.write(200, data=WELCOME % ('127.0.0.1', self.request_host[1]),
+                                   ctype='text/html; charset=utf-8')
                         return
                     await self.api(parse)
                     return
@@ -340,9 +346,11 @@ class http_handler(base_proxy_handler):
                 return
 
         if str(self.request_ip) == self.client_writer.get_extra_info('sockname')[0]:
-            if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.userconf.dget('FWLite', 'profile', '134'))):
+            if self.request_host[1] in range(self.conf.listen[1],
+                                             self.conf.listen[1] + len(self.conf.profile)):
                 if parse.path == '/' and self.command == 'GET':
-                    self.write(200, data=WELCOME % (self.request_host[0], self.request_host[1]), ctype='text/html; charset=utf-8')
+                    self.write(200, data=WELCOME % (self.request_host[0], self.request_host[1]),
+                               ctype='text/html; charset=utf-8')
                     return
                 if not self.conf.remoteapi:
                     self.send_error(403)
@@ -370,14 +378,16 @@ class http_handler(base_proxy_handler):
                     return
             if not self.retryable:
                 self.close_connection = 1
-                self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False, self.failed_parents, self.ppname)
+                self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
+                                           self.failed_parents, self.ppname)
                 return
 
             self.set_timeout()
 
             if self.getparent():
                 # if no more proxy available
-                self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False, self.failed_parents, self.ppname)
+                self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
+                                           self.failed_parents, self.ppname)
                 return self.send_error(504)
 
             # try get from connection pool
@@ -387,19 +397,24 @@ class http_handler(base_proxy_handler):
                     self._proxylist.insert(0, self.conf.parentlist.get(self.ppname))
                     sock, self.ppname = result
                     self.remote_reader, self.remote_writer = sock
-                    self.logger.info('%s %s via %s. %s', self.command, self.shortpath or self.path, self.ppname, self.client_address[1])
+                    self.logger.info('%s %s via %s.',
+                                     self.command, self.shortpath, self.ppname)
 
             if not self.remote_writer:
                 iplist = []
-                if self.pproxy.name == '_D1R3CT_' and self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
+                if self.pproxy.name == '_D1R3CT_' and \
+                        self.request_host[0] in self.conf.HOSTS and \
+                        not self.failed_parents:
                     iplist = self.conf.HOSTS.get(self.request_host[0])
                     self._proxylist.insert(0, self.pproxy)
 
-                self.logger.info('%s %s via %s. %s', self.command, self.shortpath or self.path, self.pproxy.name, self.client_address[1])
+                self.logger.info('%s %s via %s',
+                                 self.command, self.shortpath, self.pproxy.name)
 
                 addr, port = self.request_host
                 # addr, port, proxy=None, timeout=3, iplist=[], tunnel=False
-                self.remote_reader, self.remote_writer, self.ppname = await open_connection(addr, port, self.pproxy, self.timeout, iplist, False)
+                self.remote_reader, self.remote_writer, self.ppname = \
+                    await open_connection(addr, port, self.pproxy, self.timeout, iplist, False)
 
                 if self.ppname != self.pproxy.name:
                     self._proxylist.insert(0, self.pproxy)
@@ -415,7 +430,9 @@ class http_handler(base_proxy_handler):
                     auth = '%s:%s' % (self.pproxy.username, self.pproxy.password)
                     req.append('Proxy-Authorization: Basic %s' % base64.b64encode(auth.encode()))
             else:
-                req.append('%s /%s %s\r\n' % (self.command, '/'.join(self.path.split('/')[3:]), self.request_version))
+                req.append('%s /%s %s\r\n' % (self.command,
+                                              '/'.join(self.path.split('/')[3:]),
+                                              self.request_version))
             # Does the client want to close connection after this request?
             conntype = self.headers.get('Connection', "")
             if self.request_version >= "HTTP/1.1":
@@ -461,7 +478,8 @@ class http_handler(base_proxy_handler):
             # send request body
             if not skip:
                 content_length = int(self.headers.get('Content-Length', 0))
-                if self.headers.get("Transfer-Encoding") and self.headers.get("Transfer-Encoding") != "identity":
+                if self.headers.get("Transfer-Encoding") and \
+                        self.headers.get("Transfer-Encoding") != "identity":
                     if self.rbuffer:
                         self.remote_writer.write(b''.join(self.rbuffer))
                     flag = 1
@@ -490,7 +508,8 @@ class http_handler(base_proxy_handler):
                         content_length -= len(data)
                         self.remote_writer.write(data)
                     while content_length:
-                        data = await self.client_reader_readexactly(min(self.bufsize, content_length))
+                        data = await self.client_reader_readexactly(min(self.bufsize,
+                                                                        content_length))
                         if not data:
                             break
                         content_length -= len(data)
@@ -508,7 +527,7 @@ class http_handler(base_proxy_handler):
                 response_line, protocol_version, response_status, _ = \
                     await self.read_resp_line()
 
-            header_data, response_header = await read_headers(self.remote_reader, timeout=self.timeout)
+            header_data, response_header = await read_headers(self.remote_reader, self.timeout)
 
             # check response headers
             conntype = response_header.get('Connection', "")
@@ -532,7 +551,8 @@ class http_handler(base_proxy_handler):
             else:
                 content_length = None
 
-            if response_status in (301, 302) and self.conf.GET_PROXY.bad302(response_header.get('Location')):
+            if response_status in (301, 302) and \
+                    self.conf.GET_PROXY.bad302(response_header.get('Location')):
                 raise IOError(0, 'Bad 302!')
 
             self.wfile_write(response_line)
@@ -540,7 +560,8 @@ class http_handler(base_proxy_handler):
             # read response body
             if self.command == 'HEAD' or response_status in (204, 205, 304):
                 pass
-            elif response_header.get("Transfer-Encoding") and response_header.get("Transfer-Encoding") != "identity":
+            elif response_header.get("Transfer-Encoding") and \
+                    response_header.get("Transfer-Encoding") != "identity":
                 flag = 1
                 while flag:
                     trunk_lenth = await self.remote_reader.readline()
@@ -579,7 +600,8 @@ class http_handler(base_proxy_handler):
                     pass
 
             self.wfile_write()
-            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True if response_status < 400 else False, self.failed_parents, self.ppname)
+            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True,
+                                       self.failed_parents, self.ppname)
             self.pproxy.log(self.request_host[0], rtime)
             if remote_close or self.close_connection:
                 self.remote_writer.write_eof()
@@ -588,15 +610,16 @@ class http_handler(base_proxy_handler):
                 self.close_connection = True
             else:
                 # keep for next request
-                self.HTTPCONN_POOL.put((self.client_address[0], self.request_host), (self.remote_reader, self.remote_writer), self.ppname if '(pooled)' in self.ppname else (self.ppname + '(pooled)'))
+                ppn = self.ppname if '(pooled)' in self.ppname else (self.ppname + '(pooled)')
+                self.HTTPCONN_POOL.put((self.client_address[0], self.request_host),
+                                       (self.remote_reader, self.remote_writer),
+                                       ppn)
                 self.remote_writer = None
         except ClientError:
             self.logger.error('client error')
             self.close_connection = True
             return
-        except asyncio.CancelledError:
-            raise
-        except (asyncio.TimeoutError, ConnectionRefusedError, ConnectionResetError, ValueError, asyncio.IncompleteReadError, socket.gaierror) as e:
+        except (asyncio.TimeoutError, OSError, ValueError, asyncio.IncompleteReadError) as err:
             if self.remote_writer:
                 try:
                     self.remote_writer.write_eof()
@@ -604,7 +627,9 @@ class http_handler(base_proxy_handler):
                     pass
                 self.remote_writer.close()
                 self.remote_writer = None
-            await self.on_GET_Error(e)
+            await self.on_GET_Error(err)
+        except asyncio.CancelledError:
+            raise
         except Exception as err:
             self.close_connection = True
             self.logger.error('http_handler')
@@ -613,11 +638,13 @@ class http_handler(base_proxy_handler):
 
     async def on_GET_Error(self, err):
         if self.ppname:
-            self.logger.warning('%s %s via %s failed: %s', self.command, self.shortpath, self.ppname, repr(err))
+            self.logger.warning('%s %s via %s failed: %r',
+                                self.command, self.shortpath, self.ppname, err)
             self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
             await self._do_GET(True)
             return
-        self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False, self.failed_parents, self.ppname)
+        self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
+                                   self.failed_parents, self.ppname)
         return self.send_error(504)
 
     do_HEAD = do_POST = do_PUT = do_DELETE = do_OPTIONS = do_PATCH = do_TRACE = do_GET
@@ -661,13 +688,13 @@ class http_handler(base_proxy_handler):
         if new_url:
             self.logger.debug('redirect %s, %s %s', new_url, self.command, self.path)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
-                self.logger.info('%s %s %s send error %s', self.command, self.shortpath or self.path, self.client_address[0], new_url)
+                self.logger.info('%s %s send error %s', self.command, self.path, new_url)
                 return
             if new_url.lower() in ('reset', 'return'):
-                self.logger.info('%s %s %s reset', self.command, self.shortpath or self.path, self.client_address[0])
+                self.logger.info('%s %s reset', self.command, self.path)
                 return
             if new_url.lower() == 'adblock':
-                self.logger.debug('%s %s adblock', self.command, self.shortpath or self.path)
+                self.logger.debug('%s %s adblock', self.command, self.path)
                 return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
@@ -677,7 +704,8 @@ class http_handler(base_proxy_handler):
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
-                if self.request_host[1] in range(self.conf.listen[1], self.conf.listen[1] + len(self.conf.profile)):
+                if self.request_host[1] in range(self.conf.listen[1],
+                                                 self.conf.listen[1] + len(self.conf.profile)):
                     # prevent loop
                     return
             else:
@@ -694,25 +722,29 @@ class http_handler(base_proxy_handler):
                 return
 
         if self.getparent():
-            self.conf.GET_PROXY.notify(self.command, self.path, self.path, False, self.failed_parents, self.ppname)
+            self.conf.GET_PROXY.notify(self.command, self.path, self.path, False,
+                                       self.failed_parents, self.ppname)
             return
 
         iplist = None
-        if self.pproxy.name == '_D1R3CT_' and self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
+        if self.pproxy.name == '_D1R3CT_' and\
+                self.request_host[0] in self.conf.HOSTS and not self.failed_parents:
             iplist = self.conf.HOSTS.get(self.request_host[0])
             self._proxylist.insert(0, self.pproxy)
 
         self.set_timeout()
 
         try:
-            self.logger.info('%s %s via %s. %s', self.command, self.path, self.pproxy.name, self.client_address[1])
+            self.logger.info('%s %s via %s. %s',
+                             self.command, self.path, self.pproxy.name, self.client_address[1])
             addr, port = parse_hostport(self.path, 443)
-            self.remote_reader, self.remote_writer, self.ppname = await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
-        except asyncio.CancelledError:
-            raise
-        except (asyncio.TimeoutError, ConnectionRefusedError, asyncio.IncompleteReadError, ConnectionResetError, socket.gaierror) as err:
-            self.logger.warning('%s %s via %s failed on connect! %r', self.command, self.path, self.ppname, err)
-            self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False, self.failed_parents, self.ppname)
+            self.remote_reader, self.remote_writer, self.ppname = \
+                await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
+        except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
+            self.logger.warning('%s %s via %s failed on connect! %r',
+                                self.command, self.path, self.ppname, err)
+            self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False,
+                                       self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
         self.logger.debug('%s connected', self.path)
@@ -725,8 +757,8 @@ class http_handler(base_proxy_handler):
 
         # check, report, retry
         if context.retryable and not context.local_eof:
-            # self.logger.warning('%s %s via %s forward failed! retry...', self.command, self.path, self.ppname)
-            self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False, self.failed_parents, self.ppname)
+            self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False,
+                                       self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
 
@@ -741,6 +773,7 @@ class http_handler(base_proxy_handler):
         except asyncio.CancelledError:
             raise
         except Exception as err:
+            self.logger.error('http_handler.forward')
             self.logger.error(repr(err))
             self.logger.error(traceback.format_exc())
             context.err = err
@@ -813,7 +846,8 @@ class http_handler(base_proxy_handler):
                 if count == 3 and self.command == 'CONNECT':
                     # log server response time
                     self.pproxy.log(self.request_host[0], rtime)
-                    self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, True, self.failed_parents, self.ppname)
+                    self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, True,
+                                               self.failed_parents, self.ppname)
                 context.retryable = False
                 write_to.write(data)
                 await write_to.drain()
@@ -833,20 +867,23 @@ class http_handler(base_proxy_handler):
 
     def getparent(self):
         if self._proxylist is None:
-            self._proxylist = self.conf.GET_PROXY.get_proxy(self.path, self.request_host, self.command, self.request_ip, self.server.profile)
+            self._proxylist = self.conf.GET_PROXY.get_proxy(
+                self.path, self.request_host, self.command, self.request_ip, self.server.profile)
         if not self._proxylist:
             self.ppname = ''
             self.pproxy = None
             return 1
         self.pproxy = self._proxylist.pop(0)
         self.ppname = self.pproxy.name
+        return 0
 
     def set_timeout(self):
         if self._proxylist:
             if self.ppname == '_D1R3CT_':
                 self.timeout = self.conf.timeout
             else:
-                self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout + 1, MAX_TIMEOUT)
+                self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout - 1,
+                                   MAX_TIMEOUT)
         else:
             self.timeout = MAX_TIMEOUT
 
@@ -886,11 +923,12 @@ class http_handler(base_proxy_handler):
                 return
 
         if parse.path == '/api/localrule' and self.command == 'GET':
-            data = json.dumps([(rule, self.conf.GET_PROXY.local.expire[rule]) for rule in self.conf.GET_PROXY.local.rules])
+            data = json.dumps([(rule, self.conf.GET_PROXY.local.expire[rule])
+                               for rule in self.conf.GET_PROXY.local.rules])
             self.write(code=200, data=data, ctype='application/json')
             return
         if parse.path == '/api/localrule' and self.command == 'POST':
-            'accept a json encoded tuple: (str rule, int exp)'
+            # accept a json encoded tuple: (str rule, int exp)
             rule, exp = json.loads(body)
             self.conf.GET_PROXY.add_temp(rule, exp)
             self.write(200)
@@ -912,7 +950,7 @@ class http_handler(base_proxy_handler):
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/redirector' and self.command == 'POST':
-            'accept a json encoded tuple: (str rule, str dest)'
+            # accept a json encoded tuple: (str rule, str dest)
             rule, dest = json.loads(body)
             self.conf.GET_PROXY.add_redirect(rule, dest)
             self.write(200)
@@ -930,13 +968,14 @@ class http_handler(base_proxy_handler):
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/proxy' and self.command == 'GET':
-            data = [(p.name, ('%s://%s:%s' % (p.scheme, p._host_port[0], p._host_port[1])) if p.proxy else '', p._priority, p.get_avg_resp_time()) for k, p in self.conf.parentlist.dict.items()]
+            data = [(p.name, p.short, p.priority, p.get_avg_resp_time())
+                    for _, p in self.conf.parentlist.dict.items()]
             data = sorted(data, key=lambda item: item[0])
             data = json.dumps(sorted(data, key=lambda item: item[2]))
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/proxy' and self.command == 'POST':
-            'accept a json encoded tuple: (str name, str proxy)'
+            # accept a json encoded tuple: (str name, str proxy)
             name, proxy = json.loads(body)
             if 'FWLITE:' in name:
                 self.send_error(401)
@@ -962,8 +1001,8 @@ class http_handler(base_proxy_handler):
                 self.write(200, data=proxy_name, ctype='application/json')
                 self.conf.stdout('proxy')
                 return
-            except Exception as e:
-                self.send_error(404, repr(e))
+            except Exception as err:
+                self.send_error(404, repr(err))
                 return
         if parse.path.startswith('/api/proxy/') and self.command == 'GET':
             try:
@@ -972,11 +1011,12 @@ class http_handler(base_proxy_handler):
                 proxy = self.conf.parentlist.get(proxy_name)
                 self.write(200, data=proxy.proxy, ctype='text/plain')
                 return
-            except Exception as e:
-                self.send_error(404, repr(e))
+            except Exception as err:
+                self.send_error(404, repr(err))
                 return
         if parse.path == '/api/forward' and self.command == 'GET':
-            data = [('%s:%s' % target, proxy, port) for target, proxy, port in self.conf.port_forward.list()]
+            data = [('%s:%s' % target, proxy, port)
+                    for target, proxy, port in self.conf.port_forward.list()]
             data = json.dumps(data)
             self.write(200, data=data, ctype='application/json')
             return

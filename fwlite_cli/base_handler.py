@@ -57,12 +57,12 @@ async def read_headers(reader, timeout=1):
     return header_data, headers
 
 
-class base_handler(BaseHTTPRequestHandler):
+class BaseHandler(BaseHTTPRequestHandler):
     bufsize = 8192
     server_version = "BaseHTTPServer/" + __version__
     default_request_version = "HTTP/1.1"
 
-    def __init__(self, server):  #pylint: disable=super-init-not-called
+    def __init__(self, server):  # pylint: disable=super-init-not-called
         # Not calling super-init, not for TCPServer
         self.server = server
         self.logger = server.logger
@@ -74,7 +74,7 @@ class base_handler(BaseHTTPRequestHandler):
         self.path = ''
         self.headers = None
 
-    async def handle(self, client_reader, client_writer):
+    async def handle(self, client_reader, client_writer):  # pylint: disable=W0221
         self.client_reader = client_reader
         self.client_writer = client_writer
         self.client_address = client_writer.get_extra_info('peername')
@@ -117,7 +117,8 @@ class base_handler(BaseHTTPRequestHandler):
 
         try:
             # read request line
-            self.requestline, command, path, request_version = await read_response_line(self.client_reader, 60)
+            self.requestline, command, path, request_version = \
+                await read_response_line(self.client_reader, 60)
 
             # read headers
             _, self.headers = await read_headers(self.client_reader)

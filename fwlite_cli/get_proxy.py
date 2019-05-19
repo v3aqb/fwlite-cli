@@ -24,7 +24,7 @@ import logging
 from repoze.lru import lru_cache
 
 
-class get_proxy(object):
+class get_proxy:
     """docstring for parent_proxy"""
     logger = logging.getLogger('get_proxy')
     logger.setLevel(logging.INFO)
@@ -204,7 +204,7 @@ class get_proxy(object):
         parentlist = self.conf.parentlist.parents()
 
         def priority(parent):
-            return parent.priority(command, host)
+            return parent.get_priority(command, host)
 
         if len(parentlist) > 1:
             # random.shuffle(parentlist)
