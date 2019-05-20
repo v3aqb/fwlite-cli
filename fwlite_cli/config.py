@@ -317,7 +317,7 @@ class Config:
         self.REDIRECTOR = redirector(self)
         self.GET_PROXY = get_proxy(self)
         bad_ip = set(self.userconf.dget('dns', 'bad_ip', '').split('|'))
-        apf = None if self.rproxy else [self.GET_PROXY.gfwlist, self.GET_PROXY.local]
+        apf = None if self.rproxy else self.GET_PROXY
         self.resolver = Resolver(apf, bad_ip)
 
     def reload(self):

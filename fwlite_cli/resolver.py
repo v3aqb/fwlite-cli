@@ -48,17 +48,15 @@ async def resolve(host, port):
 
 
 class Resolver:
-    def __init__(self, apfilter_list, bad_ip):
-        self.apfilter_list = apfilter_list
+    def __init__(self, get_proxy, bad_ip):
+        self.get_proxy = get_proxy
         self.bad_ip = bad_ip
+        self.dummy_ip = ip_address('0.0.0.0')
 
     def is_poisoned(self, domain):
-        if not self.apfilter_list:
-            return None
         url = 'http://%s/' % domain
-        for apfilter in self.apfilter_list:
-            if apfilter.match(url, domain):
-                return True
+        if self.get_proxy and self.get_proxy.ifgfwed(url, domain, 0, self.dummy_ip, 1):
+            return True
         return False
 
     async def resolve(self, host, port, dirty=False):
@@ -80,9 +78,7 @@ class Resolver:
             if result[0][1] in self.bad_ip:
                 return []
             return result
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:
+        except OSError as err:
             logger.warning('resolving %s failed: %r', host, err)
             return []
 
