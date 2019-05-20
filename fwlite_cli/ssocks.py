@@ -197,10 +197,9 @@ class SSConn:
             return
 
         while True:
-            intv = 5 if self.data_recved else 1
             try:
                 fut = self._read()
-                data = await asyncio.wait_for(fut, timeout=intv)
+                data = await asyncio.wait_for(fut, timeout=5)
                 self.last_active = time.time()
                 self.data_recved = True
             except asyncio.TimeoutError:

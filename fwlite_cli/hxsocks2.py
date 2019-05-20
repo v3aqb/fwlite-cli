@@ -478,10 +478,10 @@ class Hxs2Connection:
             timeout=self.timeout,
             tunnel=True)
 
+        # prep key exchange request
         self.__pskcipher = Encryptor(self._psk, self.method)
         ecc = ECC(self.__pskcipher._key_len)
         pubk = ecc.get_pub_key()
-        self.logger.debug('hxsocks2 send key exchange request')
         ts = int(time.time()) // 30
         ts = struct.pack('>I', ts)
         padding_len = random.randint(64, 255)
@@ -492,6 +492,8 @@ class Hxs2Connection:
         data = chr(20).encode() + struct.pack('>H', len(data)) + data
 
         ct = self.__pskcipher.encrypt(data)
+
+        # send key exchange request
         self.remote_writer.write(ct)
         await self.remote_writer.drain()
 
@@ -559,7 +561,7 @@ class Hxs2Connection:
             self.logger.error('hxs getKey Error. bad password or timestamp.')
         raise ConnectionResetError(0, 'hxs getKey Error')
 
-    async def _rfile_read(self, size, timeout=1):
+    async def _rfile_read(self, size, timeout=3):
         fut = self.remote_reader.readexactly(size)
         data = await asyncio.wait_for(fut, timeout=timeout)
         return data
