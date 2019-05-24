@@ -77,7 +77,7 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel
             req = ['CONNECT %s:%s HTTP/1.1\r\n' % (addr, port), ]
             if proxy.username:
                 auth = '%s:%s' % (proxy.username, proxy.password)
-                req.append('Proxy-Authorization: Basic %s\r\n' % base64.b64encode(auth.encode()))
+                req.append('Proxy-Authorization: Basic %s\r\n' % base64.b64encode(auth.encode()).decode())
             req.append('Host: %s:%s\r\n\r\n' % (addr, port))
             remote_writer.write(''.join(req).encode())
 

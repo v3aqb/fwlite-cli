@@ -428,7 +428,7 @@ class http_handler(BaseProxyHandler):
                 req.append('%s %s %s\r\n' % (self.command, self.path, self.request_version))
                 if self.pproxy.username:
                     auth = '%s:%s' % (self.pproxy.username, self.pproxy.password)
-                    req.append('Proxy-Authorization: Basic %s' % base64.b64encode(auth.encode()))
+                    req.append('Proxy-Authorization: Basic %s' % base64.b64encode(auth.encode()).decode())
             else:
                 req.append('%s /%s %s\r\n' % (self.command,
                                               '/'.join(self.path.split('/')[3:]),
