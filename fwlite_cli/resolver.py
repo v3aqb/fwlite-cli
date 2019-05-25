@@ -78,7 +78,7 @@ class Resolver:
             if result[0][1] in self.bad_ip:
                 return []
             return result
-        except OSError as err:
+        except (OSError, asyncio.TimeoutError) as err:
             logger.warning('resolving %s failed: %r', host, err)
             return []
 
