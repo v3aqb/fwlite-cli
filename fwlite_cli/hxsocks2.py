@@ -478,6 +478,7 @@ class Hxs2Connection:
             timeout=self.timeout,
             tunnel=True)
 
+        self.remote_writer.transport.set_write_buffer_limits(0, 0)
         # prep key exchange request
         self.__pskcipher = Encryptor(self._psk, self.method)
         ecc = ECC(self.__pskcipher._key_len)
