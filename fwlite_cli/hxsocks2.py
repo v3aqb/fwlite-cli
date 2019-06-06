@@ -65,6 +65,8 @@ EOF_RECV = 2  # RECV END_STREAM
 CLOSED = 3
 END_STREAM_FLAG = 1
 KNOWN_HOSTS = {}
+RECV = 0
+SEND = 1
 
 # load known certs
 if not os.path.exists('./.hxs_known_hosts'):
@@ -149,6 +151,9 @@ class Hxs2Connection:
         self._stream_status = {}
         self._last_active = {}
         self._last_active_c = time.time()
+
+        self._last_direction = SEND
+        self._last_count = 0
 
         self._stat_data_recv = 0
         self._stat_total_recv = 1
@@ -282,6 +287,10 @@ class Hxs2Connection:
         if type_ != 6:
             self._last_active_c = time.time()
 
+        if self._last_direction == RECV:
+            self._last_direction = SEND
+            self._last_count = 0
+
         async with self._lock:
             try:
                 header = struct.pack('>BBH', type_, flags, stream_id)
@@ -290,9 +299,13 @@ class Hxs2Connection:
                 self.remote_writer.write(struct.pack('>H', len(ct)) + ct)
                 await self.remote_writer.drain()
                 self._stat_total_sent += len(ct) + 2
+                self._last_count += 1
             except ConnectionResetError:
                 self.connection_lost = True
                 self._manager.remove(self)
+            else:
+                if type_ == 0 and self._last_count > 10 and random.random() < 0.01:
+                    asyncio.ensure_future(self.send_ping())
 
     async def send_ping(self):
         if self._last_ping == 0:
@@ -346,7 +359,12 @@ class Hxs2Connection:
                 payload = io.BytesIO(payload)
                 self.logger.debug('recv frame_type: %s, stream_id: %s', frame_type, stream_id)
 
-                if random.random() < 0.02:
+                if self._last_direction == SEND:
+                    self._last_direction = RECV
+                    self._last_count = 0
+                self._last_count += 1
+
+                if self._last_count > 10 and random.random() < 0.05:
                     await self.send_frame(6, 1, 0, b'\x00' * random.randint(64, 256))
 
                 if frame_type == 0:
