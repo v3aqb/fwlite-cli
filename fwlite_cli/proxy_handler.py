@@ -54,6 +54,7 @@ class ClientError(Exception):
 class ForwardContext:
     def __init__(self):
         self.last_active = time.time()
+        self.first_send = 0
         # eof recieved
         self.remote_eof = False
         self.local_eof = False
@@ -785,7 +786,7 @@ class http_handler(BaseProxyHandler):
             # send self.rbuffer
             if self.rbuffer:
                 self.remote_writer.write(b''.join(self.rbuffer))
-                context.timelog = time.clock()
+                context.first_send = time.clock()
         while True:
             intv = 1 if context.retryable else 5
             try:
@@ -805,8 +806,8 @@ class http_handler(BaseProxyHandler):
                 context.last_active = time.time()
                 if context.retryable:
                     self.rbuffer.append(data)
-                if not context.timelog:
-                    context.timelog = time.clock()
+                if not context.first_send:
+                    context.first_send = time.clock()
                 write_to.write(data)
                 await write_to.drain()
             except ConnectionResetError:
@@ -842,7 +843,7 @@ class http_handler(BaseProxyHandler):
             try:
                 context.last_active = time.time()
                 if count == 1:
-                    rtime = time.clock() - context.timelog
+                    rtime = time.clock() - context.first_send
                 if count == 3 and self.command == 'CONNECT':
                     # log server response time
                     self.pproxy.log(self.request_host[0], rtime)
