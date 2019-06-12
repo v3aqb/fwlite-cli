@@ -364,7 +364,7 @@ class Hxs2Connection:
                     self._last_count = 0
                 self._last_count += 1
 
-                if self._last_count > 10 and random.random() < 0.05:
+                if self._last_count > 10 and random.random() < 0.01:
                     await self.send_frame(6, 1, 0, b'\x00' * random.randint(64, 256))
 
                 if frame_type == 0:
