@@ -165,6 +165,8 @@ class Hxs2Connection:
     async def connect(self, addr, port, timeout=3):
         self.logger.debug('hxsocks2 send connect request')
         self.timeout = timeout
+
+        usn, psw = (self.proxy.username, self.proxy.password)
         async with self._lock:
             if self.connection_lost:
                 self._manager.remove(self)
@@ -186,6 +188,10 @@ class Hxs2Connection:
         payload = b''.join([chr(len(addr)).encode('latin1'),
                             addr.encode(),
                             struct.pack('>H', port),
+                            chr(len(usn)).encode('latin1'),
+                            usn.encode('utf8'),
+                            chr(len(psw)).encode('latin1'),
+                            psw.encode('utf8'),
                             b'\x00' * random.randint(64, 255),
                             ])
         stream_id = self._next_stream_id
@@ -486,7 +492,6 @@ class Hxs2Connection:
 
     async def get_key(self):
         self.logger.debug('hxsocks2 getKey')
-        usn, psw = (self.proxy.username, self.proxy.password)
         self.logger.info('%s connect to server', self.name)
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
@@ -501,12 +506,10 @@ class Hxs2Connection:
         self.__pskcipher = Encryptor(self._psk, self.method)
         ecc = ECC(self.__pskcipher._key_len)
         pubk = ecc.get_pub_key()
-        ts = int(time.time()) // 30
-        ts = struct.pack('>I', ts)
         padding_len = random.randint(64, 255)
         data = b''.join([chr(len(pubk)).encode('latin1'),
                          pubk,
-                         hmac.new(psw.encode(), ts + pubk + usn.encode(), hashlib.sha256).digest(),
+                         hmac.new(self._psk.encode(), pubk, hashlib.sha256).digest(),
                          b'\x00' * padding_len])
         data = chr(20).encode() + struct.pack('>H', len(data)) + data
 
@@ -562,7 +565,7 @@ class Hxs2Connection:
                 self.logger.error('hxs: server %s certificate mismatch! PLEASE CHECK!', server_id)
                 raise ConnectionResetError(0, 'hxs: bad certificate')
 
-            if auth == hmac.new(psw.encode(), pubk + server_key + usn.encode(), hashlib.sha256).digest():
+            if auth == hmac.new(self._psk.encode(), pubk + server_key, hashlib.sha256).digest():
                 try:
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
                     shared_secret = ecc.get_dh_key(server_key)
