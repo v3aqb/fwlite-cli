@@ -170,11 +170,11 @@ class get_proxy:
         if level == 2 and uri.startswith('http://'):
             return True
 
-        if self.conf.HOSTS.get(host):
-            return None
-
         if level == 3:
             return True
+
+        if self.conf.HOSTS.get(host):
+            return None
 
         if self.conf.gfwlist_enable and self.gfwlist.match(uri, host):
             return True
