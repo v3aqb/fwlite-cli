@@ -40,7 +40,9 @@ WELCOME = '''<!DOCTYPE html>
 <html>
 <body>
 <p>fwlite running...</p>
-<p><a href="http://%s:%d/api/log">Check Log</a></p>
+<p><a href="http://{host}:{port}/api/log">Check Log</a></p>
+<p><a href="http://{host}:{port}/api/localrule">Local Rule</a></p>
+<p><a href="http://{host}:{port}/api/proxy">Proxy</a></p>
 </body>
 </html>'''
 
@@ -337,7 +339,7 @@ class http_handler(BaseProxyHandler):
                 if self.request_host[1] in range(self.conf.listen[1],
                                                  self.conf.listen[1] + len(self.conf.profile)):
                     if parse.path == '/' and self.command == 'GET':
-                        self.write(200, data=WELCOME % ('127.0.0.1', self.request_host[1]),
+                        self.write(200, data=WELCOME.format(host=self.request_host[0], port=self.request_host[1]),
                                    ctype='text/html; charset=utf-8')
                         return
                     await self.api(parse)
@@ -350,7 +352,7 @@ class http_handler(BaseProxyHandler):
             if self.request_host[1] in range(self.conf.listen[1],
                                              self.conf.listen[1] + len(self.conf.profile)):
                 if parse.path == '/' and self.command == 'GET':
-                    self.write(200, data=WELCOME % (self.request_host[0], self.request_host[1]),
+                    self.write(200, data=WELCOME.format(host=self.request_host[0], port=self.request_host[1]),
                                ctype='text/html; charset=utf-8')
                     return
                 if not self.conf.remoteapi:
@@ -723,6 +725,7 @@ class http_handler(BaseProxyHandler):
                 return
 
         if self.getparent():
+            self.logger.error('no more proxy available.')
             self.conf.GET_PROXY.notify(self.command, self.path, self.path, False,
                                        self.failed_parents, self.ppname)
             return
@@ -925,7 +928,8 @@ class http_handler(BaseProxyHandler):
 
         if parse.path == '/api/localrule' and self.command == 'GET':
             data = json.dumps([(rule, self.conf.GET_PROXY.local.expire[rule])
-                               for rule in self.conf.GET_PROXY.local.rules])
+                               for rule in self.conf.GET_PROXY.local.rules],
+                              indent=4)
             self.write(code=200, data=data, ctype='application/json')
             return
         if parse.path == '/api/localrule' and self.command == 'POST':
@@ -947,7 +951,7 @@ class http_handler(BaseProxyHandler):
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/redirector' and self.command == 'GET':
-            data = json.dumps(self.conf.REDIRECTOR.list())
+            data = json.dumps(self.conf.REDIRECTOR.list(), indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/redirector' and self.command == 'POST':
@@ -972,7 +976,7 @@ class http_handler(BaseProxyHandler):
             data = [(p.name, p.short, p.priority, p.get_avg_resp_time())
                     for _, p in self.conf.parentlist.dict.items()]
             data = sorted(data, key=lambda item: item[0])
-            data = json.dumps(sorted(data, key=lambda item: item[2]))
+            data = json.dumps(sorted(data, key=lambda item: item[2]), indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/proxy' and self.command == 'POST':
@@ -1018,7 +1022,7 @@ class http_handler(BaseProxyHandler):
         if parse.path == '/api/forward' and self.command == 'GET':
             data = [('%s:%s' % target, proxy, port)
                     for target, proxy, port in self.conf.port_forward.list()]
-            data = json.dumps(data)
+            data = json.dumps(data, indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/forward' and self.command == 'POST':
