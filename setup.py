@@ -1,9 +1,5 @@
 
-from setuptools import setup, find_packages
-
-long_description = 'A anti-censorship HTTP proxy with builtin shadowsocks support'
-
-install_requires = ["hxcrypto", "repoze.lru"]
+from setuptools import setup
 
 setup(
     name="fwlite-cli",
@@ -13,7 +9,7 @@ setup(
     author='v3aqb',
     author_email='null',
     url='https://github.com/v3aqb/fwlite-cli',
-    packages=find_packages(),
+    packages=['fwlite-cli'],
     package_data={
         'fwlite-cli': ['README.rst', 'LICENSE']
     },
@@ -24,7 +20,7 @@ setup(
         ]
     },
     dependency_links=['https://github.com/v3aqb/hxcrypto/archive/master.zip#egg=hxcrypto-0.0.3'],
-    install_requires=install_requires,
+    install_requires=["hxcrypto", "repoze.lru"],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3.5',
@@ -32,5 +28,4 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Topic :: Internet :: Proxy Servers',
     ],
-    long_description=long_description,
 )
