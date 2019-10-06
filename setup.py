@@ -9,7 +9,7 @@ setup(
     author='v3aqb',
     author_email='null',
     url='https://github.com/v3aqb/fwlite-cli',
-    packages=['fwlite-cli'],
+    packages=['fwlite_cli'],
     package_data={
         'fwlite-cli': ['README.rst', 'LICENSE']
     },
