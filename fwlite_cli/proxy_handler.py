@@ -55,7 +55,7 @@ class ClientError(Exception):
 
 class ForwardContext:
     def __init__(self):
-        self.last_active = time.time()
+        self.last_active = time.monotonic()
         self.first_send = 0
         # eof recieved
         self.remote_eof = False
@@ -520,9 +520,9 @@ class http_handler(BaseProxyHandler):
                             self.rbuffer.append(data)
                         self.remote_writer.write(data)
                 # read response line
-                timelog = time.clock()
+                timelog = time.monotonic()
                 response_line, protocol_version, response_status, _ = await self.read_resp_line()
-                rtime = time.clock() - timelog
+                rtime = time.monotonic() - timelog
             # read response headers
             while response_status == 100:
                 hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
@@ -626,7 +626,7 @@ class http_handler(BaseProxyHandler):
             if self.remote_writer:
                 try:
                     self.remote_writer.write_eof()
-                except ConnectionResetError:
+                except OSError:
                     pass
                 self.remote_writer.close()
                 self.remote_writer = None
@@ -789,14 +789,14 @@ class http_handler(BaseProxyHandler):
             # send self.rbuffer
             if self.rbuffer:
                 self.remote_writer.write(b''.join(self.rbuffer))
-                context.first_send = time.clock()
+                context.first_send = time.monotonic()
         while True:
             intv = 1 if context.retryable else 5
             try:
                 fut = self.client_reader.read(self.bufsize)
                 data = await asyncio.wait_for(fut, timeout=intv)
             except asyncio.TimeoutError:
-                if time.time() - context.last_active > timeout or context.remote_eof:
+                if time.monotonic() - context.last_active > timeout or context.remote_eof:
                     data = b''
                 else:
                     continue
@@ -806,11 +806,11 @@ class http_handler(BaseProxyHandler):
             if not data:
                 break
             try:
-                context.last_active = time.time()
+                context.last_active = time.monotonic()
                 if context.retryable:
                     self.rbuffer.append(data)
                 if not context.first_send:
-                    context.first_send = time.clock()
+                    context.first_send = time.monotonic()
                 write_to.write(data)
                 await write_to.drain()
             except ConnectionResetError:
@@ -820,7 +820,7 @@ class http_handler(BaseProxyHandler):
         # client closed, tell remote
         try:
             write_to.write_eof()
-        except ConnectionResetError:
+        except OSError:
             pass
 
     async def forward_from_remote(self, read_from, write_to, context, timeout=60):
@@ -831,12 +831,12 @@ class http_handler(BaseProxyHandler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
                 count += 1
-            except ConnectionResetError:
+            except (ConnectionResetError, OSError):
                 data = b''
-            except (asyncio.TimeoutError, OSError):
-                if time.time() - context.last_active > timeout or context.local_eof:
+            except asyncio.TimeoutError:
+                if time.monotonic() - context.last_active > timeout or context.local_eof:
                     data = b''
-                elif context.retryable and time.time() - context.last_active > self.timeout:
+                elif context.retryable and time.monotonic() - context.last_active > self.timeout:
                     data = b''
                 else:
                     continue
@@ -844,9 +844,9 @@ class http_handler(BaseProxyHandler):
             if not data:
                 break
             try:
-                context.last_active = time.time()
+                context.last_active = time.monotonic()
                 if count == 1:
-                    rtime = time.clock() - context.first_send
+                    rtime = time.monotonic() - context.first_send
                 if count == 3 and self.command == 'CONNECT':
                     # log server response time
                     self.pproxy.log(self.request_host[0], rtime)
@@ -866,7 +866,7 @@ class http_handler(BaseProxyHandler):
         # DO NOT CLOSE Client Connection, for possible retry
         # try:
         #     write_to.write_eof()
-        # except (ConnectionResetError, OSError):
+        # except OSError:
         #     pass
 
     def getparent(self):
