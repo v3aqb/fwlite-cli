@@ -673,11 +673,15 @@ class http_handler(BaseProxyHandler):
                     self.logger.debug('sni: %s', server_name)
                     self.logger.debug('path: %s', self.path)
                     if server_name and server_name not in self.path:
-                        _, _, port = self.path.partition(':')
-                        self.path = '%s:%s' % (server_name, port)
-                        self.logger.info('CONNECT: SNI rewrite path: %s', self.path)
+                        self.shortpath = server_name
                 except Exception:
                     pass
+            elif data in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'OPTI', b'PATC', b'TRAC'):
+                data += await self.client_reader_read(8196)
+                for line in data.splitlines():
+                    if line.startswith(b'Host: '):
+                        self.shortpath = line.strip().decode()[6:]
+                        break
         except ClientError:
             return
 
@@ -685,6 +689,9 @@ class http_handler(BaseProxyHandler):
             self.rbuffer.append(data)
 
         self.request_host = parse_hostport(self.path)
+        if self.shortpath:
+            self.request_host = (self.shortpath, self.request_host[1])
+            self.shortpath = '%s:%d' % self.request_host
 
         # redirector
         new_url = self.conf.GET_PROXY.redirect(self)
@@ -726,8 +733,8 @@ class http_handler(BaseProxyHandler):
 
         if self.getparent():
             self.logger.error('no more proxy available.')
-            self.conf.GET_PROXY.notify(self.command, self.path, self.path, False,
-                                       self.failed_parents, self.ppname)
+            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
+                                       False, self.failed_parents, self.ppname)
             return
 
         iplist = None
@@ -739,16 +746,16 @@ class http_handler(BaseProxyHandler):
         self.set_timeout()
 
         try:
-            self.logger.info('%s %s via %s. %s',
-                             self.command, self.path, self.pproxy.name, self.client_address[1])
+            self.logger.info('%s %s via %s. %s', self.command, self.shortpath or self.path,
+                             self.pproxy.name, self.client_address[1])
             addr, port = parse_hostport(self.path, 443)
             self.remote_reader, self.remote_writer, self.ppname = \
                 await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
-                                self.command, self.path, self.ppname, err)
-            self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False,
-                                       self.failed_parents, self.ppname)
+                                self.command, self.shortpath or self.path, self.ppname, err)
+            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
+                                       False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
         self.logger.debug('%s connected', self.path)
@@ -761,8 +768,8 @@ class http_handler(BaseProxyHandler):
 
         # check, report, retry
         if context.retryable and not context.local_eof:
-            self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, False,
-                                       self.failed_parents, self.ppname)
+            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
+                                       False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
 
@@ -850,8 +857,8 @@ class http_handler(BaseProxyHandler):
                 if count == 3 and self.command == 'CONNECT':
                     # log server response time
                     self.pproxy.log(self.request_host[0], rtime)
-                    self.conf.GET_PROXY.notify(self.command, self.path, self.request_host, True,
-                                               self.failed_parents, self.ppname)
+                    self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
+                                               True, self.failed_parents, self.ppname)
                 context.retryable = False
                 write_to.write(data)
                 await write_to.drain()
@@ -872,7 +879,8 @@ class http_handler(BaseProxyHandler):
     def getparent(self):
         if self._proxylist is None:
             self._proxylist = self.conf.GET_PROXY.get_proxy(
-                self.path, self.request_host, self.command, self.request_ip, self.server.profile)
+                self.shortpath or self.path, self.request_host, self.command,
+                self.request_ip, self.server.profile)
         if not self._proxylist:
             self.ppname = ''
             self.pproxy = None
