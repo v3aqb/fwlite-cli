@@ -248,16 +248,19 @@ class http_handler(BaseProxyHandler):
         if isinstance(self.path, bytes):
             self.path = self.path.decode('latin1')
         if self.path.lower().startswith('ftp://'):
-            return self.send_error(400)
+            self.send_error(400, explain='GET ftp:// not supported')
+            return
 
         if self.path == '/pac':
             if self.headers['Host'].startswith(self.conf.local_ip):
-                return self.write(msg=self.conf.PAC, ctype='application/x-ns-proxy-autoconfig')
+                self.write(msg=self.conf.PAC, ctype='application/x-ns-proxy-autoconfig')
+                return
 
         # transparent proxy
         if self.path.startswith('/'):
             if 'Host' not in self.headers:
-                return self.send_error(403)
+                self.send_error(400, explain='Host not in headers')
+                return
             self.path = 'http://%s%s' % (self.headers['Host'], self.path)
 
         # fix request
@@ -272,14 +275,14 @@ class http_handler(BaseProxyHandler):
                                           '?' if parse.query else '')
 
         if 'Host' not in self.headers:
-            self.logger.warning('"Host" not in self.headers')
             request_host = parse_hostport(parse.netloc, 80)
         else:
             host = parse_hostport(self.headers['Host'], 80)
             netloc = parse_hostport(parse.netloc, 80)
             if host != netloc:
                 self.logger.warning('Host and URI mismatch! %s %s', self.path, self.headers['Host'])
-                # self.headers['Host'] = parse.netloc
+                self.send_error(400, explain='Host and URI mismatch!')
+                return
             request_host = parse_hostport(self.headers['Host'], 80)
 
         self.request_host = request_host
@@ -305,7 +308,7 @@ class http_handler(BaseProxyHandler):
                 return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
-                # TODO: sort by priority?
+                # sort by priority?
                 # random.shuffle(self._proxylist)
             else:
                 self.logger.info('redirect %s %s', self.shortpath, new_url)
@@ -314,7 +317,7 @@ class http_handler(BaseProxyHandler):
 
         parse = urlparse.urlparse(self.path)
 
-        # gather info
+        # gather info (redirector may change this)
         if 'Host' not in self.headers:
             self.logger.warning('"Host" not in self.headers')
             request_host = parse_hostport(parse.netloc, 80)
@@ -323,7 +326,8 @@ class http_handler(BaseProxyHandler):
             netloc = parse_hostport(parse.netloc, 80)
             if host != netloc:
                 self.logger.warning('Host and URI mismatch! %s %s', self.path, self.headers['Host'])
-                # self.headers['Host'] = parse.netloc
+                self.send_error(400, explain='Host and URI mismatch! (post redirect)')
+                return
             request_host = parse_hostport(self.headers['Host'], 80)
 
         self.request_host = request_host
@@ -336,10 +340,10 @@ class http_handler(BaseProxyHandler):
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
-                if self.request_host[1] in range(self.conf.listen[1],
-                                                 self.conf.listen[1] + len(self.conf.profile)):
+                if self.request_host[1] == self.conf.listen[1]:
                     if parse.path == '/' and self.command == 'GET':
-                        self.write(200, data=WELCOME.format(host=self.request_host[0], port=self.request_host[1]),
+                        self.write(200, data=WELCOME.format(host=self.request_host[0],
+                                                            port=self.request_host[1]),
                                    ctype='text/html; charset=utf-8')
                         return
                     await self.api(parse)
@@ -349,10 +353,10 @@ class http_handler(BaseProxyHandler):
                 return
 
         if str(self.request_ip) == self.client_writer.get_extra_info('sockname')[0]:
-            if self.request_host[1] in range(self.conf.listen[1],
-                                             self.conf.listen[1] + len(self.conf.profile)):
+            if self.request_host[1] == self.conf.listen[1]:
                 if parse.path == '/' and self.command == 'GET':
-                    self.write(200, data=WELCOME.format(host=self.request_host[0], port=self.request_host[1]),
+                    self.write(200, data=WELCOME.format(host=self.request_host[0],
+                                                        port=self.request_host[1]),
                                ctype='text/html; charset=utf-8')
                     return
                 if not self.conf.remoteapi:
@@ -391,7 +395,7 @@ class http_handler(BaseProxyHandler):
                 # if no more proxy available
                 self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
                                            self.failed_parents, self.ppname)
-                return self.send_error(504)
+                return self.send_error(504, explain='no more proxy available')
 
             # try get from connection pool
             if not self.failed_parents:
