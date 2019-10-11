@@ -716,6 +716,9 @@ class http_handler(BaseProxyHandler):
 
         self.request_ip = await self.conf.resolver.get_ip_address(self.request_host[0])
 
+        if int(self.request_ip) == 0 and self.shortpath:
+            self.path = self.shortpath
+
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
                 if self.request_host[1] in range(self.conf.listen[1],
