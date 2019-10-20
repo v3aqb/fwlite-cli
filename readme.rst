@@ -1,7 +1,7 @@
 fwlite-cli
 ===============
 
-A anti-censorship HTTP proxy with builtin shadowsocks support, CLI part only.
+A anti-censorship HTTP/Socks5 proxy with builtin shadowsocks support, CLI part only.
 
 Support Python 3.5 and above.
 
