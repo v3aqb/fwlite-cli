@@ -661,7 +661,8 @@ class http_handler(BaseProxyHandler):
         if isinstance(self.path, bytes):
             self.path = self.path.decode('latin1')
 
-        self._wfile_write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
+        if not self.socks5:
+            self._wfile_write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
 
         self.rbuffer = []
 
@@ -674,8 +675,6 @@ class http_handler(BaseProxyHandler):
                 data += await self.client_reader_read(8196)
                 try:
                     server_name = extract_server_name(data)
-                    self.logger.debug('sni: %s', server_name)
-                    self.logger.debug('path: %s', self.path)
                     if server_name and server_name not in self.path:
                         self.shortpath = server_name
                 except Exception:
