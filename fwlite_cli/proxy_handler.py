@@ -684,7 +684,7 @@ class http_handler(BaseProxyHandler):
                 data += await self.client_reader_read(8196)
                 for line in data.splitlines():
                     if line.startswith(b'Host: '):
-                        self.shortpath = line.strip().decode()[6:]
+                        self.shortpath = parse_hostport(line.strip().decode()[6:])[0]
                         break
         except ClientError:
             return
