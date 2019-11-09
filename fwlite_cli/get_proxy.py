@@ -49,7 +49,7 @@ class get_proxy:
             if dest:  # |http://www.google.com/url forcehttps
                 self.add_redirect(rule, dest)
             else:
-                self.add_rule(line, local=True)
+                self.add_temp(line)
 
     def load(self):
         from .apfilter import ap_filter
@@ -63,7 +63,7 @@ class get_proxy:
                         data = ''.join(data.split())
                         data = base64.b64decode(data).decode()
                     for line in data.splitlines():
-                        self.add_rule(line)
+                        self.gfwlist.add(line)
             except Exception as e:
                 self.logger.warning('gfwlist is corrupted! %r', e)
 
@@ -90,13 +90,6 @@ class get_proxy:
         '''called by redirector'''
         from .apfilter import ap_rule
         self.ignore.add(ap_rule(rule))
-
-    def add_rule(self, line, local=False):
-        try:
-            apfilter = self.local if local else self.gfwlist
-            apfilter.add(line)
-        except ValueError as err:
-            self.logger.debug('create autoproxy rule failed: %s', err)
 
     @lru_cache(1024)
     def ip_in_china(self, host, ip):
@@ -242,7 +235,6 @@ class get_proxy:
                     resp_time = self.conf.parentlist.direct.get_avg_resp_time(requesthost[0])
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
                     self.add_temp(rule, min(exp, 60))
-                    self.conf.stdout('local')
 
     def add_temp(self, rule, exp=None):
         # add temp rule for &exp minutes
@@ -250,3 +242,4 @@ class get_proxy:
         if rule not in self.local.rules:
             self.local.add(rule, (exp * 60) if exp else None)
             self.logger.info('add autoproxy rule: %s%s', rule, (' expire in %.1f min' % exp) if exp else '')
+            self.conf.stdout('local')
