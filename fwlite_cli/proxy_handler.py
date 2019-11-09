@@ -860,11 +860,15 @@ class http_handler(BaseProxyHandler):
                 context.last_active = time.monotonic()
                 if count == 1:
                     rtime = time.monotonic() - context.first_send
-                if count == 3 and self.command == 'CONNECT':
-                    # log server response time
-                    self.pproxy.log(self.request_host[0], rtime)
-                    self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
-                                               True, self.failed_parents, self.ppname)
+                    if self.command == 'CONNECT':
+                        # log server response time
+                        self.pproxy.log(self.request_host[0], rtime)
+                        self.conf.GET_PROXY.notify(self.command,
+                                                   self.shortpath or self.path,
+                                                   self.request_host,
+                                                   True,
+                                                   self.failed_parents,
+                                                   self.ppname)
                 context.retryable = False
                 write_to.write(data)
                 await write_to.drain()
