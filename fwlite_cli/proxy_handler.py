@@ -945,56 +945,48 @@ class http_handler(BaseProxyHandler):
                 return
 
         if parse.path == '/api/localrule' and self.command == 'GET':
-            data = json.dumps([(rule, self.conf.GET_PROXY.local.expire[rule])
-                               for rule in self.conf.GET_PROXY.local.rules],
-                              indent=4)
+            data = json.dumps(self.conf.list_localrule(), indent=4)
             self.write(code=200, data=data, ctype='application/json')
             return
         if parse.path == '/api/localrule' and self.command == 'POST':
             # accept a json encoded tuple: (str rule, int exp)
             rule, exp = json.loads(body)
-            self.conf.GET_PROXY.add_temp(rule, exp)
+            self.conf.add_localrule(rule, exp)
             self.write(200)
-            self.conf.stdout('local')
             return
         if parse.path.startswith('/api/localrule/') and self.command == 'DELETE':
             try:
                 rule = base64.urlsafe_b64decode(parse.path[15:].encode('latin1')).decode()
-                expire = self.conf.GET_PROXY.local.remove(rule)
-                self.write(200, data=json.dumps([rule, expire]), ctype='application/json')
-                self.conf.stdout('local')
+                self.conf.del_localrule(rule)
+                self.write(200)
                 return
             except Exception as err:
                 self.logger.error(traceback.format_exc())
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/redirector' and self.command == 'GET':
-            data = json.dumps(self.conf.REDIRECTOR.list(), indent=4)
+            data = json.dumps(self.conf.list_redir(), indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/redirector' and self.command == 'POST':
             # accept a json encoded tuple: (str rule, str dest)
             rule, dest = json.loads(body)
-            self.conf.GET_PROXY.add_redirect(rule, dest)
+            self.conf.add_redir(rule, dest)
             self.write(200)
-            self.conf.stdout('redir')
             return
         if parse.path.startswith('/api/redirector/') and self.command == 'DELETE':
             try:
                 rule = urlparse.parse_qs(parse.query).get('rule', [''])[0]
                 rule = base64.urlsafe_b64decode(rule).decode()
-                self.conf.REDIRECTOR.remove(rule)
-                self.write(200, data='done', ctype='text/plain')
-                self.conf.stdout('redir')
+                self.conf.del_redir(rule)
+                self.write(200)
                 return
             except Exception as err:
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/proxy' and self.command == 'GET':
-            data = [(p.name, p.short, p.priority, p.get_avg_resp_time())
-                    for _, p in self.conf.parentlist.dict.items()]
-            data = sorted(data, key=lambda item: item[0])
-            data = json.dumps(sorted(data, key=lambda item: item[2]), indent=4)
+            data = self.conf.list_proxy()
+            data = json.dumps(data, indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/proxy' and self.command == 'POST':
@@ -1006,23 +998,18 @@ class http_handler(BaseProxyHandler):
             if name == '_L0C4L_':
                 self.send_error(401)
                 return
-            self.conf.addparentproxy(name, proxy)
-            if name not in ('_D1R3CT_', '_L0C4L_'):
-                self.conf.userconf.set('parents', name, proxy)
-                self.conf.confsave()
-            self.write(200, data=data, ctype='application/json')
-            self.conf.stdout('proxy')
+            try:
+                self.conf.add_proxy(name, proxy)
+                self.write(200)
+            except ValueError:
+                self.write(401)
             return
         if parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
             try:
                 proxy_name = parse.path[11:]
                 proxy_name = base64.urlsafe_b64decode(proxy_name).decode()
-                self.conf.parentlist.remove(proxy_name)
-                if self.conf.userconf.has_option('parents', proxy_name):
-                    self.conf.userconf.remove_option('parents', proxy_name)
-                    self.conf.confsave()
-                self.write(200, data=proxy_name, ctype='application/json')
-                self.conf.stdout('proxy')
+                self.conf.del_proxy(proxy_name)
+                self.write(200)
                 return
             except Exception as err:
                 self.send_error(404, repr(err))
@@ -1031,29 +1018,27 @@ class http_handler(BaseProxyHandler):
             try:
                 proxy_name = parse.path[11:]
                 proxy_name = base64.urlsafe_b64decode(proxy_name).decode()
-                proxy = self.conf.parentlist.get(proxy_name)
-                self.write(200, data=proxy.proxy, ctype='text/plain')
+                proxy = self.conf.get_proxy(proxy_name)
+                self.write(200, data=proxy, ctype='text/plain')
                 return
             except Exception as err:
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/forward' and self.command == 'GET':
-            data = [('%s:%s' % target, proxy, port)
-                    for target, proxy, port in self.conf.port_forward.list()]
+            data = self.conf.list_forward()
             data = json.dumps(data, indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/forward' and self.command == 'POST':
             # accept a json encoded tuple: (str target, str proxy, int port)
             target, proxy, port = json.loads(body)
-            target = parse_hostport(target)
-            self.conf.port_forward.add(target, proxy, port)
+            self.conf.add_forward(target, proxy, port)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path.startswith('/api/forward/') and self.command == 'DELETE':
             data = parse.path[13:]
             port = int(data)
-            self.conf.port_forward.stop(port)
+            self.conf.del_forward(port)
             self.write(200)
             return
         if parse.path == '/api/gfwlist' and self.command == 'GET':
@@ -1062,7 +1047,6 @@ class http_handler(BaseProxyHandler):
         if parse.path == '/api/gfwlist' and self.command == 'POST':
             self.conf.gfwlist_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
-            self.conf.stdout('setting')
             return
         if parse.path == '/api/adblock' and self.command == 'GET':
             self.write(200, data=json.dumps(self.conf.adblock_enable), ctype='application/json')
@@ -1070,13 +1054,10 @@ class http_handler(BaseProxyHandler):
         if parse.path == '/api/adblock' and self.command == 'POST':
             self.conf.adblock_enable = json.loads(body)
             self.write(200, data=data, ctype='application/json')
-            self.conf.stdout('setting')
             return
         if parse.path == '/api/exit' and self.command == 'GET':
-            self.conf.plugin_manager.cleanup()
+            self.conf.on_exit()
             self.write(200, data='Done!', ctype='text/html')
-            import sys
-            sys.exit()
         if parse.path == '/api/log' and self.command == 'GET':
             self.write(200, data=self.conf.get_log(), ctype='text/plain; charset=utf-8')
             return
