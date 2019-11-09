@@ -104,7 +104,10 @@ class BaseHandler(BaseHTTPRequestHandler):
 
     async def _handle(self):
         fut = self.client_reader.readexactly(1)
-        first_byte = await asyncio.wait_for(fut, timeout=1)
+        try:
+            first_byte = await asyncio.wait_for(fut, timeout=10)
+        except (asyncio.TimeoutError, asyncio.IncompleteReadError):
+            return
         if first_byte == b'\x05':
             self.close_connection = True
             await self.handle_socks5()
