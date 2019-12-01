@@ -216,13 +216,13 @@ class get_proxy:
 
         if ifgfwed:
             if not parentlist:
-                self.logger.warning('No parent proxy available, direct connection is used')
-                return [self.conf.parentlist.direct]
+                self.logger.warning('No parent proxy available.')
+                return []
         else:
             parentlist.insert(0, self.conf.parentlist.direct)
 
-        if len(parentlist) > self.conf.maxretry:
-            parentlist = parentlist[:self.conf.maxretry]
+        if len(parentlist) > self.conf.maxretry + 1:
+            parentlist = parentlist[:self.conf.maxretry + 1]
         return parentlist
 
     def notify(self, command, url, requesthost, success, failed_parents, current_parent):

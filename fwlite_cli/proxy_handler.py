@@ -738,7 +738,6 @@ class http_handler(BaseProxyHandler):
                 return
 
         if self.getparent():
-            self.logger.error('no more proxy available.')
             self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
                                        False, self.failed_parents, self.ppname)
             return
@@ -894,6 +893,8 @@ class http_handler(BaseProxyHandler):
         if not self._proxylist:
             self.ppname = ''
             self.pproxy = None
+            if self.failed_parents:
+                self.logger.error('no more proxy available.')
             return 1
         self.pproxy = self._proxylist.pop(0)
         self.ppname = self.pproxy.name
