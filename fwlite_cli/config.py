@@ -468,3 +468,15 @@ class Config:
 
     def on_exit(self):
         self.plugin_manager.cleanup()
+
+    def start_dns_server(self):
+        if self.userconf.dgetbool('dns', 'enable', False):
+            import asyncio
+            from .dns_server import TcpDnsHandler
+            dns_server = parse_hostport(self.userconf.dget('dns', 'server', '8.8.8.8:53'), 53)
+            listen = parse_hostport(self.userconf.dget('dns', 'listen', '127.0.0.1:53'), 53)
+            proxy = self.parentlist.get('FWLITE:1')
+            handler = TcpDnsHandler(dns_server, proxy, self)
+            loop = asyncio.get_event_loop()
+            server = asyncio.start_server(handler.handle, listen[0], listen[1], loop=loop)
+            loop.run_until_complete(server)

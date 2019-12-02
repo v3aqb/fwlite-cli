@@ -20,7 +20,7 @@ setup(
         ]
     },
     dependency_links=['https://github.com/v3aqb/hxcrypto/archive/master.zip#egg=hxcrypto-0.0.3'],
-    install_requires=["hxcrypto", "repoze.lru"],
+    install_requires=["hxcrypto", "repoze.lru", "dnslib"],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3.5',
