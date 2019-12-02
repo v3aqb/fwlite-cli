@@ -61,6 +61,8 @@ def main():
         server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
         loop.run_until_complete(server)
 
+    conf.start_dns_server()
+
     loop.run_until_complete(conf.post_start())
     try:
         loop.run_forever()
