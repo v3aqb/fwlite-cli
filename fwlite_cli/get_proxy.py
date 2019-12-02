@@ -121,7 +121,9 @@ class get_proxy:
             return True
         return False
 
-    def ifgfwed_resolver(self, uri, host):
+    def isgfwed_resolver(self, host, uri=None):
+        if not uri:
+            uri = 'http://%s/' % host
         result = self.local.match(uri, host)
         if result is not None:
             return result
@@ -133,7 +135,7 @@ class get_proxy:
             return True
         return None
 
-    def ifgfwed(self, uri, host, port, ip, level=1):
+    def isgfwed(self, uri, host, port, ip, level=1):
         if level == 0:
             return False
 
@@ -198,9 +200,9 @@ class get_proxy:
         '''
         host, port = host
 
-        ifgfwed = self.ifgfwed(uri, host, port, ip, level)
+        gfwed = self.isgfwed(uri, host, port, ip, level)
 
-        if ifgfwed is False:
+        if gfwed is False:
             if ip and ip.is_private:
                 return [self.conf.parentlist.local or self.conf.parentlist.direct]
             return [self.conf.parentlist.direct]
@@ -214,7 +216,7 @@ class get_proxy:
             # random.shuffle(parentlist)
             parentlist = sorted(parentlist, key=priority)
 
-        if ifgfwed:
+        if gfwed:
             if not parentlist:
                 self.logger.warning('No parent proxy available.')
                 return []
