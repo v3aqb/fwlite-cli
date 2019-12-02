@@ -55,7 +55,7 @@ class Resolver:
 
     def is_poisoned(self, domain):
         url = 'http://%s/' % domain
-        if self.get_proxy and self.get_proxy.ifgfwed_resolver(url, domain):
+        if self.get_proxy and self.get_proxy.isgfwed_resolver(url, domain):
             return True
         return False
 
