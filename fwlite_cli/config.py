@@ -480,3 +480,21 @@ class Config:
             loop = asyncio.get_event_loop()
             server = asyncio.start_server(handler.handle, listen[0], listen[1], loop=loop)
             loop.run_until_complete(server)
+
+    def start_server(self):
+        import asyncio
+        from .proxy_handler import handler_factory, http_handler
+        addr, port = self.listen
+        loop = asyncio.get_event_loop()
+        for i, profile in enumerate(self.profile):
+            profile = int(profile)
+            handler = handler_factory(addr, port + i, http_handler, profile, self)
+            server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
+            loop.run_until_complete(server)
+        loop.run_until_complete(self.post_start())
+
+    @staticmethod
+    def start():
+        import asyncio
+        loop = asyncio.get_event_loop()
+        loop.run_forever()
