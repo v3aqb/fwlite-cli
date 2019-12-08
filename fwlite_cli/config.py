@@ -346,7 +346,7 @@ class Config:
     async def download(self):
         proxy = self.parentlist.get('FWLITE:' + self.profile[0])
 
-        file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/gfwlist.txt'),
+        file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'),
                      self.china_ip_path: 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt',
                      self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/v3aqb/gfwlist/master/adblock_hosts.txt')
                      }
