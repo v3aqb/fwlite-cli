@@ -965,6 +965,13 @@ class http_handler(BaseProxyHandler):
                 self.logger.error(traceback.format_exc())
                 self.send_error(404, repr(err))
                 return
+        if parse.path == '/api/isgfwed':
+            uri = body.decode('utf8')
+            host = urlparse.urlparse(uri).netloc
+            host = parse_hostport(host, 80)[0]
+            result = self.conf.GET_PROXY.isgfwed_resolver(host, uri)
+            self.write(200, data=repr(result), ctype='text/plain')
+            return
         if parse.path == '/api/redirector' and self.command == 'GET':
             data = json.dumps(self.conf.list_redir(), indent=4)
             self.write(200, data=data, ctype='application/json')
@@ -1062,4 +1069,5 @@ class http_handler(BaseProxyHandler):
         if parse.path == '/api/log' and self.command == 'GET':
             self.write(200, data=self.conf.get_log(), ctype='text/plain; charset=utf-8')
             return
+        self.logger.error('api %s not exist.' % parse.path)
         self.send_error(404)
