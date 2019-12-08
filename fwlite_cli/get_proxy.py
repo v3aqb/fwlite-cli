@@ -34,7 +34,7 @@ class get_proxy:
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
-    def __init__(self, conf):
+    def __init__(self, conf, load_local=None):
         self.conf = conf
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
@@ -42,7 +42,11 @@ class get_proxy:
         self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
         self.china_ip_list = []
 
-        for line in open(self.conf.local_path):
+        if load_local is not None:
+            iter_ = load_local
+        else:
+            iter_ = open(self.conf.local_path)
+        for line in iter_:
             if line.startswith('!'):
                 continue
             rule, _, dest = line.strip().partition(' ')
@@ -51,11 +55,21 @@ class get_proxy:
             else:
                 self.add_temp(line)
 
-    def load(self):
+    def load(self, gfwlist=None, china_ip_list=None):
+        if self.conf.rproxy:
+            return
+
+        self.load_gfwlist(gfwlist)
+        self.load_china_ip_list(china_ip_list)
+
+    def load_gfwlist(self, gfwlist):
+        self.logger.info('loading gfwlist...')
         from .apfilter import ap_filter
-        if self.conf.rproxy is False:
-            self.logger.info('loading gfwlist...')
-            self.gfwlist = ap_filter()
+        self.gfwlist = ap_filter()
+        if gfwlist is not None:
+            for line in gfwlist:
+                self.gfwlist.add(line)
+        else:
             try:
                 with open(self.conf.gfwlist_path) as f:
                     data = f.read()
@@ -67,15 +81,21 @@ class get_proxy:
             except Exception as e:
                 self.logger.warning('gfwlist is corrupted! %r', e)
 
-            self.logger.info('loading china_ip_list.txt...')
-            self.china_ip_list = []
+    def load_china_ip_list(self, china_ip_list):
+        self.logger.info('loading china_ip_list.txt...')
+        self.china_ip_list = []
+        from ipaddress import ip_network
+        if china_ip_list is not None:
+            for ipn_ in china_ip_list:
+                ipn = ip_network(ipn_)
+                self.china_ip_list.append(ipn)
+        else:
             with open(self.conf.china_ip_path) as f:
-                from ipaddress import ip_network
                 for line in f:
                     if line:
                         ipn = ip_network(line.strip())
                         self.china_ip_list.append(ipn)
-                self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
+        self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
 
     def redirect(self, hdlr):
         return self.conf.REDIRECTOR.redirect(hdlr)
