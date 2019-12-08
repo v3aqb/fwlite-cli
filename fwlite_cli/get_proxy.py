@@ -81,6 +81,32 @@ class get_proxy:
             except Exception as e:
                 self.logger.warning('gfwlist is corrupted! %r', e)
 
+        dns_list = [
+            # google
+            '8.8.8.8',
+            '8.8.4.4',
+            # OpenDNS
+            '208.67.222.222',
+            '208.67.220.220',
+            '208.67.222.123',
+            '208.67.220.123',
+            # Norton DNS
+            '198.153.192.1',
+            '198.153.194.1',
+            # Verisign
+            '64.6.64.6',
+            '64.6.65.6',
+            # Comodo
+            '8.26.56.26',
+            '8.20.247.20',
+            # Cloudflare
+            '1.1.1.1',
+            '1.0.0.1',
+        ]
+
+        for dns in dns_list:
+            self.gfwlist.add('||' + dns)
+
     def load_china_ip_list(self, china_ip_list):
         self.logger.info('loading china_ip_list.txt...')
         self.china_ip_list = []
