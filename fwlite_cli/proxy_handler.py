@@ -1066,6 +1066,7 @@ class http_handler(BaseProxyHandler):
         if parse.path == '/api/exit' and self.command == 'GET':
             self.conf.on_exit()
             self.write(200, data='Done!', ctype='text/html')
+            return
         if parse.path == '/api/log' and self.command == 'GET':
             self.write(200, data=self.conf.get_log(), ctype='text/plain; charset=utf-8')
             return
