@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="fwlite-cli",
-    version="0.2",
+    version="0.3",
     license='GPLv3',
     description="A anti-censorship HTTP proxy with builtin shadowsocks support",
     author='v3aqb',
