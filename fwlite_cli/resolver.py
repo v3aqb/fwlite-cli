@@ -44,8 +44,14 @@ async def getaddrinfo(host, port):
 
 
 async def resolve(host, port):
-    result = await getaddrinfo(host, port)
-    return [(i[0], i[4][0]) for i in result]
+    err = None
+    for _ in range(2):
+        try:
+            result = await getaddrinfo(host, port)
+            return [(i[0], i[4][0]) for i in result]
+        except (OSError, asyncio.TimeoutError, LookupError) as err_:
+            err = err_
+    raise err
 
 
 class Resolver:
