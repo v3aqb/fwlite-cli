@@ -33,7 +33,7 @@ import asyncio.streams
 from .connection import open_connection
 from .base_handler import BaseHandler, read_header_data, read_headers
 from .httputil import ConnectionPool
-from .util import extract_server_name, parse_hostport
+from .util import extract_tls_extension, parse_hostport
 
 MAX_TIMEOUT = 16
 WELCOME = '''<!DOCTYPE html>
@@ -667,7 +667,7 @@ class http_handler(BaseProxyHandler):
             self._wfile_write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
 
         self.rbuffer = []
-
+        gfwed = False
         # fix SNI
         try:
             data = await self.client_reader_read(4)
@@ -676,11 +676,16 @@ class http_handler(BaseProxyHandler):
                 # parse SNI
                 data += await self.client_reader_read(8196)
                 try:
-                    server_name = extract_server_name(data)
-                    if server_name and server_name not in self.path:
+                    tls_extensions = extract_tls_extension(data)
+                    server_name = tls_extensions.get(0, b'')[5:].decode()
+                    esni1 = 0xffce in tls_extensions
+                    esni7 = 0xff02 in tls_extensions
+                    esni = esni1 or esni7
+                    gfwed = esni1
+                    if not esni and server_name and server_name not in self.path:
                         self.shortpath = server_name
                 except Exception:
-                    pass
+                    self.logger.error(traceback.format_exc())
             elif data in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'OPTI', b'PATC', b'TRAC'):
                 data += await self.client_reader_read(8196)
                 for line in data.splitlines():
@@ -693,7 +698,7 @@ class http_handler(BaseProxyHandler):
         if data:
             self.rbuffer.append(data)
 
-        self.request_host = parse_hostport(self.path)
+        self.request_host = parse_hostport(self.path, 443)
         if self.shortpath:
             self.request_host = (self.shortpath, self.request_host[1])
             self.shortpath = '%s:%d' % self.request_host
@@ -728,9 +733,9 @@ class http_handler(BaseProxyHandler):
                     return
             else:
                 return
-        await self._do_CONNECT()
+        await self._do_CONNECT(gfwed)
 
-    async def _do_CONNECT(self, retry=False):
+    async def _do_CONNECT(self, retry=False, gfwed=False):
         if retry:
             self.failed_parents.append(self.ppname)
             self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
@@ -739,7 +744,7 @@ class http_handler(BaseProxyHandler):
                 self.logger.error('retry time exceeded 10, pls check!')
                 return
 
-        if self.getparent():
+        if self.getparent(gfwed=gfwed):
             self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
                                        False, self.failed_parents, self.ppname)
             return
@@ -887,11 +892,12 @@ class http_handler(BaseProxyHandler):
         # except OSError:
         #     pass
 
-    def getparent(self):
+    def getparent(self, gfwed=False):
         if self._proxylist is None:
+            profile = max(3, self.server.profile) if gfwed else self.server.profile
             self._proxylist = self.conf.GET_PROXY.get_proxy(
                 self.shortpath or self.path, self.request_host, self.command,
-                self.request_ip, self.server.profile)
+                self.request_ip, profile)
         if not self._proxylist:
             self.ppname = ''
             self.pproxy = None
