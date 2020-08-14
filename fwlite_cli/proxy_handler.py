@@ -685,7 +685,8 @@ class http_handler(BaseProxyHandler):
                     if not esni and server_name and server_name not in self.path:
                         self.shortpath = server_name
                 except Exception:
-                    self.logger.error(traceback.format_exc())
+                    self.logger.warning(traceback.format_exc())
+                    self.logger.info('date_len %d' % len(data))
             elif data in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'OPTI', b'PATC', b'TRAC'):
                 data += await self.client_reader_read(8196)
                 for line in data.splitlines():
