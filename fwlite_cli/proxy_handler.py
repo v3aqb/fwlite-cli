@@ -115,7 +115,7 @@ class BaseProxyHandler(BaseHandler):
     def __init__(self, server):
         self.conf = server.conf
         self.timeout = self.conf.timeout
-        self.shortpath = ''
+        self.shortpath = ''  # for logging
         self._proxylist = None
         self.ppname = ''
         self.pproxy = None
@@ -124,11 +124,13 @@ class BaseProxyHandler(BaseHandler):
         self.wbuffer_size = 0
         self.retryable = True
         self.request_host = None
+        # for dns, GET method hostname, gfwlist domain match, getproxy log, getproxy priority
         self.remote_reader = None
         self.remote_writer = None
         self.request_ip = None
         self.retry_count = 0
         self.failed_parents = []
+        self.close_connection = True
         super().__init__(server)
 
     def pre_request_init(self):
@@ -293,6 +295,7 @@ class http_handler(BaseProxyHandler):
                                           '?' if parse.query else '')
 
         if 'Host' not in self.headers:
+            self.logger.warning('"Host" not in self.headers')
             request_host = parse_hostport(parse.netloc, 80)
         else:
             host = parse_hostport(self.headers['Host'], 80)
@@ -317,11 +320,11 @@ class http_handler(BaseProxyHandler):
                 self.logger.info('%s %s return', self.command, self.shortpath)
                 return
             if new_url.lower() == 'reset':
-                self.close_connection = 1
+                self.close_connection = True
                 self.logger.info('%s %s reset', self.command, self.shortpath)
                 return
             if new_url.lower() == 'adblock':
-                self.close_connection = 1
+                self.close_connection = True
                 self.logger.debug('%s %s adblock', self.command, self.shortpath)
                 return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
@@ -337,13 +340,11 @@ class http_handler(BaseProxyHandler):
 
         # gather info (redirector may change this)
         if 'Host' not in self.headers:
-            self.logger.warning('"Host" not in self.headers')
             request_host = parse_hostport(parse.netloc, 80)
         else:
             host = parse_hostport(self.headers['Host'], 80)
             netloc = parse_hostport(parse.netloc, 80)
             if host != netloc:
-                self.logger.warning('Host and URI mismatch! %s %s', self.path, self.headers['Host'])
                 self.send_error(400, explain='Host and URI mismatch! (post redirect)')
                 return
             request_host = parse_hostport(self.headers['Host'], 80)
@@ -354,6 +355,7 @@ class http_handler(BaseProxyHandler):
                                           parse.netloc,
                                           parse.path.split(':')[0],
                                           '?' if parse.query else '')
+
         self.request_ip = await self.conf.resolver.get_ip_address(self.request_host[0])
 
         if self.request_ip.is_loopback:
@@ -384,10 +386,12 @@ class http_handler(BaseProxyHandler):
                 await self.client_writer.drain()
                 return
 
-        if 'X-Forwarded-For' in self.headers:
-            del self.headers['X-Forwarded-For']
-
-        for header in ['Proxy-Connection', 'Proxy-Authenticate']:
+        del_headers = \
+            ['Proxy-Connection',
+             'Proxy-Authenticate',
+             'X-Forwarded-For',
+             ]
+        for header in del_headers:
             if header in self.headers:
                 del self.headers[header]
 
@@ -402,7 +406,7 @@ class http_handler(BaseProxyHandler):
                     self.logger.error('retry time exceeded 10, pls check!')
                     return
             if not self.retryable:
-                self.close_connection = 1
+                self.close_connection = True
                 self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
                                            self.failed_parents, self.ppname)
                 return
