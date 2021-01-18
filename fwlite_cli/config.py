@@ -211,7 +211,7 @@ class Config:
         self.remoteapi = False
         self.remotepass = ''
 
-        self.listen = '8118'
+        self.listen = '0'
 
         self.gate = 2
 
@@ -264,7 +264,7 @@ class Config:
         if self.remoteapi and not self.remotepass:
             self.logger.warning('Remote API Enabled WITHOUT password protection!')
 
-        listen = self.userconf.dget('FWLite', 'listen', '8118')
+        listen = self.userconf.dget('FWLite', 'listen', '0')
         if listen.isdigit():
             self.listen = ('127.0.0.1', int(listen))
         else:
@@ -407,6 +407,8 @@ class Config:
     def stdout(self, text=''):
         if text == 'all':
             self._started = True
+            sys.stdout.write('Fwlite port: %s\n' % self.listen[1])
+            sys.stdout.flush()
         if not self._started:
             return
         if self.GUI:
@@ -545,6 +547,24 @@ class Config:
         from .proxy_handler import handler_factory, http_handler
         loop = self.loop
         addr, port = self.listen
+        while port == 0:
+            # find proper port
+            from .util import get_port
+            port_0 = get_port(addr)
+            fail = False
+            for i in range(len(self.profile) - 1):
+                if get_port(addr, port_0 + 1 + i) == 0:
+                    fail = True
+            if not fail:
+                port = port_0
+                self.listen = (addr, port)
+                break
+
+        self.logger.info('Fwlite port: %s', port)
+
+        if not self.userconf.dget('FWLite', 'pac', ''):
+            self.PAC = PAC.replace('__PROXY__', 'PROXY %s:%s' % (self.local_ip, self.listen[1])).encode()
+
         for i, profile in enumerate(self.profile):
             profile = int(profile)
             handler = handler_factory(addr, port + i, http_handler, profile, self)
