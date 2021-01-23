@@ -585,8 +585,8 @@ class Config:
 
     def start(self):
         self.set_loop()
-        self.register_proxy_n_forward()
         self.start_server()
+        self.register_proxy_n_forward()
         self.loop.run_until_complete(self.post_start())
         self.loop.run_forever()
         self.logger.info('start() ended')
