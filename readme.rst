@@ -28,7 +28,8 @@ features
   - 3: bypass ip in china
   - 4: bypass ip in LAN
   - 5: bypass localhost
-- Support Network which require a Proxy (`fwlite#39`_)
+- Randomize listening port (when listening port is 0)
+- Support Network requires a Proxy (`fwlite#39`_)
 - Supported parent proxy
 
   - HTTP
@@ -66,8 +67,6 @@ using `pip -U` may cause problems, better uninstall and install.
 
 Set parent proxy
 ----------------
-
-**NOTICE**: the config file is a little different than original fwlite.
 
 Add your own parent proxy in the `parents` section of main configuration file `config.ini`.
 
