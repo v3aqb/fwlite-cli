@@ -264,7 +264,7 @@ class Config:
         if self.remoteapi and not self.remotepass:
             self.logger.warning('Remote API Enabled WITHOUT password protection!')
 
-        listen = self.userconf.dget('FWLite', 'listen', '0')
+        listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
             self.listen = ('127.0.0.1', int(listen))
         else:
