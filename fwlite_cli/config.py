@@ -571,6 +571,14 @@ class Config:
             server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
             loop.run_until_complete(server)
 
+        if os.path.exists(os.path.join(self.conf_dir, 'hxsocks.yaml')):
+            try:
+                from hxsocks.start_server import start_hxs_server
+                start_hxs_server('hxsocks.yaml')
+            except Exception as err:
+                self.logger.error(repr(err))
+                self.logger.error(traceback.format_exc())
+
     def set_loop(self):
         import asyncio
         loop = asyncio.get_event_loop()
