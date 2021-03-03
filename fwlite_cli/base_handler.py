@@ -75,7 +75,6 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         self.req_count = 0
         self.path = ''
-        self.socks5 = False
         self.headers = None
 
     async def handle(self, client_reader, client_writer):  # pylint: disable=W0221
@@ -127,23 +126,30 @@ class BaseHandler(BaseHTTPRequestHandler):
 
     async def handle_socks5(self):
         self.pre_request_init()
-        self.socks5 = True
         self.command = 'CONNECT'
+        # Client greeting
         fut = self.client_reader.readexactly(1)
         auth_len = await asyncio.wait_for(fut, timeout=1)
         fut = self.client_reader.readexactly(auth_len[0])
         auth = await asyncio.wait_for(fut, timeout=1)
         if b'\x00' not in auth:
-            raise ValueError('socks5 auth not supported yet')
+            self.logger.error('socks5 auth not supported')
+            self.client_writer.write(b'\x05\xff')
+            return
         self.client_writer.write(b'\x05\x00')
+        # Client connection request
         fut = self.client_reader.readexactly(4)
         request = await asyncio.wait_for(fut, timeout=1)
-        assert request[1] == 1
+        if request[1] != 1:
+            cmd = 'BIND' if request[1] == 2 else 'UDP ASSOCIATE'
+            self.logger.error('socks5 %s not supported' % cmd)
+            self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+            return
         addrtype = request[3]
         if addrtype == 1:  # ipv4
             fut = self.client_reader.readexactly(4)
             addr = await asyncio.wait_for(fut, timeout=1)
-            addr = socket.inet_ntoa(addr).decode()
+            addr = socket.inet_ntoa(addr)
         elif addrtype == 3:  # hostname
             fut = self.client_reader.readexactly(1)
             addrlen = await asyncio.wait_for(fut, timeout=1)
@@ -153,7 +159,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         elif addrtype == 4:  # ipv6
             fut = self.client_reader.readexactly(16)
             addr = await asyncio.wait_for(fut, timeout=1)
-            addr = socket.inet_ntop(socket.AF_INET6, addr).decode()
+            addr = socket.inet_ntop(socket.AF_INET6, addr)
             addr = '[' + addr + ']'
         fut = self.client_reader.readexactly(2)
         port = await asyncio.wait_for(fut, timeout=1)
@@ -162,10 +168,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         # gather request info for CONNECT method...
         self.path = '%s:%s' % (addr, port)
 
-        # tell client connected
-        self.client_writer.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x01\x01')
-
-        await self.do_CONNECT()  # pylint: disable=E1101
+        await self.do_CONNECT(socks5=True)  # pylint: disable=E1101
         try:
             await self.client_writer.drain()
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
