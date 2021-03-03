@@ -680,12 +680,14 @@ class http_handler(BaseProxyHandler):
 
     do_HEAD = do_POST = do_PUT = do_DELETE = do_OPTIONS = do_PATCH = do_TRACE = do_GET
 
-    async def do_CONNECT(self):
+    async def do_CONNECT(self, socks5=False):
         self.close_connection = True
         if isinstance(self.path, bytes):
             self.path = self.path.decode('latin1')
 
-        if not self.socks5:
+        if socks5:
+            self.client_writer.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00')
+        else:
             self._wfile_write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
 
         self.rbuffer = []
