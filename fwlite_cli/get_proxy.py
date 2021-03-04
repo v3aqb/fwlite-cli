@@ -118,7 +118,7 @@ class get_proxy:
         else:
             with open(self.conf.china_ip_path) as f:
                 for line in f:
-                    if line:
+                    if line.strip():
                         ipn = ip_network(line.strip())
                         self.china_ip_list.append(ipn)
         self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
