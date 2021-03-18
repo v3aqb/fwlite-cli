@@ -77,7 +77,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.path = ''
         self.headers = None
 
-    async def handle(self, client_reader, client_writer):  # pylint: disable=W0221
+    async def handle(self, client_reader, client_writer):  # pylint: disable=W0221,W0236
         self.client_reader = client_reader
         self.client_writer = client_writer
         self.client_address = client_writer.get_extra_info('peername')
@@ -140,11 +140,6 @@ class BaseHandler(BaseHTTPRequestHandler):
         # Client connection request
         fut = self.client_reader.readexactly(4)
         request = await asyncio.wait_for(fut, timeout=1)
-        if request[1] != 1:
-            cmd = 'BIND' if request[1] == 2 else 'UDP ASSOCIATE'
-            self.logger.error('socks5 %s not supported' % cmd)
-            self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
-            return
         addrtype = request[3]
         if addrtype == 1:  # ipv4
             fut = self.client_reader.readexactly(4)
@@ -161,10 +156,24 @@ class BaseHandler(BaseHTTPRequestHandler):
             addr = await asyncio.wait_for(fut, timeout=1)
             addr = socket.inet_ntop(socket.AF_INET6, addr)
             addr = '[' + addr + ']'
+        else:
+            self.logger.error('socks5 bad addr type')
+            self.client_writer.write(b'\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
+            return
         fut = self.client_reader.readexactly(2)
         port = await asyncio.wait_for(fut, timeout=1)
         port = struct.unpack(b">H", port)[0]
 
+        if request[1] == 2:
+            self.logger.error('socks5 BIND not supported')
+            self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+            return
+        if request[1] == 3:
+            if sys.platform == 'win32' and sys.version < '3.8':
+                self.logger.error('socks5 UDP ASSOCIATE not supported')
+                # self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+                return
+            return
         # gather request info for CONNECT method...
         self.path = '%s:%s' % (addr, port)
 
@@ -174,7 +183,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             self.close_connection = True
 
-    async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0221
+    async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0221,W0236
         self.pre_request_init()
 
         try:

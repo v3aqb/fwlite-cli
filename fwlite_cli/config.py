@@ -211,7 +211,7 @@ class Config:
         self.remoteapi = False
         self.remotepass = ''
 
-        self.listen = '0'
+        self.listen = ('127.0.0.1', 8118)
 
         self.gate = 2
 
@@ -543,7 +543,6 @@ class Config:
         self.loop.stop()
 
     def start_server(self):
-        import asyncio
         from .proxy_handler import handler_factory, http_handler
         loop = self.loop
         addr, port = self.listen
@@ -567,9 +566,8 @@ class Config:
 
         for i, profile in enumerate(self.profile):
             profile = int(profile)
-            handler = handler_factory(addr, port + i, http_handler, profile, self)
-            server = asyncio.start_server(handler.handle, handler.addr, handler.port, loop=loop)
-            loop.run_until_complete(server)
+            server = handler_factory(addr, port + i, http_handler, profile, self)
+            server.start()
 
         if os.path.exists(os.path.join(self.conf_dir, 'hxsocks.yaml')):
             try:
@@ -583,6 +581,7 @@ class Config:
         import asyncio
         loop = asyncio.get_event_loop()
         if sys.platform == 'win32' and not isinstance(loop, asyncio.ProactorEventLoop):
+            # since python 3.8, ProactorEventLoop is default loop
             self.logger.info('set ProactorEventLoop for windows')
             loop = asyncio.ProactorEventLoop()
             asyncio.set_event_loop(loop)

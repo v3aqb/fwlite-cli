@@ -110,6 +110,10 @@ class handler_factory:
         _handler = self._class(self)
         await _handler.handle(reader, writer)
 
+    def start(self):
+        server = asyncio.start_server(self.handle, self.addr, self.port)
+        asyncio.ensure_future(server)
+
 
 class BaseProxyHandler(BaseHandler):
     def __init__(self, server):
