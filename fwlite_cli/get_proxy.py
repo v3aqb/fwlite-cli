@@ -20,8 +20,40 @@
 
 import base64
 import logging
+import ipaddress
 
 from repoze.lru import lru_cache
+
+CHINA_IP = [
+    # Tencent Hong Kong
+    '124.156.188.0/22',
+    '129.226.96.0/20',
+    '182.254.0.0/16',
+    '203.205.128.0/17',
+]
+
+DNS_SERVER_LIST = [
+    # google
+    '8.8.8.8',
+    '8.8.4.4',
+    # OpenDNS
+    '208.67.222.222',
+    '208.67.220.220',
+    '208.67.222.123',
+    '208.67.220.123',
+    # Norton DNS
+    '198.153.192.1',
+    '198.153.194.1',
+    # Verisign
+    '64.6.64.6',
+    '64.6.65.6',
+    # Comodo
+    '8.26.56.26',
+    '8.20.247.20',
+    # Cloudflare
+    '1.1.1.1',
+    '1.0.0.1',
+]
 
 
 class get_proxy:
@@ -81,30 +113,7 @@ class get_proxy:
             except Exception as e:
                 self.logger.warning('gfwlist is corrupted! %r', e)
 
-        dns_server_list = [
-            # google
-            '8.8.8.8',
-            '8.8.4.4',
-            # OpenDNS
-            '208.67.222.222',
-            '208.67.220.220',
-            '208.67.222.123',
-            '208.67.220.123',
-            # Norton DNS
-            '198.153.192.1',
-            '198.153.194.1',
-            # Verisign
-            '64.6.64.6',
-            '64.6.65.6',
-            # Comodo
-            '8.26.56.26',
-            '8.20.247.20',
-            # Cloudflare
-            '1.1.1.1',
-            '1.0.0.1',
-        ]
-
-        for dns_server in dns_server_list:
+        for dns_server in DNS_SERVER_LIST:
             self.gfwlist.add('||' + dns_server)
 
     def load_china_ip_list(self, china_ip_list):
@@ -118,10 +127,15 @@ class get_proxy:
         else:
             with open(self.conf.china_ip_path) as f:
                 for line in f:
-                    if line.strip():
+                    if line.strip() and '#' not in line:
                         ipn = ip_network(line.strip())
                         self.china_ip_list.append(ipn)
         self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
+        for network in CHINA_IP:
+            ipn = ip_network(network)
+            if not self.ip_in_china(None, ipn.network_address):
+                self.china_ip_list.append(ipn)
+                self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
 
     def redirect(self, hdlr):
         return self.conf.REDIRECTOR.redirect(hdlr)
@@ -155,6 +169,12 @@ class get_proxy:
                     return mid
             return start
 
+        if not hasattr(ip, 'version'):
+            try:
+                ip = ipaddress.ip_address(ip)
+            except ValueError:
+                return None
+
         if ip.version == 6:
             # TODO: ipv6 support
             return None
@@ -163,8 +183,9 @@ class get_proxy:
         if index == 0:
             return False
         if ip in self.china_ip_list[index - 1]:
-            self.logger.info('%s in china', host)
+            self.logger.info('%s in china', host or ip)
             return True
+        self.logger.info('%s not in china', host or ip)
         return False
 
     def isgfwed_resolver(self, host, uri=None):
