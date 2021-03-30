@@ -24,6 +24,8 @@ import ipaddress
 
 from repoze.lru import lru_cache
 
+from .ipfilter import NetFilter
+
 CHINA_IP = [
     # Tencent Hong Kong
     '124.156.188.0/22',
@@ -72,7 +74,7 @@ class get_proxy:
         self.gfwlist = ap_filter()
         self.local = ap_filter()
         self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
-        self.china_ip_list = []
+        self.china_ip_filter = NetFilter()
 
         if load_local is not None:
             iter_ = load_local
@@ -118,24 +120,24 @@ class get_proxy:
 
     def load_china_ip_list(self, china_ip_list):
         self.logger.info('loading china_ip_list.txt...')
-        self.china_ip_list = []
-        from ipaddress import ip_network
+        self.china_ip_filter = NetFilter()
+
+        def add_network(network):
+            try:
+                self.china_ip_filter.add(network)
+            except ValueError as err:
+                self.logger.error(repr(err))
+
         if china_ip_list is not None:
-            for ipn_ in china_ip_list:
-                ipn = ip_network(ipn_)
-                self.china_ip_list.append(ipn)
+            for ipn in china_ip_list:
+                add_network(ipn)
         else:
             with open(self.conf.china_ip_path) as f:
                 for line in f:
                     if line.strip() and '#' not in line:
-                        ipn = ip_network(line.strip())
-                        self.china_ip_list.append(ipn)
-        self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
+                        add_network(line.strip())
         for network in CHINA_IP:
-            ipn = ip_network(network)
-            if not self.ip_in_china(None, ipn.network_address):
-                self.china_ip_list.append(ipn)
-                self.china_ip_list = sorted(self.china_ip_list, key=lambda ipn: ipn.network_address)
+            add_network(network)
 
     def redirect(self, hdlr):
         return self.conf.REDIRECTOR.redirect(hdlr)
@@ -153,36 +155,7 @@ class get_proxy:
 
     @lru_cache(1024)
     def ip_in_china(self, host, ip):
-        def binary_search(arr, hkey):
-            if not arr:
-                return 0
-            start = 0
-            end = len(arr) - 1
-            while start <= end:
-                mid = start + (end - start) // 2
-
-                if arr[mid].network_address < hkey:
-                    start = mid + 1
-                elif arr[mid].network_address > hkey:
-                    end = mid - 1
-                else:
-                    return mid
-            return start
-
-        if not hasattr(ip, 'version'):
-            try:
-                ip = ipaddress.ip_address(ip)
-            except ValueError:
-                return None
-
-        if ip.version == 6:
-            # TODO: ipv6 support
-            return None
-
-        index = binary_search(self.china_ip_list, ip)
-        if index == 0:
-            return False
-        if ip in self.china_ip_list[index - 1]:
+        if ip in self.china_ip_filter:
             self.logger.info('%s in china', host or ip)
             return True
         self.logger.info('%s not in china', host or ip)
