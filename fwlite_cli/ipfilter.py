@@ -1,6 +1,22 @@
 
 import bisect
 import ipaddress
+import logging
+
+
+logger = logging.getLogger('ipfilter')
+
+
+def set_logger():
+    logger.setLevel(logging.INFO)
+    hdr = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    hdr.setFormatter(formatter)
+    logger.addHandler(hdr)
+
+
+set_logger()
 
 
 class NetFilter:
@@ -21,7 +37,8 @@ class NetFilter:
             return
         # check for overlap
         if self.contains(network.network_address):
-            raise ValueError('%r already in this filter.' % network)
+            logger.error('%r already in this filter.', network)
+            return
         if network.network_address > network_list[-1].network_address:
             network_list.append(network)
         else:

@@ -122,22 +122,16 @@ class get_proxy:
         self.logger.info('loading china_ip_list.txt...')
         self.china_ip_filter = NetFilter()
 
-        def add_network(network):
-            try:
-                self.china_ip_filter.add(network)
-            except ValueError as err:
-                self.logger.error(repr(err))
-
         if china_ip_list is not None:
             for ipn in china_ip_list:
-                add_network(ipn)
+                self.china_ip_filter.add(ipn)
         else:
             with open(self.conf.china_ip_path) as f:
                 for line in f:
                     if line.strip() and '#' not in line:
-                        add_network(line.strip())
+                        self.china_ip_filter.add(line.strip())
         for network in CHINA_IP:
-            add_network(network)
+            self.china_ip_filter.add(network)
 
     def redirect(self, hdlr):
         return self.conf.REDIRECTOR.redirect(hdlr)
