@@ -58,3 +58,4 @@ docs/_build/
 userconf.ini
 local.txt
 
+fwlite_cli/gfwlist.txt

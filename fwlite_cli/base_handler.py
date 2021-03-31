@@ -16,9 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 import email
 import struct
 import socket
+import ipaddress
 from http.client import HTTPMessage
 from http.server import BaseHTTPRequestHandler
 from http import HTTPStatus
@@ -68,6 +70,12 @@ class BaseHandler(BaseHTTPRequestHandler):
     def __init__(self, server):  # pylint: disable=super-init-not-called
         # Not calling super-init, not for TCPServer
         self.server = server
+        self.server_addr = (self.server.addr, self.server.port)
+        response = b'\x05\x00\x00'
+        serverip = ipaddress.ip_address(self.server.addr)
+        response += b'\x01' if serverip.version == 4 else b'\x04'
+        response += serverip.packed
+        self.socks5_udp_response = response
         self.logger = server.logger
         self.requestline = ''
         self.request_version = ''
@@ -173,6 +181,11 @@ class BaseHandler(BaseHTTPRequestHandler):
                 self.logger.error('socks5 UDP ASSOCIATE not supported')
                 # self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
                 return
+            if not self.server.udp_enable:
+                self.logger.error('socks5 UDP ASSOCIATE not enable')
+                # self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+                return
+            await self.relay_udp()
             return
         # gather request info for CONNECT method...
         self.path = '%s:%s' % (addr, port)
@@ -182,6 +195,22 @@ class BaseHandler(BaseHTTPRequestHandler):
             await self.client_writer.drain()
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             self.close_connection = True
+
+    async def relay_udp(self):
+        from .socks5udp import socks5_udp
+        proxy = self.server.get_udp_proxy()
+        udp_server = socks5_udp(self, proxy, 60)
+        await udp_server.close_event.wait()
+
+    def write_udp_reply(self, port):
+        buf = self.socks5_udp_response + struct.pack(b'>H', port)
+        self.client_writer.write(buf)
+
+    async def wait_close(self):
+        while True:
+            data = await self.client_reader.read()
+            if not data:
+                break
 
     async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0221,W0236
         self.pre_request_init()

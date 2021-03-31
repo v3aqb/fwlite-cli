@@ -95,6 +95,7 @@ class handler_factory:
         self.addr = addr
         self.port = port
         self.conf = conf
+        self.udp_enable = self.conf.udp_enable
 
         self.logger = logging.getLogger('fwlite_%d' % port)
         self.logger.setLevel(logging.INFO)
@@ -113,6 +114,12 @@ class handler_factory:
     def start(self):
         server = asyncio.start_server(self.handle, self.addr, self.port)
         asyncio.ensure_future(server)
+
+    def get_udp_proxy(self):
+        proxy = self.conf.parentlist.get(self.conf.udp_proxy)
+        if proxy is None:
+            self.logger.error('self.conf.udp_proxy %s is None', self.conf.udp_proxy)
+        return proxy
 
 
 class BaseProxyHandler(BaseHandler):

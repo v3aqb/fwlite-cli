@@ -278,6 +278,9 @@ class Config:
             self.gate = 0
         ParentProxy.GATE = self.gate
 
+        self.udp_enable = self.userconf.dgetbool('udp', 'enable', False)
+        self.udp_proxy = self.userconf.dget('udp', 'proxy', '_D1R3CT_')
+
         for key, val in self.userconf.items('plugin'):
             plugin_register(key, val)
 

@@ -20,12 +20,13 @@ setup(
         ]
     },
     dependency_links=['https://github.com/v3aqb/hxcrypto/archive/master.zip#egg=hxcrypto-0.0.3'],
-    install_requires=["hxcrypto", "repoze.lru"],
+    install_requires=["hxcrypto", "repoze.lru", "asyncio-dgram"],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Topic :: Internet :: Proxy Servers',
     ],
 )
