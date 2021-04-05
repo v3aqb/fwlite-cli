@@ -111,10 +111,7 @@ class ConnectionManager:
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 self.connection_list.append(Hxs2Connection(proxy, self.timeout, self))
-        free_list = [conn for conn in self.connection_list if not conn.is_busy()]
-        if free_list:
-            return free_list[0]
-        list_ = sorted(self.connection_list, key=lambda item: item.count())
+        list_ = sorted(self.connection_list, key=lambda item: item.busy())
         return list_[0]
 
     def remove(self, conn):
@@ -644,8 +641,11 @@ class Hxs2Connection:
             self.recv_tp_ewma = self.recv_tp_ewma * 0.87 + self._stat_recv_tp * 0.13
             self._stat_recv_tp = 0
 
+    def busy(self):
+        return self.recv_time / self.recv_intv
+
     def is_busy(self):
-        if self.recv_time > self.recv_intv * 0.8:
+        if self.busy() > 0.8:
             return True
         return False
 
