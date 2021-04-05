@@ -626,7 +626,8 @@ class http_handler(BaseProxyHandler):
                 self.wfile_write()
 
                 # start forwarding...
-                context = await self.forward()
+                context = ForwardContext(self.path)
+                context = await self.forward(context)
                 if context.timeout:
                     # no response from server
                     pass
