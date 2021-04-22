@@ -74,7 +74,7 @@ class DNSCache:
             self.timerwheel[self.timerwheel_index].clear()
 
 
-DC = DNSCache()
+DC = None
 
 
 async def getaddrinfo(host, port):
@@ -85,6 +85,8 @@ async def getaddrinfo(host, port):
 
 
 async def resolve(host, port=0):
+    if DC is None:
+        DC = DNSCache()
     result = DC.get(host)
     if result:
         if isinstance(result, Exception):

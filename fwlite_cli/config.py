@@ -197,11 +197,11 @@ class Config:
         self.GUI = gui
         self.loop = None
         self.conf_path = conf_path
+        self.defaule_conf = os.path.join(os.path.dirname(__file__), "../config/config.ini")
 
         self.userconf = SConfigParser(interpolation=None)
 
         self.hello()
-        self.reload()
 
     def init(self):
         self.timeout = 4
@@ -241,7 +241,7 @@ class Config:
 
     def reload(self, conf_path=None):
         self.init()
-        self.conf_path = os.path.abspath(conf_path or self.conf_path)
+        self.conf_path = os.path.abspath(conf_path or self.conf_path or self.defaule_conf)
         self.conf_dir = os.path.dirname(self.conf_path)
         os.chdir(self.conf_dir)
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
@@ -541,7 +541,7 @@ class Config:
     def del_forward(self, port):
         self.port_forward.stop(port)
 
-    def on_exit(self):
+    def stop(self):
         self.plugin_manager.cleanup()
         self.loop.stop()
 
@@ -582,6 +582,11 @@ class Config:
 
     def set_loop(self):
         import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
         loop = asyncio.get_event_loop()
         if sys.platform == 'win32' and not isinstance(loop, asyncio.ProactorEventLoop):
             # since python 3.8, ProactorEventLoop is default loop
