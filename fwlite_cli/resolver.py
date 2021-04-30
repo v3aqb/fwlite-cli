@@ -47,8 +47,6 @@ class DNSCache:
         self.timerwheel_iter = itertools.cycle(range(self.count))
         self.timerwheel_index = next(self.timerwheel_iter)
 
-        asyncio.ensure_future(self._purge())
-
     def put(self, domain, result):
         # soc: (reader, writer)
         if isinstance(result, Exception):
@@ -74,7 +72,7 @@ class DNSCache:
             self.timerwheel[self.timerwheel_index].clear()
 
 
-DC = None
+DC = DNSCache()
 
 
 async def getaddrinfo(host, port):
@@ -85,8 +83,6 @@ async def getaddrinfo(host, port):
 
 
 async def resolve(host, port=0):
-    if DC is None:
-        DC = DNSCache()
     result = DC.get(host)
     if result:
         if isinstance(result, Exception):

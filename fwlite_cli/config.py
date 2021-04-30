@@ -25,6 +25,7 @@ import base64
 import logging
 import logging.handlers
 import traceback
+import asyncio
 import urllib.request
 import urllib.parse
 from collections import defaultdict, deque
@@ -197,7 +198,6 @@ class Config:
         self.GUI = gui
         self.loop = None
         self.conf_path = conf_path
-        self.defaule_conf = os.path.join(os.path.dirname(__file__), "../config/config.ini")
 
         self.userconf = SConfigParser(interpolation=None)
 
@@ -241,7 +241,7 @@ class Config:
 
     def reload(self, conf_path=None):
         self.init()
-        self.conf_path = os.path.abspath(conf_path or self.conf_path or self.defaule_conf)
+        self.conf_path = os.path.abspath(conf_path or self.conf_path)
         self.conf_dir = os.path.dirname(self.conf_path)
         os.chdir(self.conf_dir)
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
@@ -543,7 +543,15 @@ class Config:
 
     def stop(self):
         self.plugin_manager.cleanup()
-        self.loop.stop()
+        self.port_forward.stop_all()
+        self.stop_fwlite()
+
+    def stop_fwlite(self):
+        async def stop(server):
+            server.close()
+            await server.wait_closed()
+        for server in self.server_list:
+            asyncio.ensure_future(stop(server))
 
     def start_server(self):
         from .proxy_handler import handler_factory, http_handler
@@ -567,10 +575,12 @@ class Config:
         if not self.userconf.dget('FWLite', 'pac', ''):
             self.PAC = PAC.replace('__PROXY__', 'PROXY %s:%s' % (self.local_ip, self.listen[1])).encode()
 
+        self.server_list = []
         for i, profile in enumerate(self.profile):
             profile = int(profile)
             server = handler_factory(addr, port + i, http_handler, profile, self)
             server.start()
+            self.server_list.append(server)
 
         if os.path.exists(os.path.join(self.conf_dir, 'hxsocks.yaml')):
             try:
@@ -579,6 +589,7 @@ class Config:
             except Exception as err:
                 self.logger.error(repr(err))
                 self.logger.error(traceback.format_exc())
+        return server
 
     def set_loop(self):
         import asyncio
@@ -600,9 +611,11 @@ class Config:
 
     def start(self):
         self.set_loop()
-        self.start_server()
+        server = self.start_server()
         self.register_proxy_n_forward()
-        self.loop.run_until_complete(self.post_start())
+        asyncio.ensure_future(self.post_start())
+        import fwlite_cli.resolver
+        asyncio.ensure_future(fwlite_cli.resolver.DC._purge())
         self.loop.run_forever()
         self.logger.info('start() ended')
 
