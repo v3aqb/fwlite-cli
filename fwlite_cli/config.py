@@ -239,9 +239,9 @@ class Config:
             self.logger.error('unsupported host: %s', ip)
             self.logger.error(traceback.format_exc())
 
-    def reload(self, conf_path=None):
+    def reload(self, plugin_dir=None):
         self.init()
-        self.conf_path = os.path.abspath(conf_path or self.conf_path)
+        self.conf_path = os.path.abspath(self.conf_path)
         self.conf_dir = os.path.dirname(self.conf_path)
         os.chdir(self.conf_dir)
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
@@ -282,6 +282,8 @@ class Config:
         self.udp_proxy = self.userconf.dget('udp', 'proxy', '_D1R3CT_')
 
         for key, val in self.userconf.items('plugin'):
+            if plugin_dir:
+                val = os.path.join(plugin_dir, val)
             plugin_register(key, val)
 
         self.plugin_manager = PluginManager(self)
