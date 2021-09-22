@@ -72,15 +72,27 @@ class ParentProxy:
 
         if proxy == 'direct':
             proxy = ''
-        elif proxy and '//' not in proxy:
-            proxy = 'http://' + proxy
         self.name = name
         proxy_list = proxy.split('|')
         self.proxy = proxy
         if len(proxy_list) > 1:
             self.via = ParentProxy('via', '|'.join(proxy_list[1:]))
-            self.via.name = '%s://%s:%s' % (self.via.scheme, self.via.hostname, self.via.port)
-        self.parse = urllib.parse.urlparse(proxy_list[0])
+            if self.via.name == 'via':
+                self.via.name = '%s://%s:%s' % (self.via.scheme, self.via.hostname, self.via.port)
+            if '//' not in proxy_list[0]:
+                if proxy_list[0] not in self.conf.parentlist:
+                    raise ValueError('proxy %s not exist.' % proxy_list[0])
+                if self.conf.parentlist.get(proxy_list[0]).get_via().name != '_D1R3CT_':
+                    logger.warning('proxy chain of %s will NOT be used.', proxy_list[0])
+        if proxy_list[0] and '//' not in proxy_list[0]:
+            if proxy_list[0] not in self.conf.parentlist:
+                raise ValueError('proxy %s not exist.' % proxy_list[0])
+            self.parse = self.conf.parentlist.get(proxy_list[0]).parse
+            self.name = self.conf.parentlist.get(proxy_list[0]).name
+            if len(proxy_list) == 1:
+                self.via = self.conf.parentlist.get(proxy_list[0]).get_via()
+        else:
+            self.parse = urllib.parse.urlparse(proxy_list[0])
 
         self.scheme = self.parse.scheme
         self.username = unquote(self.parse.username) if self.parse.username else None
@@ -214,3 +226,6 @@ class ParentProxyList:
 
     def get(self, key):
         return self.dict.get(key)
+
+    def __contains__(self, key):
+        return key in self.dict
