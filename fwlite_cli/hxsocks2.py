@@ -468,6 +468,9 @@ class Hxs2Connection:
                 elif frame_type == RST_STREAM:  # 3
                     self._last_active_c = time.monotonic()
                     self._stream_status[stream_id] = CLOSED
+                    if stream_id in self._client_status:
+                        self._stream_status[stream_id] = CLOSED
+                        self._client_status[stream_id].set()
                     if stream_id in self._client_writer:
                         self._client_writer[stream_id].close()
                         del self._client_writer[stream_id]
