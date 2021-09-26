@@ -436,9 +436,17 @@ class Config:
             except Exception:
                 self.logger.warning('download "%s" failed!', file_name)
                 open(path, 'a').close()
+            else:
+                if path == self.gfwlist_path:
+                    with open(self.gfwlist_path) as f:
+                        data = f.read()
+                        if '!' not in data:
+                            data = ''.join(data.split())
+                            data = base64.b64decode(data).decode()
+                    with open(self.gfwlist_path, 'w') as f:
+                        f.write(data)
 
         task_list = []
-        import asyncio
         loop = asyncio.get_event_loop()
 
         for path, url in file_list.items():
