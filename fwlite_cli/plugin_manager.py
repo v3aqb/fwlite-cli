@@ -45,7 +45,7 @@ NON_SIP003 = ['kcptun']
 def is_udp(plugin_info):
     if plugin_info[0] == 'kcptun':
         return True
-    if plugin_info[0] == 'v2ray-plugin':
+    if 'ray-plugin' in plugin_info[0]:
         if 'mode=quic' in plugin_info:
             return True
     return False
