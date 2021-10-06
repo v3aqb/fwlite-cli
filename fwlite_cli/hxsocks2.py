@@ -173,6 +173,7 @@ class Hxs2Connection:
         self._client_writer = {}
         self._client_status = {}
         self._stream_status = {}
+        self._stream_addr = {}
         self._last_active = {}
         self._last_active_c = time.monotonic()
         self._last_ping_log = 0
@@ -225,6 +226,7 @@ class Hxs2Connection:
             self._manager.remove(self)
 
         await self.send_frame(HEADERS, OPEN, stream_id, payload)
+        self._stream_addr[stream_id] = (addr, port)
 
         # wait for server response
         event = Event()
@@ -463,7 +465,8 @@ class Hxs2Connection:
                                 self._stream_status[stream_id] = OPEN
                                 self._client_status[stream_id].set()
                             else:
-                                self.logger.info('%s stream open, client closed', self.name)
+                                addr = '%s:%s' % self._stream_addr[stream_id]
+                                self.logger.info('%s stream open, client closed, %s', self.name, addr)
                                 self._stream_status[stream_id] = CLOSED
                                 await self.send_frame(RST_STREAM, 0, stream_id,
                                                       bytes(random.randint(8, 256)))
