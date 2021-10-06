@@ -144,7 +144,7 @@ async def hxs2_connect(proxy, timeout, addr, port):
 
 
 class Hxs2Connection:
-    bufsize = 32768
+    bufsize = 32768 - 22
 
     def __init__(self, proxy, timeout, manager):
         if not isinstance(proxy, ParentProxy):
@@ -294,7 +294,9 @@ class Hxs2Connection:
                     self._stream_status[stream_id] = CLOSED
                     self._client_writer[stream_id].close()
                     return
-                payload = struct.pack('>H', len(data)) + data + bytes(random.randint(8, 256))
+                payload = struct.pack('>H', len(data)) + data
+                diff = self.bufsize - len(data)
+                payload += bytes(random.randint(min(diff, 8), min(diff, 255)))
                 await self.send_frame(DATA, 0, stream_id, payload)
                 self._stat_data_sent += len(data)
             except asyncio.CancelledError:
