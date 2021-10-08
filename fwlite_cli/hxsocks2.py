@@ -297,11 +297,7 @@ class Hxs2Connection:
                     self._client_writer[stream_id].close()
                     return
                 await self.remote_writer.drain()
-                payload = struct.pack('>H', len(data)) + data
-                diff = self.bufsize - len(data)
-                payload += bytes(random.randint(min(diff, 8), min(diff, 255)))
-                self.send_frame(DATA, 0, stream_id, payload)
-                self._stat_data_sent += len(data)
+                await self.send_data_frame(stream_id, data)
             except asyncio.CancelledError:
                 raise
             except Exception as err:
@@ -332,26 +328,45 @@ class Hxs2Connection:
             self._last_direction = SEND
             self._last_count = 0
 
-        async with self._lock:
-            try:
-                header = struct.pack('>BBH', type_, flags, stream_id)
-                data = header + payload
-                ct = self.__cipher.encrypt(data)
-                self.remote_writer.write(struct.pack('>H', len(ct)) + ct)
-                self._stat_total_sent += len(ct) + 2
-                self._last_count += 1
-            except ConnectionResetError:
-                self.connection_lost = True
-                self._manager.remove(self)
-            else:
-                if type_ == DATA and self._last_count > 10 and random.random() < 0.01:
-                    self.send_ping(False)
+        try:
+            header = struct.pack('>BBH', type_, flags, stream_id)
+            data = header + payload
+            ct = self.__cipher.encrypt(data)
+            self.remote_writer.write(struct.pack('>H', len(ct)) + ct)
+            self._stat_total_sent += len(ct) + 2
+            self._last_count += 1
+        except ConnectionResetError:
+            self.connection_lost = True
+            self._manager.remove(self)
+        else:
+            if type_ == DATA and self._last_count > 10 and random.random() < 0.01:
+                self.send_ping(False)
 
     def send_ping(self, test=True):
         if self._ping_time == 0:
             self._ping_test = test
             self._ping_time = time.monotonic()
             self.send_frame(PING, 0, 0, bytes(random.randint(64, 256)))
+
+    def send_one_data_frame(self, stream_id, data):
+        payload = struct.pack('>H', len(data)) + data
+        diff = self.bufsize - len(data)
+        payload += bytes(random.randint(min(diff, 8), min(diff, 255)))
+        self.send_frame(DATA, 0, stream_id, payload)
+
+    async def send_data_frame(self, stream_id, data):
+        if len(data) > 16386 and random.random() < 0.1:
+            data = io.BytesIO(data)
+            data_ = data.read(random.randint(256, 16386 - 22))
+            while data_:
+                self.send_one_data_frame(stream_id, data_)
+                if random.random() < 0.1:
+                    self.send_frame(PING, 0, 0, bytes(random.randint(256, 1024)))
+                data_ = data.read(random.randint(256, 8192 - 22))
+                await asyncio.sleep(0)
+        else:
+            self.send_one_data_frame(stream_id, data)
+        self._stat_data_sent += len(data)
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
@@ -491,7 +506,7 @@ class Hxs2Connection:
                         self._ping_test = False
                         self._ping_time = 0
                     else:
-                        self.send_frame(PING, PONG, 0, bytes(random.randint(64, 8170)))
+                        self.send_frame(PING, PONG, 0, bytes(random.randint(64, 4096)))
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
                     max_stream_id = payload.read(2)
