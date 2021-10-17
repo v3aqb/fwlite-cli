@@ -570,13 +570,11 @@ class Hxs2Connection:
         self.__pskcipher = Encryptor(self._psk, self.method)
         ecc = ECC(self.__pskcipher._key_len)
         pubk = ecc.get_pub_key()
-        ts = int(time.time()) // 30
-        ts = struct.pack('>I', ts)
-        padding_len = random.randint(64, 255)
+        timestamp = struct.pack('>I', int(time.time()) // 30)
         data = b''.join([chr(len(pubk)).encode('latin1'),
                          pubk,
-                         hmac.new(psw.encode(), ts + pubk + usn.encode(), hashlib.sha256).digest(),
-                         bytes(padding_len)])
+                         hmac.new(psw.encode(), timestamp + pubk + usn.encode(), hashlib.sha256).digest(),
+                         bytes(random.randint(64, 255))])
         data = chr(20).encode() + struct.pack('>H', len(data)) + data
 
         ct = self.__pskcipher.encrypt(data)
