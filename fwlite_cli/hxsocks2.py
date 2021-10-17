@@ -355,7 +355,8 @@ class Hxs2Connection:
         self.send_frame(DATA, 0, stream_id, payload)
 
     async def send_data_frame(self, stream_id, data):
-        if len(data) > 16386 and random.random() < 0.1:
+        data_len = len(data)
+        if data_len > 16386 and random.random() < 0.1:
             data = io.BytesIO(data)
             data_ = data.read(random.randint(256, 16386 - 22))
             while data_:
@@ -366,7 +367,7 @@ class Hxs2Connection:
                 await asyncio.sleep(0)
         else:
             self.send_one_data_frame(stream_id, data)
-        self._stat_data_sent += len(data)
+        self._stat_data_sent += data_len
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
