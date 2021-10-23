@@ -55,7 +55,7 @@ def set_logger():
 set_logger()
 
 
-DEFAULT_METHOD = 'aes-128-cfb'
+DEFAULT_METHOD = 'chacha20-ietf-poly1305'
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
 MAX_STREAM_ID = 65530
