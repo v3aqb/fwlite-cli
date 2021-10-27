@@ -321,8 +321,10 @@ class Hxs2Connection:
         if self.connection_lost:
             self.logger.error('send_frame: connection closed. %s', self.name)
             return
-        if type_ != 6:
+        if type_ != PING:
             self._last_active_c = time.monotonic()
+        elif flags == 0:
+            self._ping_time = time.monotonic()
 
         if self._last_direction == RECV:
             self._last_direction = SEND
@@ -345,7 +347,6 @@ class Hxs2Connection:
     def send_ping(self, test=True):
         if self._ping_time == 0:
             self._ping_test = test
-            self._ping_time = time.monotonic()
             self.send_frame(PING, 0, 0, bytes(random.randint(64, 256)))
 
     def send_one_data_frame(self, stream_id, data):
