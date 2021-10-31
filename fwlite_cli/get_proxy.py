@@ -156,6 +156,8 @@ class get_proxy:
         return False
 
     def isgfwed_resolver(self, host, uri=None):
+        if self.conf.rproxy:
+            return None
         if not uri:
             uri = 'http://%s/' % host
         result = self.local.match(uri, host)
