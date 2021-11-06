@@ -175,9 +175,6 @@ class get_proxy:
         if level == 0:
             return False
 
-        if self.conf.rproxy:
-            return None
-
         if int(ip) == 0:
             return True
 
