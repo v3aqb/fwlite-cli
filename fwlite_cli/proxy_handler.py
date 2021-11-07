@@ -777,7 +777,7 @@ class http_handler(BaseProxyHandler):
                     return
             else:
                 return
-        await self._do_CONNECT(gfwed)
+        await self._do_CONNECT(gfwed=gfwed)
 
     async def _do_CONNECT(self, retry=False, gfwed=False):
         if retry:
@@ -829,7 +829,7 @@ class http_handler(BaseProxyHandler):
         if context.retryable and not context.local_eof:
             self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
                                        False, self.failed_parents, self.ppname)
-            await self._do_CONNECT(True)
+            await self._do_CONNECT(retry=True)
             return
 
     async def forward(self, context):
