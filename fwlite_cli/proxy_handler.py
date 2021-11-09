@@ -399,8 +399,10 @@ class http_handler(BaseProxyHandler):
                 self.failed_parents.append(self.ppname)
                 self.retry_count += 1
                 if self.retry_count > 10:
+                    self.retryable = False
                     self.logger.error('retry time exceeded 10, pls check!')
-                    return
+                if self.command not in ('GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'TRACE'):
+                    self.retryable = False
             if not self.retryable:
                 self.close_connection = True
                 self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
