@@ -620,6 +620,7 @@ class http_handler(BaseProxyHandler):
                 # http/1.0 response, content_lenth not in header
                 #     read response body until connection closed
                 while True:
+                    self.close_connection = True
                     data = await self.remote_reader.read(self.bufsize)
                     if not data:
                         break
