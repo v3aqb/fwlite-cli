@@ -243,13 +243,17 @@ class BaseProxyHandler(BaseHandler):
             err = exc
         raise ClientError(err)
 
-    def _wfile_write(self, data):
+    async def _client_writer_write(self, data):
         # write to self.client_writer
         self.retryable = False
         # self.traffic_count[1] += len(data)
         self.client_writer.write(data)
+        try:
+            await self.client_writer.drain()
+        except ConnectionResetError as err:
+            raise ClientError(err)
 
-    def wfile_write(self, data=None):
+    async def client_writer_write(self, data=None):
         if data is None:
             self.retryable = False
         if self.retryable and data:
@@ -259,10 +263,10 @@ class BaseProxyHandler(BaseHandler):
                 self.retryable = False
         else:
             if self.wbuffer:
-                self._wfile_write(b''.join(self.wbuffer))
+                await self._client_writer_write(b''.join(self.wbuffer))
                 self.wbuffer = []
             if data:
-                self._wfile_write(data)
+                await self._client_writer_write(data)
 
     async def read_resp_line(self):
         fut = self.remote_reader.readline()
@@ -496,13 +500,25 @@ class http_handler(BaseProxyHandler):
                 else:
                     if response_status == 100:
                         hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
-                        self._wfile_write(response_line + hdata)
+                        await self._client_writer_write(response_line + hdata)
                     else:
                         skip = True
             # send request body
             if not skip:
-                content_length = int(self.headers.get('Content-Length', 0))
-                if self.headers.get("Transfer-Encoding", "identity") != "identity":
+                if "Content-Length" in self.headers:
+                    if "," in self.headers["Content-Length"]:
+                        # Proxies sometimes cause Content-Length headers to get
+                        # duplicated.  If all the values are identical then we can
+                        # use them but if they differ it's an error.
+                        pieces = re.split(r',\s*', self.headers["Content-Length"])
+                        if any(i != pieces[0] for i in pieces):
+                            raise ValueError("Multiple unequal Content-Lengths: %r" %
+                                             self.headers["Content-Length"])
+                        self.headers["Content-Length"] = pieces[0]
+                    content_length = int(self.headers["Content-Length"])
+                else:
+                    content_length = None
+                if "chunked" in self.headers.get("Transfer-Encoding", ""):
                     if self.rbuffer:
                         self.remote_writer.write(b''.join(self.rbuffer))
                     flag = 1
@@ -520,10 +536,11 @@ class http_handler(BaseProxyHandler):
                             self.rbuffer.append(data)
                             req_body_len += len(data)
                         self.remote_writer.write(data)
+                        await self.remote_writer.drain()
                         if req_body_len > 102400:
                             self.retryable = False
                             self.rbuffer = []
-                elif content_length > 0:
+                elif content_length is not None:
                     if content_length > 102400:
                         self.retryable = False
                     if self.rbuffer:
@@ -539,6 +556,15 @@ class http_handler(BaseProxyHandler):
                         if self.retryable:
                             self.rbuffer.append(data)
                         self.remote_writer.write(data)
+                        await self.remote_writer.drain()
+                elif self.command == 'POST':
+                    self.close_connection = True
+                    while True:
+                        data = await self.client_reader_read(self.bufsize)
+                        if not data:
+                            break
+                        self.remote_writer.write(data)
+                        await self.remote_writer.drain()
                 # read response line
                 timelog = time.monotonic()
                 response_line, protocol_version, response_status, _ = await self.read_resp_line()
@@ -546,7 +572,7 @@ class http_handler(BaseProxyHandler):
             # read response headers
             while response_status == 100:
                 hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
-                self._wfile_write(response_line + hdata)
+                await self._client_writer_write(response_line + hdata)
                 response_line, protocol_version, response_status, _ = \
                     await self.read_resp_line()
 
@@ -578,23 +604,23 @@ class http_handler(BaseProxyHandler):
                     self.conf.GET_PROXY.bad302(response_header.get('Location')):
                 raise IOError(0, 'Bad 302!')
 
-            self.wfile_write(response_line)
-            self.wfile_write(header_data)
+            await self.client_writer_write(response_line)
+            await self.client_writer_write(header_data)
             # read response body
             if self.command == 'HEAD' or response_status in (204, 205, 304):
                 pass
-            elif response_header.get("Transfer-Encoding", "identity") != "identity":
+            elif 'chunked' in response_header.get("Transfer-Encoding", ""):
                 flag = 1
                 while flag:
                     trunk_lenth = await self.remote_reader.readline()
-                    self.wfile_write(trunk_lenth)
+                    await self.client_writer_write(trunk_lenth)
                     trunk_lenth = int(trunk_lenth.strip(), 16) + 2
                     flag = trunk_lenth != 2
                     while trunk_lenth:
                         data = await self.remote_reader.read(min(self.bufsize, trunk_lenth))
                         # self.logger.info('chunk data received %d %s', len(data), self.path)
                         trunk_lenth -= len(data)
-                        self.wfile_write(data)
+                        await self.client_writer_write(data)
             elif content_length is not None:
                 while content_length:
                     data = await self.remote_reader.read(min(self.bufsize, content_length))
@@ -602,7 +628,7 @@ class http_handler(BaseProxyHandler):
                         raise IOError(0, 'remote socket closed')
                     # self.logger.info('content_length data received %d %s', len(data), self.path)
                     content_length -= len(data)
-                    self.wfile_write(data)
+                    await self.client_writer_write(data)
             elif 'Upgrade' in response_header:
                 # if Upgrade in headers, websocket?
                 #     forward tcp
@@ -610,7 +636,7 @@ class http_handler(BaseProxyHandler):
                 self.close_connection = True
                 self.retryable = False
                 # flush writer buf
-                self.wfile_write()
+                await self.client_writer_write()
 
                 # start forwarding...
                 context = ForwardContext(self.path)
@@ -626,11 +652,11 @@ class http_handler(BaseProxyHandler):
                     data = await self.remote_reader.read(self.bufsize)
                     if not data:
                         break
-                    self.wfile_write(data)
+                    await self.client_writer_write(data)
             else:
                 self.logger.error('forward response body error.')
 
-            self.wfile_write()
+            await self.client_writer_write()
             self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True,
                                        self.failed_parents, self.ppname)
             self.pproxy.log(self.request_host[0], rtime)
@@ -646,8 +672,8 @@ class http_handler(BaseProxyHandler):
                                        (self.remote_reader, self.remote_writer),
                                        ppn)
                 self.remote_writer = None
-        except ClientError:
-            self.logger.error('client error')
+        except ClientError as err:
+            self.logger.error('ClientError: ' + repr(err.err))
             self.close_connection = True
             return
         except (asyncio.TimeoutError, OSError, ValueError, asyncio.IncompleteReadError) as err:
@@ -688,7 +714,7 @@ class http_handler(BaseProxyHandler):
         if socks5:
             self.client_writer.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00')
         else:
-            self._wfile_write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
+            self.client_writer.write(self.protocol_version.encode() + b" 200 Connection established\r\n\r\n")
 
         self.rbuffer = []
         gfwed = False
