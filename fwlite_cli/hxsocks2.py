@@ -127,24 +127,32 @@ async def hxs2_get_connection(proxy, timeout):
     return conn
 
 
-async def hxs2_connect(proxy, timeout, addr, port):
+async def hxs2_connect(proxy, timeout, addr, port, limit):
     # Entry Point
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'hxs2'
 
     # get hxs2 connection
-    conn = await hxs2_get_connection(proxy, timeout)
+    for _ in range(MAX_CONNECTION + 1):
+        try:
+            conn = await hxs2_get_connection(proxy, timeout)
 
-    soc = await conn.connect(addr, port, timeout)
+            soc = await conn.connect(addr, port, timeout)
 
-    reader, writer = await asyncio.open_connection(sock=soc)
-    writer.transport.set_write_buffer_limits(0, 0)
-    return reader, writer, conn.name
+            reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
+            return reader, writer, conn.name
+        except ConnectionLostError:
+            continue
+    raise ConnectionResetError(0, 'get hxs2 connection failed.')
+
+
+class ConnectionLostError(OSError):
+    pass
 
 
 class Hxs2Connection:
-    bufsize = 32768 - 22
+    bufsize = 65535 - 22
 
     def __init__(self, proxy, timeout, manager):
         if not isinstance(proxy, ParentProxy):
@@ -202,7 +210,7 @@ class Hxs2Connection:
         async with self._lock:
             if self.connection_lost:
                 self._manager.remove(self)
-                raise ConnectionResetError(0, 'hxs connection lost')
+                raise ConnectionLostError(0, 'hxs connection lost')
             if not self.connected:
                 try:
                     await self.get_key(timeout)
@@ -250,12 +258,9 @@ class Hxs2Connection:
 
         if self._stream_status[stream_id] == OPEN:
             socketpair_a, socketpair_b = socket.socketpair()
-            if sys.platform == 'win32':
-                socketpair_a.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
-                socketpair_b.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
 
-            reader, writer = await asyncio.open_connection(sock=socketpair_b)
-            writer.transport.set_write_buffer_limits(0, 0)
+            reader, writer = await asyncio.open_connection(sock=socketpair_b, limit=131072)
+            writer.transport.set_write_buffer_limits(524288, 262144)
 
             self._client_writer[stream_id] = writer
             self._last_active[stream_id] = time.monotonic()
@@ -568,7 +573,9 @@ class Hxs2Connection:
             self.proxy.port,
             proxy=self.proxy.get_via(),
             timeout=timeout,
-            tunnel=True)
+            tunnel=True,
+            limit=262144)
+        self.remote_writer.transport.set_write_buffer_limits(524288, 262144)
 
         # prep key exchange request
         self.__pskcipher = Encryptor(self._psk, self.method)

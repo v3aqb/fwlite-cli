@@ -20,7 +20,7 @@ def set_logger():
 set_logger()
 
 
-BUFSIZE = 8196
+BUFSIZE = 65536
 
 
 class ForwardContext:

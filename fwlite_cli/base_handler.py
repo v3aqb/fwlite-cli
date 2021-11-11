@@ -63,7 +63,7 @@ async def read_headers(reader, timeout=1):
 
 
 class BaseHandler(BaseHTTPRequestHandler):
-    bufsize = 32768
+    bufsize = 65536
     server_version = "BaseHTTPServer/" + __version__
     default_request_version = "HTTP/1.1"
 
@@ -88,6 +88,7 @@ class BaseHandler(BaseHTTPRequestHandler):
     async def handle(self, client_reader, client_writer):  # pylint: disable=W0221,W0236
         self.client_reader = client_reader
         self.client_writer = client_writer
+        # self.client_writer.transport.set_write_buffer_limits(0, 0)
         self.client_address = client_writer.get_extra_info('peername')
         self.logger.debug('incoming connection %s', self.client_address)
 

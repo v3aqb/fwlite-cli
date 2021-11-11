@@ -51,28 +51,25 @@ class IncompleteChunk(Exception):
     pass
 
 
-async def ss_connect(proxy, timeout, addr, port):
+async def ss_connect(proxy, timeout, addr, port, limit):
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'ss'
     # create socket_pair
     sock_a, sock_b = socket.socketpair()
-    if sys.platform == 'win32':
-        sock_a.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
-        sock_b.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
 
     # connect to ss server
     context = SSConn(proxy, sock_b)
     await context.connect(addr, port, timeout)
 
     # return reader, writer
-    reader, writer = await asyncio.open_connection(sock=sock_a)
-    writer.transport.set_write_buffer_limits(0, 0)
+    reader, writer = await asyncio.open_connection(sock=sock_a, limit=limit)
+    # writer.transport.set_write_buffer_limits(0, 0)
     return reader, writer
 
 
 class SSConn:
-    bufsize = 32768
+    bufsize = 65535
 
     def __init__(self, proxy, sock_b):
         self.logger = logging.getLogger('ss')
@@ -105,7 +102,6 @@ class SSConn:
         self._address = addr
         self._port = port
         self.client_reader, self.client_writer = await asyncio.open_connection(sock=self.sock_b)
-        self.client_writer.transport.set_write_buffer_limits(0, 0)
 
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
@@ -113,8 +109,9 @@ class SSConn:
             self.proxy.port,
             proxy=self.proxy.get_via(),
             timeout=timeout,
-            tunnel=True)
-
+            tunnel=True,
+            limit=131072)
+        self.remote_writer.transport.set_write_buffer_limits(524288, 262144)
         # start forward
         self.task = asyncio.ensure_future(self.forward())
 
@@ -164,6 +161,10 @@ class SSConn:
                 self.connected = True
 
             self.remote_writer.write(self.crypto.encrypt(data))
+            try:
+                await self.remote_writer.drain()
+            except ConnectionResetError:
+                break
         self.client_eof = True
         try:
             self.remote_writer.write_eof()
