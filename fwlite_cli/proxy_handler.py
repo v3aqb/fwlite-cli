@@ -250,7 +250,7 @@ class BaseProxyHandler(BaseHandler):
         self.client_writer.write(data)
         try:
             await self.client_writer.drain()
-        except ConnectionResetError as err:
+        except (OSError, ConnectionAbortedError) as err:
             raise ClientError(err)
 
     async def client_writer_write(self, data=None):
@@ -869,7 +869,7 @@ class http_handler(BaseProxyHandler):
                     break
                 else:
                     continue
-            except (asyncio.IncompleteReadError, ConnectionResetError, ConnectionAbortedError):
+            except (asyncio.IncompleteReadError, OSError, ConnectionResetError):
                 data = b''
 
             if not data:
@@ -882,7 +882,7 @@ class http_handler(BaseProxyHandler):
                 context.from_client()
                 write_to.write(data)
                 await write_to.drain()
-            except ConnectionResetError:
+            except OSError:
                 context.local_eof = True
                 return
         # client closed, tell remote
@@ -899,7 +899,7 @@ class http_handler(BaseProxyHandler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
                 count += 1
-            except (ConnectionResetError, OSError):
+            except OSError:
                 data = b''
             except asyncio.TimeoutError:
                 if time.monotonic() - context.last_active > timeout or context.local_eof:
@@ -927,7 +927,7 @@ class http_handler(BaseProxyHandler):
                 context.from_remote()
                 write_to.write(data)
                 await write_to.drain()
-            except (ConnectionResetError, ConnectionAbortedError):
+            except OSError:
                 # client closed
                 context.remote_eof = True
                 break

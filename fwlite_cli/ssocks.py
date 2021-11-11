@@ -131,7 +131,8 @@ class SSConn:
         for writer in (self.remote_writer, self.client_writer):
             try:
                 writer.close()
-            except ConnectionResetError:
+                await writer.wait_closed()
+            except OSError:
                 pass
 
     async def forward_from_client(self):
@@ -147,7 +148,7 @@ class SSConn:
                     data = b''
                 else:
                     continue
-            except (ConnectionResetError, OSError, AttributeError):
+            except (OSError, AttributeError):
                 data = b''
 
             if not data:
@@ -163,12 +164,12 @@ class SSConn:
             self.remote_writer.write(self.crypto.encrypt(data))
             try:
                 await self.remote_writer.drain()
-            except ConnectionResetError:
+            except OSError:
                 break
         self.client_eof = True
         try:
             self.remote_writer.write_eof()
-        except (ConnectionResetError, OSError, AttributeError):
+        except (OSError, AttributeError):
             pass
 
     async def _read(self, size=None):
@@ -200,7 +201,7 @@ class SSConn:
             self.remote_eof = True
             try:
                 self.client_writer.write_eof()
-            except (ConnectionResetError, OSError, AttributeError):
+            except (OSError, AttributeError):
                 pass
             return
 
@@ -210,7 +211,7 @@ class SSConn:
                 data = await asyncio.wait_for(fut, timeout=5)
                 self.last_active = time.time()
                 self.data_recved = True
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, OSError):
                 if time.time() - self.last_active > 60 or self.client_eof:
                     data = b''
                 else:
@@ -223,10 +224,10 @@ class SSConn:
             try:
                 self.client_writer.write(data)
                 await self.client_writer.drain()
-            except ConnectionResetError:
+            except OSError:
                 break
         self.remote_eof = True
         try:
             self.client_writer.write_eof()
-        except (ConnectionResetError, OSError, AttributeError):
+        except (OSError, AttributeError):
             pass
