@@ -105,6 +105,7 @@ class SSConn:
         self._address = addr
         self._port = port
         self.client_reader, self.client_writer = await asyncio.open_connection(sock=self.sock_b)
+        self.client_writer.transport.set_write_buffer_limits(262144, 131072)
 
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
@@ -115,7 +116,7 @@ class SSConn:
             tunnel=True,
             limit=131072,
             tcp_nodelay=tcp_nodelay)
-        self.remote_writer.transport.set_write_buffer_limits(524288, 262144)
+        self.remote_writer.transport.set_write_buffer_limits(262144, 131072)
         # start forward
         self.task = asyncio.ensure_future(self.forward())
 
@@ -142,13 +143,12 @@ class SSConn:
     async def forward_from_client(self):
         # read from client, encrypt, sent to server
         while True:
-            intv = 5 if self.data_recved else 1
             fut = self.client_reader.read(self.bufsize)
             try:
-                data = await asyncio.wait_for(fut, timeout=intv)
+                data = await asyncio.wait_for(fut, timeout=12)
                 self.last_active = time.time()
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > 60 or self.remote_eof:
+                if time.time() - self.last_active > 120 or self.remote_eof:
                     data = b''
                 else:
                     continue
@@ -212,11 +212,11 @@ class SSConn:
         while True:
             try:
                 fut = self._read()
-                data = await asyncio.wait_for(fut, timeout=5)
+                data = await asyncio.wait_for(fut, timeout=12)
                 self.last_active = time.time()
                 self.data_recved = True
             except (asyncio.TimeoutError, OSError):
-                if time.time() - self.last_active > 60 or self.client_eof:
+                if time.time() - self.last_active > 120 or self.client_eof:
                     data = b''
                 else:
                     continue

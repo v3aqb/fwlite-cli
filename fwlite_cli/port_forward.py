@@ -141,8 +141,10 @@ class ForwardHandler:
             logger.error(repr(err))
             logger.error(traceback.format_exc())
         for writer in (remote_writer, client_writer):
-            try:
+            if not writer.is_closing():
                 writer.close()
+            try:
+                await writer.wait_closed()
             except (OSError, AttributeError):
                 pass
 
