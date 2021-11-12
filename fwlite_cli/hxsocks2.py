@@ -127,7 +127,7 @@ async def hxs2_get_connection(proxy, timeout):
     return conn
 
 
-async def hxs2_connect(proxy, timeout, addr, port, limit):
+async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     # Entry Point
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
@@ -138,7 +138,7 @@ async def hxs2_connect(proxy, timeout, addr, port, limit):
         try:
             conn = await hxs2_get_connection(proxy, timeout)
 
-            soc = await conn.connect(addr, port, timeout)
+            soc = await conn.connect(addr, port, timeout, tcp_nodelay)
 
             reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
             return reader, writer, conn.name
@@ -205,7 +205,7 @@ class Hxs2Connection:
 
         self._lock = Lock()
 
-    async def connect(self, addr, port, timeout=3):
+    async def connect(self, addr, port, timeout=3, tcp_nodelay=False):
         self.logger.debug('hxsocks2 send connect request')
         async with self._lock:
             if self.connection_lost:
@@ -213,7 +213,7 @@ class Hxs2Connection:
                 raise ConnectionLostError(0, 'hxs connection lost')
             if not self.connected:
                 try:
-                    await self.get_key(timeout)
+                    await self.get_key(timeout, tcp_nodelay)
                 except asyncio.CancelledError:
                     raise
                 except Exception as err:
@@ -257,7 +257,9 @@ class Hxs2Connection:
 
         if self._stream_status[stream_id] == OPEN:
             socketpair_a, socketpair_b = socket.socketpair()
-
+            if sys.platform == 'win32':
+                socketpair_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                socketpair_b.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             reader, writer = await asyncio.open_connection(sock=socketpair_b, limit=131072)
             writer.transport.set_write_buffer_limits(524288, 262144)
 
@@ -545,7 +547,7 @@ class Hxs2Connection:
         for stream_id in stream_list:
             await self._client_writer[stream_id].wait_closed()
 
-    async def get_key(self, timeout):
+    async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks2 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
         self.logger.info('%s connect to server', self.name)
@@ -556,7 +558,8 @@ class Hxs2Connection:
             proxy=self.proxy.get_via(),
             timeout=timeout,
             tunnel=True,
-            limit=262144)
+            limit=262144,
+            tcp_nodelay=tcp_nodelay)
         self.remote_writer.transport.set_write_buffer_limits(524288, 262144)
 
         # prep key exchange request
@@ -670,4 +673,13 @@ class Hxs2Connection:
         self.logger.info('%s recv_intv: %f', self.name, self.recv_intv)
         self.logger.info('%s recv_time: %f', self.name, self.recv_time)
         self.logger.info('%s stream: %d', self.name, self.count())
+
     async def close_stream(self, stream_id):
+        if self._stream_status[stream_id] != CLOSED:
+            self.send_frame(RST_STREAM, 0, stream_id, bytes(random.randint(8, 256)))
+            self._stream_status[stream_id] = CLOSED
+        if stream_id in self._client_writer:
+            if not self._client_writer[stream_id].is_closing():
+                self._client_writer[stream_id].close()
+            await self._client_writer[stream_id].wait_closed()
+            del self._client_writer[stream_id]

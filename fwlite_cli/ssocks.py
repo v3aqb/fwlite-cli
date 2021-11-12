@@ -51,16 +51,19 @@ class IncompleteChunk(Exception):
     pass
 
 
-async def ss_connect(proxy, timeout, addr, port, limit):
+async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'ss'
     # create socket_pair
     sock_a, sock_b = socket.socketpair()
+    if sys.platform == 'win32':
+        sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     # connect to ss server
     context = SSConn(proxy, sock_b)
-    await context.connect(addr, port, timeout)
+    await context.connect(addr, port, timeout, tcp_nodelay)
 
     # return reader, writer
     reader, writer = await asyncio.open_connection(sock=sock_a, limit=limit)
@@ -98,7 +101,7 @@ class SSConn:
         self.data_recved = False
         self._buf = b''
 
-    async def connect(self, addr, port, timeout):
+    async def connect(self, addr, port, timeout, tcp_nodelay):
         self._address = addr
         self._port = port
         self.client_reader, self.client_writer = await asyncio.open_connection(sock=self.sock_b)
@@ -110,7 +113,8 @@ class SSConn:
             proxy=self.proxy.get_via(),
             timeout=timeout,
             tunnel=True,
-            limit=131072)
+            limit=131072,
+            tcp_nodelay=tcp_nodelay)
         self.remote_writer.transport.set_write_buffer_limits(524288, 262144)
         # start forward
         self.task = asyncio.ensure_future(self.forward())

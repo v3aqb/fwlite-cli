@@ -89,6 +89,9 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.client_reader = client_reader
         self.client_writer = client_writer
         # self.client_writer.transport.set_write_buffer_limits(0, 0)
+        if self.server.conf.tcp_nodelay:
+            soc = self.client_writer.transport.get_extra_info('socket')
+            soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.client_address = client_writer.get_extra_info('peername')
         self.logger.debug('incoming connection %s', self.client_address)
 
