@@ -191,11 +191,9 @@ class Hxs2Connection:
 
         self._last_direction = SEND
         self._last_count = 0
-        self.send_delay = 0
-        self.recv_intv = 1
-        self.recv_time = 0
-        self.recv_tp = 0
-        self.recv_tp_ewma = 0
+        self._buffer_size_ewma = 0
+        self._recv_tp_max = 0
+        self._recv_tp_ewma = 0
 
         self._stat_data_recv = 0
         self._stat_total_recv = 1
@@ -372,6 +370,8 @@ class Hxs2Connection:
         else:
             self.send_one_data_frame(stream_id, data)
         self._stat_data_sent += data_len
+        buffer_size = self.remote_writer.transport.get_write_buffer_size()
+        self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
         await self.drain()
 
     async def read_from_connection(self):
@@ -400,11 +400,6 @@ class Hxs2Connection:
                     # destroy connection
                     self.logger.error('read from connection error: %r', err)
                     break
-                finally:
-                    # log recv delay
-                    recv_intv = time.monotonic() - last_recv
-                    last_recv = time.monotonic()
-                    self.recv_intv = self.recv_intv * 0.87 + recv_intv * 0.13
 
                 # read frame_data
                 try:
@@ -416,9 +411,6 @@ class Hxs2Connection:
                     # destroy connection
                     self.logger.error('read frame data error: %r, timeout %s', err, self.timeout)
                     break
-                else:
-                    recv_time = time.monotonic() - last_recv
-                    self.recv_time = self.recv_time * 0.87 + recv_time * 0.13
 
                 if self._last_direction == SEND:
                     self._last_direction = RECV
@@ -441,13 +433,13 @@ class Hxs2Connection:
                 self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s', frame_type, stream_id, frame_len)
 
                 if frame_type == DATA:  # 0
-                    # first 2 bytes of payload indicates data_len, the rest would be padding
                     self._last_active_c = time.monotonic()
                     if self._stream_status[stream_id] & EOF_RECV:
                         # from server send buffer
                         self.logger.debug('DATA recv Stream CLOSED, status: %s',
                                           self._stream_status[stream_id])
                         continue
+                    # first 2 bytes of payload indicates data_len, the rest would be padding
                     data_len, = struct.unpack('>H', payload.read(2))
                     data = payload.read(data_len)
                     if len(data) != data_len:
@@ -664,23 +656,26 @@ class Hxs2Connection:
     async def stat(self):
         while not self.connection_lost:
             await asyncio.sleep(1)
-            self.recv_tp = self._stat_recv_tp
-            self.recv_tp_ewma = self.recv_tp_ewma * 0.87 + self._stat_recv_tp * 0.13
+            self._recv_tp_ewma = self._recv_tp_ewma * 0.8 + self._stat_recv_tp * 0.2
+            if self._recv_tp_ewma > self._recv_tp_max:
+                self._recv_tp_max = self._recv_tp_ewma
             self._stat_recv_tp = 0
+            buffer_size = self.remote_writer.transport.get_write_buffer_size()
+            self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
 
     def busy(self):
-        return self.recv_time / self.recv_intv
+        self.print_status()
+        return self._recv_tp_ewma
 
     def is_busy(self):
-        if self.busy() > 0.8:
-            return True
-        return False
+        if self._recv_tp_max < 524288:
+            return self._buffer_size_ewma > 2048
+        return self._buffer_size_ewma > 2048 or self._recv_tp_ewma > self._recv_tp_max * 0.3
 
     def print_status(self):
-        self.logger.info('%s recv_tp: %s', self.name, self.recv_tp)
-        self.logger.info('%s tp_ewma: %d', self.name, self.recv_tp_ewma)
-        self.logger.info('%s recv_intv: %f', self.name, self.recv_intv)
-        self.logger.info('%s recv_time: %f', self.name, self.recv_time)
+        self.logger.info('%s tp_max: %d', self.name, self._recv_tp_max)
+        self.logger.info('%s tp_ewma: %d', self.name, self._recv_tp_ewma)
+        self.logger.info('%s buffer_ewma: %d', self.name, self._buffer_size_ewma)
         self.logger.info('%s stream: %d', self.name, self.count())
 
     async def close_stream(self, stream_id):
