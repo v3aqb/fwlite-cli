@@ -122,8 +122,8 @@ class SSConn:
 
     async def forward(self):
 
-        tasks = [self.forward_from_client(),
-                 self.forward_from_remote(),
+        tasks = [asyncio.create_task(self.forward_from_client()),
+                 asyncio.create_task(self.forward_from_remote()),
                  ]
         try:
             await asyncio.wait(tasks)

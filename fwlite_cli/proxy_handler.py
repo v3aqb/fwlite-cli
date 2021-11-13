@@ -854,8 +854,12 @@ class http_handler(BaseProxyHandler):
 
     async def forward(self, context):
 
-        tasks = [self.forward_from_client(self.client_reader, self.remote_writer, context),
-                 self.forward_from_remote(self.remote_reader, self.client_writer, context),
+        tasks = [asyncio.create_task(self.forward_from_client(self.client_reader,
+                                                              self.remote_writer,
+                                                              context)),
+                 asyncio.create_task(self.forward_from_remote(self.remote_reader,
+                                                              self.client_writer,
+                                                              context)),
                  ]
         try:
             await asyncio.wait(tasks)

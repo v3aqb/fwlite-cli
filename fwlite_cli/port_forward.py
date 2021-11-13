@@ -131,8 +131,14 @@ class ForwardHandler:
             # forward
             context = ForwardContext()
 
-            tasks = [forward_from_client(client_reader, remote_writer, context, self.timeout),
-                     forward_from_remote(remote_reader, client_writer, context, self.timeout),
+            tasks = [asyncio.create_task(forward_from_client(client_reader,
+                                                             remote_writer,
+                                                             context,
+                                                             self.timeout)),
+                     asyncio.create_task(forward_from_remote(remote_reader,
+                                                             client_writer,
+                                                             context,
+                                                             self.timeout)),
                      ]
             await asyncio.wait(tasks)
         except asyncio.CancelledError:
