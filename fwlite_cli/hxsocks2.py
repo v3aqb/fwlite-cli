@@ -173,6 +173,7 @@ class Hxs2Connection:
 
         self.remote_reader = None
         self.remote_writer = None
+        self._socport = None
 
         self.__pskcipher = None
         self.__cipher = None
@@ -194,12 +195,15 @@ class Hxs2Connection:
         self._buffer_size_ewma = 0
         self._recv_tp_max = 0
         self._recv_tp_ewma = 0
+        self._sent_tp_max = 0
+        self._sent_tp_ewma = 0
 
         self._stat_data_recv = 0
         self._stat_total_recv = 1
         self._stat_recv_tp = 0
         self._stat_data_sent = 0
         self._stat_total_sent = 1
+        self._stat_sent_tp = 0
 
         self._lock = Lock()
 
@@ -331,6 +335,7 @@ class Hxs2Connection:
         ct = self.__cipher.encrypt(data)
         self.remote_writer.write(struct.pack('>H', len(ct)) + ct)
         self._stat_total_sent += len(ct) + 2
+        self._stat_sent_tp += len(ct) + 2
         self._last_count += 1
 
         if type_ == DATA and self._last_count > 10 and random.random() < 0.01:
@@ -376,7 +381,6 @@ class Hxs2Connection:
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
-        last_recv = time.monotonic()
         while not self.connection_lost:
             try:
                 # read frame_len
@@ -386,7 +390,7 @@ class Hxs2Connection:
                     frame_len = await self._rfile_read(2, timeout=intv)
                     frame_len, = struct.unpack('>H', frame_len)
                 except asyncio.TimeoutError:
-                    if self._ping_test and time.monotonic() - self._ping_time > intv:
+                    if self._ping_test and time.monotonic() - self._ping_time > 6:
                         self.logger.warning('server no response %s', self.proxy.name)
                         break
                     if time.monotonic() - self._last_active_c > 120:
@@ -522,6 +526,7 @@ class Hxs2Connection:
                 break
         # out of loop, destroy connection
         self.connection_lost = True
+        self._manager.remove(self)
         self.logger.warning('out of loop %s', self.proxy.name)
         self.logger.info('total_recv: %d, data_recv: %d %.3f',
                          self._stat_total_recv, self._stat_data_recv,
@@ -529,7 +534,7 @@ class Hxs2Connection:
         self.logger.info('total_sent: %d, data_sent: %d %.3f',
                          self._stat_total_sent, self._stat_data_sent,
                          self._stat_data_sent / self._stat_total_sent)
-        self._manager.remove(self)
+        self.print_status()
 
         for sid, status in self._client_status.items():
             if isinstance(status, Event):
@@ -640,6 +645,7 @@ class Hxs2Connection:
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.stat())
                     self.connected = True
+                    self._socport = self.remote_writer.get_extra_info('sockname')[1]
                     return
                 except InvalidSignature:
                     self.logger.error('hxs getKey Error: server auth failed, bad signature')
@@ -664,23 +670,28 @@ class Hxs2Connection:
             if self._recv_tp_ewma > self._recv_tp_max:
                 self._recv_tp_max = self._recv_tp_ewma
             self._stat_recv_tp = 0
+            self._sent_tp_ewma = self._sent_tp_ewma * 0.8 + self._stat_sent_tp * 0.2
+            if self._sent_tp_ewma > self._sent_tp_max:
+                self._sent_tp_max = self._sent_tp_ewma
+            self._stat_sent_tp = 0
             buffer_size = self.remote_writer.transport.get_write_buffer_size()
             self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
 
     def busy(self):
-        self.print_status()
-        return self._recv_tp_ewma
+        return self._recv_tp_ewma + self._sent_tp_ewma
 
     def is_busy(self):
-        if self._recv_tp_max < 524288:
-            return self._buffer_size_ewma > 2048
-        return self._buffer_size_ewma > 2048 or self._recv_tp_ewma > self._recv_tp_max * 0.3
+        return self._buffer_size_ewma > 2048 or \
+            (self._recv_tp_max > 524288 and self._recv_tp_ewma > self._recv_tp_max * 0.3) or \
+            (self._recv_tp_max > 262144 and self._sent_tp_ewma > self._sent_tp_max * 0.3)
 
     def print_status(self):
-        self.logger.info('%s tp_max: %d', self.name, self._recv_tp_max)
-        self.logger.info('%s tp_ewma: %d', self.name, self._recv_tp_ewma)
-        self.logger.info('%s buffer_ewma: %d', self.name, self._buffer_size_ewma)
-        self.logger.info('%s stream: %d', self.name, self.count())
+        if not self.connected:
+            return
+        self.logger.info('%s:%s status:', self.name, self._socport)
+        self.logger.info('recv_tp_max: %8d, ewma: %8d', self._recv_tp_max, self._recv_tp_ewma)
+        self.logger.info('sent_tp_max: %8d, ewma: %8d', self._sent_tp_max, self._sent_tp_ewma)
+        self.logger.info('buffer_ewma: %8d, stream: %6d', self._buffer_size_ewma, self.count())
 
     async def close_stream(self, stream_id):
         if self._stream_status[stream_id] != CLOSED:
