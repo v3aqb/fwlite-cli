@@ -105,9 +105,6 @@ class ConnectionManager:
         # choose / create and return a connection
         async with self._lock:
             stream_count = sum([conn.count() for conn in self.connection_list])
-            if len(self.connection_list) > 1 or stream_count > 20:
-                self.logger.info('%s, %d connections, %d streams',
-                                 proxy.name, len(self.connection_list), stream_count)
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 self.connection_list.append(Hxs2Connection(proxy, self.timeout, self))
