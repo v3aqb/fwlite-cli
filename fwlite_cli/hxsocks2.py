@@ -147,7 +147,7 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     raise ConnectionResetError(0, 'get hxs2 connection failed.')
 
 
-class ConnectionLostError(OSError):
+class ConnectionLostError(Exception):
     pass
 
 
@@ -218,15 +218,12 @@ class Hxs2Connection:
                     await self.get_key(timeout, tcp_nodelay)
                 except asyncio.CancelledError:
                     raise
-                except Exception as err:
+                except (ConnectionError, ) as err:
                     self.logger.error('%s get_key %r', self.name, err)
                     # self.logger.error(traceback.format_exc())
                     if self.remote_writer and not self.remote_writer.is_closing():
                         self.remote_writer.close()
-                        try:
-                            await self.remote_writer.wait_closed()
-                        except OSError:
-                            pass
+                        await self.remote_writer.wait_closed()
                     self.remote_writer = None
                     raise ConnectionResetError(0, 'hxs get_key failed.')
         # send connect request
@@ -290,7 +287,7 @@ class Hxs2Connection:
                             self._stream_status[stream_id] == OPEN:
                         continue
                     data = b''
-                except OSError:
+                except ConnectionError:
                     await self.close_stream(stream_id)
                     return
 
@@ -376,7 +373,7 @@ class Hxs2Connection:
                 return
             try:
                 await self.remote_writer.drain()
-            except OSError:
+            except ConnectionError:
                 self.connection_lost = True
 
     async def read_from_connection(self):
@@ -400,7 +397,7 @@ class Hxs2Connection:
                         if not self._ping_test:
                             self.send_ping()
                     continue
-                except Exception as err:
+                except (ConnectionError, asyncio.IncompleteReadError) as err:
                     # destroy connection
                     self.logger.error('read from connection error: %r', err)
                     break
@@ -411,7 +408,7 @@ class Hxs2Connection:
                     frame_data = self.__cipher.decrypt(frame_data)
                     self._stat_total_recv += frame_len + 2
                     self._stat_recv_tp += frame_len + 2
-                except (asyncio.TimeoutError, InvalidTag) as err:
+                except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
                     # destroy connection
                     self.logger.error('read frame data error: %r, timeout %s', err, self.timeout)
                     break
@@ -457,7 +454,7 @@ class Hxs2Connection:
                         self._client_writer[stream_id].write(data)
                         await self._client_writer[stream_id].drain()
                         self._stat_data_recv += data_len
-                    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                    except ConnectionError:
                         # client error, reset stream
                         asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == HEADERS:  # 1
@@ -510,11 +507,8 @@ class Hxs2Connection:
                     for stream_id, client_writer in self._client_writer:
                         if stream_id > max_stream_id:
                             # reset stream
-                            try:
-                                if not client_writer.is_closing():
-                                    client_writer.close()
-                            except OSError:
-                                pass
+                            client_writer.close()
+                            await client_writer.wait_closed()
                 elif frame_type == 8:
                     # WINDOW_UPDATE
                     pass
@@ -544,7 +538,7 @@ class Hxs2Connection:
             self.remote_writer.close()
         try:
             await self.remote_writer.wait_closed()
-        except OSError:
+        except ConnectionError:
             pass
 
         task_list = []
@@ -703,5 +697,5 @@ class Hxs2Connection:
             try:
                 await self._client_writer[stream_id].wait_closed()
                 del self._client_writer[stream_id]
-            except OSError:
+            except ConnectionError:
                 pass
