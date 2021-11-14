@@ -543,7 +543,8 @@ class Hxs2Connection:
                 task_list.append(self._client_writer[stream_id])
         self._client_writer = {}
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
-        await asyncio.wait(task_list)
+        if task_list:
+            await asyncio.wait(task_list)
 
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks2 getKey')
