@@ -666,10 +666,10 @@ class http_handler(BaseProxyHandler):
             if remote_close or self.close_connection:
                 if not self.remote_writer.is_closing():
                     self.remote_writer.close()
-                try:
-                    await self.remote_writer.wait_closed()
-                except OSError:
-                    pass
+                    try:
+                        await self.remote_writer.wait_closed()
+                    except OSError:
+                        pass
                 self.remote_writer = None
                 self.close_connection = True
             else:
@@ -684,20 +684,20 @@ class http_handler(BaseProxyHandler):
             self.close_connection = True
             if not self.remote_writer.is_closing():
                 self.remote_writer.close()
-            try:
-                await self.remote_writer.wait_closed()
-            except OSError:
-                pass
+                try:
+                    await self.remote_writer.wait_closed()
+                except OSError:
+                    pass
             self.remote_writer = None
             return
         except (asyncio.TimeoutError, OSError, ValueError, asyncio.IncompleteReadError) as err:
             if self.remote_writer:
                 if not self.remote_writer.is_closing():
                     self.remote_writer.close()
-                try:
-                    await self.remote_writer.wait_closed()
-                except OSError:
-                    pass
+                    try:
+                        await self.remote_writer.wait_closed()
+                    except OSError:
+                        pass
                 self.remote_writer = None
             await self.on_GET_Error(err)
         except asyncio.CancelledError:
@@ -739,7 +739,7 @@ class http_handler(BaseProxyHandler):
 
             if data.startswith(b'\x16\x03'):
                 # parse SNI
-                data += await self.client_reader_read(8196)
+                data += await self.client_reader_read(8192)
                 try:
                     tls_extensions = extract_tls_extension(data)
                     server_name = tls_extensions.get(0, b'')[5:].decode()
@@ -753,7 +753,7 @@ class http_handler(BaseProxyHandler):
                     self.logger.warning(traceback.format_exc())
                     self.logger.info('date_len %d' % len(data))
             elif data in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'OPTI', b'PATC', b'TRAC'):
-                data += await self.client_reader_read(8196)
+                data += await self.client_reader_read(8192)
                 for line in data.splitlines():
                     if line.startswith(b'Host: '):
                         self.shortpath = parse_hostport(line.strip().decode()[6:])[0]
@@ -872,10 +872,11 @@ class http_handler(BaseProxyHandler):
             context.err = err
         if not self.remote_writer.is_closing():
             self.remote_writer.close()
-        try:
-            await self.remote_writer.wait_closed()
-        except OSError:
-            pass
+            try:
+                await self.remote_writer.wait_closed()
+            except OSError:
+                pass
+        self.remote_writer = None
 
     async def forward_from_client(self, read_from, write_to, context, timeout=60):
         if self.command == 'CONNECT':

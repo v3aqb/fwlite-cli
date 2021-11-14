@@ -55,18 +55,11 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'ss'
-    # create socket_pair
-    sock_a, sock_b = socket.socketpair()
-    if sys.platform == 'win32':
-        sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     # connect to ss server
-    context = SSConn(proxy, sock_b)
-    await context.connect(addr, port, timeout, tcp_nodelay)
+    context = SSConn(proxy)
+    reader, writer = await context.connect(addr, port, timeout, limit, tcp_nodelay)
 
-    # return reader, writer
-    reader, writer = await asyncio.open_connection(sock=sock_a, limit=limit)
     # writer.transport.set_write_buffer_limits(0, 0)
     return reader, writer
 
@@ -74,10 +67,9 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
 class SSConn:
     bufsize = 65535
 
-    def __init__(self, proxy, sock_b):
+    def __init__(self, proxy):
         self.logger = logging.getLogger('ss')
         self.proxy = proxy
-        self.sock_b = sock_b
         ssmethod, sspassword = self.proxy.username, self.proxy.password
         if sspassword is None:
             ssmethod, sspassword = base64.b64decode(ssmethod).decode().split(':', 1)
@@ -101,11 +93,9 @@ class SSConn:
         self.data_recved = False
         self._buf = b''
 
-    async def connect(self, addr, port, timeout, tcp_nodelay):
+    async def connect(self, addr, port, timeout, limit, tcp_nodelay):
         self._address = addr
         self._port = port
-        self.client_reader, self.client_writer = await asyncio.open_connection(sock=self.sock_b)
-        self.client_writer.transport.set_write_buffer_limits(262144, 131072)
 
         from .connection import open_connection
         self.remote_reader, self.remote_writer, _ = await open_connection(
@@ -117,8 +107,21 @@ class SSConn:
             limit=131072,
             tcp_nodelay=tcp_nodelay)
         self.remote_writer.transport.set_write_buffer_limits(262144, 131072)
+
+        # create socket_pair
+        sock_a, sock_b = socket.socketpair()
+        if sys.platform == 'win32':
+            sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.client_reader, self.client_writer = await asyncio.open_connection(sock=sock_b)
+        self.client_writer.transport.set_write_buffer_limits(262144, 131072)
+
         # start forward
         self.task = asyncio.ensure_future(self.forward())
+
+        # return reader, writer
+        reader, writer = await asyncio.open_connection(sock=sock_a, limit=limit)
+        return reader, writer
 
     async def forward(self):
 

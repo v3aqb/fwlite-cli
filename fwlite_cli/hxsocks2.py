@@ -306,20 +306,11 @@ class Hxs2Connection:
             except Exception as err:
                 self.logger.error('CLIENT_SIDE BOOM! %r', err)
                 self.logger.error(traceback.format_exc())
-                self._stream_status[stream_id] = CLOSED
-                break
+                await self.close_stream(stream_id)
+                return
         while time.monotonic() - self._last_active[stream_id] < 12:
             await asyncio.sleep(6)
         await self.close_stream(stream_id)
-
-    async def drain(self):
-        async with self._lock:
-            if self.connection_lost:
-                return
-            try:
-                await self.remote_writer.drain()
-            except OSError:
-                self.connection_lost = True
 
     def send_frame(self, type_, flags, stream_id, payload):
         self.logger.debug('send_frame type: %d, stream_id: %d', type_, stream_id)
@@ -373,6 +364,15 @@ class Hxs2Connection:
         buffer_size = self.remote_writer.transport.get_write_buffer_size()
         self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
         await self.drain()
+
+    async def drain(self):
+        async with self._lock:
+            if self.connection_lost:
+                return
+            try:
+                await self.remote_writer.drain()
+            except OSError:
+                self.connection_lost = True
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
@@ -542,11 +542,15 @@ class Hxs2Connection:
         except OSError:
             pass
 
+        task_list = []
         for stream_id in self._client_writer:
             self._stream_status[stream_id] = CLOSED
             if not self._client_writer[stream_id].is_closing():
                 self._client_writer[stream_id].close()
+                task_list.append(self._client_writer[stream_id])
         self._client_writer = {}
+        task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
+        await asyncio.wait(task_list)
 
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks2 getKey')
@@ -688,5 +692,5 @@ class Hxs2Connection:
             try:
                 await self._client_writer[stream_id].wait_closed()
                 del self._client_writer[stream_id]
-            except (OSError, KeyError):
+            except OSError:
                 pass

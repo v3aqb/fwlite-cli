@@ -112,10 +112,10 @@ class BaseHandler(BaseHTTPRequestHandler):
             self.logger.error(traceback.format_exc())
         if not self.client_writer.is_closing():
             self.client_writer.close()
-        try:
-            await self.client_writer.wait_closed()
-        except OSError:
-            pass
+            try:
+                await self.client_writer.wait_closed()
+            except OSError:
+                pass
 
     async def _handle(self):
         fut = self.client_reader.readexactly(1)
@@ -133,10 +133,10 @@ class BaseHandler(BaseHTTPRequestHandler):
         if self.remote_writer:
             if not self.remote_writer.is_closing():
                 self.remote_writer.close()
-            try:
-                await self.remote_writer.wait_closed()
-            except OSError:
-                pass
+                try:
+                    await self.remote_writer.wait_closed()
+                except OSError:
+                    pass
 
     def pre_request_init(self):
         self.req_count += 1
