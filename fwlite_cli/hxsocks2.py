@@ -213,11 +213,8 @@ class Hxs2Connection:
             if not self.connected:
                 try:
                     await self.get_key(timeout, tcp_nodelay)
-                except asyncio.CancelledError:
-                    raise
-                except (ConnectionError, ) as err:
+                except (ConnectionError, socket.gaierror, asyncio.TimeoutError) as err:
                     self.logger.error('%s get_key %r', self.name, err)
-                    # self.logger.error(traceback.format_exc())
                     if self.remote_writer and not self.remote_writer.is_closing():
                         self.remote_writer.close()
                         await self.remote_writer.wait_closed()

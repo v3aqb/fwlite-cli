@@ -22,6 +22,7 @@ import io
 import base64
 import json
 import time
+import socket
 import traceback
 
 import urllib.parse as urlparse
@@ -674,7 +675,9 @@ class http_handler(BaseProxyHandler):
             await self.remote_writer.wait_closed()
             self.remote_writer = None
             return
-        except (asyncio.TimeoutError, ConnectionError, ValueError, asyncio.IncompleteReadError) as err:
+        except (asyncio.TimeoutError,
+                ConnectionError, ValueError,
+                asyncio.IncompleteReadError, socket.gaierror) as err:
             if self.remote_writer:
                 self.remote_writer.close()
                 await self.remote_writer.wait_closed()
@@ -807,7 +810,7 @@ class http_handler(BaseProxyHandler):
             addr, port = parse_hostport(path, 443)
             self.remote_reader, self.remote_writer, self.ppname = \
                 await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
-        except (asyncio.TimeoutError, asyncio.IncompleteReadError, ConnectionError) as err:
+        except (asyncio.TimeoutError, asyncio.IncompleteReadError, ConnectionError, socket.gaierror) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
             self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
