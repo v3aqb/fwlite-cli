@@ -217,7 +217,10 @@ class Hxs2Connection:
                     self.logger.error('%s get_key %r', self.name, err)
                     if self.remote_writer and not self.remote_writer.is_closing():
                         self.remote_writer.close()
-                        await self.remote_writer.wait_closed()
+                        try:
+                            await self.remote_writer.wait_closed()
+                        except ConnectionError:
+                            pass
                     self.remote_writer = None
                     raise ConnectionResetError(0, 'hxs get_key failed.')
         # send connect request
@@ -461,7 +464,10 @@ class Hxs2Connection:
                         if frame_flags == END_STREAM_FLAG:
                             self._stream_status[stream_id] |= EOF_RECV
                             if stream_id in self._client_writer:
-                                self._client_writer[stream_id].write_eof()
+                                try:
+                                    self._client_writer[stream_id].write_eof()
+                                except OSError:
+                                    self._stream_status[stream_id] = CLOSED
                             if self._stream_status[stream_id] == CLOSED:
                                 asyncio.ensure_future(self.close_stream(stream_id))
                         else:
@@ -502,7 +508,10 @@ class Hxs2Connection:
                         if stream_id > max_stream_id:
                             # reset stream
                             client_writer.close()
-                            await client_writer.wait_closed()
+                            try:
+                                await client_writer.wait_closed()
+                            except ConnectionError:
+                                pass
                 elif frame_type == 8:
                     # WINDOW_UPDATE
                     pass

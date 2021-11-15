@@ -659,7 +659,10 @@ class http_handler(BaseProxyHandler):
             self.pproxy.log(self.request_host[0], rtime)
             if remote_close or self.close_connection:
                 self.remote_writer.close()
-                await self.remote_writer.wait_closed()
+                try:
+                    await self.remote_writer.wait_closed()
+                except ConnectionError:
+                    pass
                 self.close_connection = True
             else:
                 # keep for next request
@@ -672,7 +675,10 @@ class http_handler(BaseProxyHandler):
             self.logger.error(repr(err))
             self.close_connection = True
             self.remote_writer.close()
-            await self.remote_writer.wait_closed()
+            try:
+                await self.remote_writer.wait_closed()
+            except ConnectionError:
+                pass
             self.remote_writer = None
             return
         except (asyncio.TimeoutError,
@@ -680,7 +686,10 @@ class http_handler(BaseProxyHandler):
                 asyncio.IncompleteReadError, socket.gaierror) as err:
             if self.remote_writer:
                 self.remote_writer.close()
-                await self.remote_writer.wait_closed()
+                try:
+                    await self.remote_writer.wait_closed()
+                except ConnectionError:
+                    pass
                 self.remote_writer = None
             await self.on_GET_Error(err)
         except asyncio.CancelledError:
@@ -852,7 +861,10 @@ class http_handler(BaseProxyHandler):
             self.logger.error(traceback.format_exc())
             context.err = err
         self.remote_writer.close()
-        await self.remote_writer.wait_closed()
+        try:
+            await self.remote_writer.wait_closed()
+        except ConnectionError:
+            pass
         self.remote_writer = None
 
     async def forward_from_client(self, read_from, write_to, context, timeout=120):
@@ -902,7 +914,10 @@ class http_handler(BaseProxyHandler):
                 data = await asyncio.wait_for(fut, intv)
             except ConnectionError:
                 data = b''
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, OSError) as err:
+                # OSError: [WinError 121]
+                if isinstance(err, OSError) and err.args[0] != 121:
+                    raise
                 if time.monotonic() - context.last_active > timeout or context.local_eof:
                     data = b''
                 elif context.retryable and time.monotonic() - context.last_active > self.timeout:
@@ -936,7 +951,7 @@ class http_handler(BaseProxyHandler):
         if not context.retryable:
             try:
                 write_to.write_eof()
-            except ConnectionError:
+            except OSError:
                 pass
 
     def getparent(self, gfwed=False):
