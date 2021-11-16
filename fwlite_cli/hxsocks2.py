@@ -681,7 +681,7 @@ class Hxs2Connection:
     def is_busy(self):
         return self._buffer_size_ewma > 2048 or \
             (self._recv_tp_max > 524288 and self._recv_tp_ewma > self._recv_tp_max * 0.3) or \
-            (self._recv_tp_max > 262144 and self._sent_tp_ewma > self._sent_tp_max * 0.3)
+            (self._sent_tp_max > 262144 and self._sent_tp_ewma > self._sent_tp_max * 0.3)
 
     def print_status(self):
         if not self.connected:
