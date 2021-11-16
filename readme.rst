@@ -50,7 +50,7 @@ install
 ::
 
     pip3 install https://github.com/v3aqb/hxcrypto/archive/master.zip
-    pip3 install https://github.com/v3aqb/fwlite-cli/archive/master.zip
+    pip3 install https://github.com/v3aqb/fwlite-cli/archive/stable.zip
 
 update
 ------
@@ -62,7 +62,7 @@ using `pip -U` may cause problems, better uninstall and install.
     pip3 uninstall fwlite-cli
     pip3 uninstall hxcrypto
     pip3 install https://github.com/v3aqb/hxcrypto/archive/master.zip
-    pip3 install https://github.com/v3aqb/fwlite-cli/archive/master.zip
+    pip3 install https://github.com/v3aqb/fwlite-cli/archive/stable.zip
 
 
 Set parent proxy
