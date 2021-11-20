@@ -230,6 +230,8 @@ class get_proxy:
                    5 -- global:      proxy if not localhost
         '''
         host, port = host
+        if mode == 2:
+            mode = 1
 
         gfwed = self.isgfwed(uri, host, port, ip, mode)
 
