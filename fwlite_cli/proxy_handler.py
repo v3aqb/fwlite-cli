@@ -825,10 +825,9 @@ class http_handler(BaseProxyHandler):
         await self.forward(context)
         if context.retryable:
             self.logger.info(repr(context))
-
-            if context.local_eof:
-                self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
-                                           False, self.failed_parents, self.ppname)
+            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
+                                       False, self.failed_parents, self.ppname)
+            if not context.local_eof:
                 await self._do_CONNECT(retry=True)
 
     async def forward(self, context):
