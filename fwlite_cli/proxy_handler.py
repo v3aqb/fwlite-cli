@@ -491,9 +491,7 @@ class http_handler(BaseProxyHandler):
                 try:
                     response_line, protocol_version, response_status, _ = \
                         await self.read_resp_line()
-                except asyncio.CancelledError:
-                    raise
-                except Exception as err:
+                except (asyncio.TimeoutError, ValueError, OSError) as err:
                     # TODO: probably the server don't handle Expect well.
                     self.logger.warning('read response line error: %r', err)
                 else:
@@ -690,13 +688,6 @@ class http_handler(BaseProxyHandler):
                     pass
                 self.remote_writer = None
             await self.on_GET_Error(err)
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:
-            self.close_connection = True
-            self.logger.error('http_handler')
-            self.logger.error(repr(err))
-            self.logger.error(traceback.format_exc())
 
     async def on_GET_Error(self, err):
         if self.ppname:
@@ -851,19 +842,13 @@ class http_handler(BaseProxyHandler):
                  ]
         try:
             await asyncio.wait(tasks)
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:
-            self.logger.error('http_handler.forward')
-            self.logger.error(repr(err))
-            self.logger.error(traceback.format_exc())
-            context.err = err
-        self.remote_writer.close()
-        try:
-            await self.remote_writer.wait_closed()
-        except OSError:
-            pass
-        self.remote_writer = None
+        finally:
+            self.remote_writer.close()
+            try:
+                await self.remote_writer.wait_closed()
+            except OSError:
+                pass
+            self.remote_writer = None
 
     async def forward_from_client(self, read_from, write_to, context, timeout=120):
         if self.command == 'CONNECT':
@@ -879,8 +864,7 @@ class http_handler(BaseProxyHandler):
             except asyncio.TimeoutError:
                 if time.monotonic() - context.last_active > timeout or context.remote_eof:
                     break
-                else:
-                    continue
+                continue
             except ConnectionError:
                 data = b''
 
