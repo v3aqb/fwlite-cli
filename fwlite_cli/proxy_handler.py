@@ -84,11 +84,13 @@ class ForwardContext:
 
     def from_client(self):
         self.fcc += 1
+        self.last_active = time.monotonic()
         if not self.first_send:
             self.first_send = time.monotonic()
 
     def from_remote(self):
         self.frc += 1
+        self.last_active = time.monotonic()
 
     @property
     def retryable(self):
@@ -853,12 +855,12 @@ class http_handler(BaseProxyHandler):
         if self.command == 'CONNECT':
             # send self.rbuffer
             if self.rbuffer:
-                self.remote_writer.write(b''.join(self.rbuffer))
+                write_to.write(b''.join(self.rbuffer))
                 context.from_client()
         while True:
-            intv = 1 if context.retryable else 60
+            intv = 1 if context.retryable else 12
             try:
-                fut = self.client_reader.read(self.bufsize)
+                fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, timeout=intv)
             except asyncio.TimeoutError:
                 if time.monotonic() - context.last_active > timeout or context.remote_eof:
@@ -871,7 +873,6 @@ class http_handler(BaseProxyHandler):
                 context.local_eof = True
                 break
             try:
-                context.last_active = time.monotonic()
                 if context.retryable:
                     self.rbuffer.append(data)
                 context.from_client()
@@ -887,9 +888,8 @@ class http_handler(BaseProxyHandler):
             pass
 
     async def forward_from_remote(self, read_from, write_to, context, timeout=120):
-        count = 0
         while True:
-            intv = 1 if context.retryable else 60
+            intv = 1 if context.retryable else 12
             try:
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
@@ -907,7 +907,6 @@ class http_handler(BaseProxyHandler):
                 break
             try:
                 context.from_remote()
-                context.last_active = time.monotonic()
                 if context.frc == 1:
                     rtime = time.monotonic() - context.first_send
                     if self.command == 'CONNECT':

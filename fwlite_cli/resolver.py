@@ -114,7 +114,7 @@ class Resolver:
             return True
         return False
 
-    async def resolve(self, host, port, dirty=False):
+    async def resolve(self, host, port):
         ''' return
         '''
         logger.debug('entering %s.resolve(%s)', self.__class__.__name__, host)
@@ -124,9 +124,7 @@ class Resolver:
         except ValueError:
             pass
         if self.is_poisoned(host):
-            if dirty:
-                return []
-            raise NotImplementedError
+            return []
         try:
             # resolve
             result = await resolve(host, port)
@@ -146,7 +144,7 @@ class Resolver:
             pass
 
         try:
-            result = await self.resolve(host, port, dirty=True)
+            result = await self.resolve(host, port)
             result = [ip for ip in result if ip[0] == socket.AF_INET]
             return ip_address(result[0][1])
         except IndexError:
