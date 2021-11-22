@@ -75,6 +75,7 @@ class get_proxy:
         self.local = ap_filter()
         self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
         self.china_ip_filter = NetFilter()
+        self.host_not_in_china = set()
 
         if load_local is not None:
             iter_ = load_local
@@ -155,11 +156,10 @@ class get_proxy:
         self.logger.info('%s not in china', host or ip)
         return False
 
-    def isgfwed_resolver(self, host, uri=None):
+    def isgfwed_resolver(self, host, mode):
         if self.conf.rproxy:
             return None
-        if not uri:
-            uri = 'http://%s/' % host
+        uri = 'http://%s/' % host
         result = self.local.match(uri, host)
         if result is not None:
             return result
@@ -171,6 +171,9 @@ class get_proxy:
             result = self.gfwlist.match(uri, host)
             if result is not None:
                 return result
+
+        if mode >= 3 and host in self.host_not_in_china:
+            return True
         return None
 
     def isgfwed(self, uri, host, port, ip, mode=1):
@@ -206,6 +209,8 @@ class get_proxy:
 
         if self.ip_in_china(host, ip):
             return False
+
+        self.host_not_in_china.add(host)
 
         if mode == 3:
             return True

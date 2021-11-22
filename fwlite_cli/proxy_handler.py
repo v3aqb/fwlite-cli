@@ -357,7 +357,7 @@ class http_handler(BaseProxyHandler):
                                           parse.path.split(':')[0],
                                           '?' if parse.query else '')
 
-        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host)
+        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.server.mode)
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
@@ -769,7 +769,7 @@ class http_handler(BaseProxyHandler):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # random.shuffle(self._proxylist)
 
-        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host)
+        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.server.mode)
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:

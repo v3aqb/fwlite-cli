@@ -108,9 +108,10 @@ class Resolver:
     def __init__(self, get_proxy, bad_ip):
         self.get_proxy = get_proxy
         self.bad_ip = bad_ip
+        self.zero = ip_address(u'0.0.0.0')
 
-    def is_poisoned(self, domain):
-        if self.get_proxy and self.get_proxy.isgfwed_resolver(domain):
+    def is_poisoned(self, domain, mode):
+        if self.get_proxy and self.get_proxy.isgfwed_resolver(domain, mode):
             return True
         return False
 
@@ -123,8 +124,7 @@ class Resolver:
             return [(socket.AF_INET if ip.version == 4 else socket.AF_INET6, host), ]
         except ValueError:
             pass
-        if self.is_poisoned(host):
-            return []
+
         try:
             # resolve
             result = await resolve(host, port)
@@ -135,17 +135,19 @@ class Resolver:
             logger.warning('resolving %s failed: %r', host, err)
             return []
 
-    async def get_ip_address(self, addr):
+    async def get_ip_address(self, addr, mode):
         logger.debug('entering %s.get_ip_address(%s)', self.__class__.__name__, addr)
         host, port = addr
         try:
             return ip_address(host)
         except ValueError:
             pass
-
+        if self.is_poisoned(host, mode):
+            return self.zero
         try:
             result = await self.resolve(host, port)
             result = [ip for ip in result if ip[0] == socket.AF_INET]
-            return ip_address(result[0][1])
+            ipaddr = ip_address(result[0][1])
+            return ipaddr
         except IndexError:
-            return ip_address(u'0.0.0.0')
+            return self.zero
