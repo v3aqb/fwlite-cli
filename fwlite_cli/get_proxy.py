@@ -268,6 +268,7 @@ class get_proxy:
                 rule = '||%s' % requesthost[0]
                 if rule not in self.local.rules:
                     resp_time = self.conf.parentlist.direct.get_avg_resp_time(requesthost[0])
+                    resp_time = resp_time - self.conf.gate
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
                     self.add_temp(rule, min(exp, 60))
 
