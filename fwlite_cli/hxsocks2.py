@@ -60,6 +60,7 @@ DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
 MAX_STREAM_ID = 65530
 MAX_CONNECTION = 2
+CLIENT_WRITE_BUFFER = 524288
 
 OPEN = 0
 EOF_SENT = 1   # SENT END_STREAM
@@ -74,11 +75,11 @@ DATA = 0
 HEADERS = 1
 # PRIORITY = 2
 RST_STREAM = 3
-# SETTINGS = 4
+SETTINGS = 4
 # PUSH_PROMISE = 5
 PING = 6
 GOAWAY = 7
-# WINDOW_UPDATE = 8
+WINDOW_UPDATE = 8
 # CONTINUATION = 9
 
 PONG = 1
@@ -175,9 +176,12 @@ class Hxs2Connection:
         self.__pskcipher = None
         self.__cipher = None
         self._next_stream_id = 1
+        self._settings_async_drain = None
 
         self._client_writer = {}
         self._client_status = {}
+        self._client_resume_reading = {}
+        self._client_drain_lock = {}
         self._stream_status = {}
         self._stream_addr = {}
         self._stream_task = {}
@@ -241,6 +245,8 @@ class Hxs2Connection:
         # wait for server response
         event = Event()
         self._client_status[stream_id] = event
+        self._client_resume_reading[stream_id] = asyncio.Event()
+        self._client_resume_reading[stream_id].set()
 
         # await event.wait()
         fut = event.wait()
@@ -261,10 +267,11 @@ class Hxs2Connection:
                 socketpair_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 socketpair_b.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             reader, writer = await asyncio.open_connection(sock=socketpair_b, limit=131072)
-            writer.transport.set_write_buffer_limits(524288)
+            writer.transport.set_write_buffer_limits(CLIENT_WRITE_BUFFER)
 
             self._client_writer[stream_id] = writer
             self._last_active[stream_id] = time.monotonic()
+            self._client_drain_lock[stream_id] = asyncio.Lock()
             # start forwarding
             self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
             return socketpair_a
@@ -274,6 +281,7 @@ class Hxs2Connection:
         self.logger.debug('start read from client')
 
         while not self.connection_lost:
+            await self._client_resume_reading[stream_id].wait()
             fut = client_reader.read(self.bufsize)
             try:
                 data = await asyncio.wait_for(fut, timeout=12)
@@ -324,6 +332,9 @@ class Hxs2Connection:
         self._stat_sent_tp += len(ct) + 2
         self._last_count += 1
 
+        if self._settings_async_drain is None and random.random() < 0.1:
+            self._settings_async_drain = False
+            self.send_frame(SETTINGS, 0, 1, bytes(random.randint(64, 256)))
         if type_ == DATA and self._last_count > 10 and random.random() < 0.01:
             self.send_ping(False)
 
@@ -441,9 +452,9 @@ class Hxs2Connection:
                     try:
                         self._last_active[stream_id] = time.monotonic()
                         self._client_writer[stream_id].write(data)
-                        await self._client_writer[stream_id].drain()
+                        await self.client_writer_drain(stream_id)
                         self._stat_data_recv += data_len
-                    except ConnectionError:
+                    except OSError:
                         # client error, reset stream
                         asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == HEADERS:  # 1
@@ -479,7 +490,9 @@ class Hxs2Connection:
                     if stream_id in self._client_status:
                         self._client_status[stream_id].set()
                     asyncio.ensure_future(self.close_stream(stream_id))
-
+                elif frame_type == SETTINGS:
+                    if stream_id == 1:
+                        self._settings_async_drain = True
                 elif frame_type == PING:  # 6
                     if frame_flags == PONG:
                         resp_time = time.monotonic() - self._ping_time
@@ -504,9 +517,11 @@ class Hxs2Connection:
                                 await client_writer.wait_closed()
                             except ConnectionError:
                                 pass
-                elif frame_type == 8:
-                    # WINDOW_UPDATE
-                    pass
+                elif frame_type == WINDOW_UPDATE:  # 8
+                    if frame_flags == 1:
+                        self._client_resume_reading[stream_id].clear()
+                    else:
+                        self._client_resume_reading[stream_id].set()
                 else:
                     break
             except Exception as err:
@@ -684,6 +699,8 @@ class Hxs2Connection:
         self.logger.info('buffer_ewma: %8d, stream: %6d', self._buffer_size_ewma, self.count())
 
     async def close_stream(self, stream_id):
+        if not self._client_resume_reading[stream_id].is_set():
+            self._client_resume_reading[stream_id].set()
         if self._stream_status[stream_id] != CLOSED:
             self.send_frame(RST_STREAM, 0, stream_id, bytes(random.randint(8, 256)))
             self._stream_status[stream_id] = CLOSED
@@ -696,3 +713,26 @@ class Hxs2Connection:
                 await writer.wait_closed()
             except ConnectionError:
                 pass
+
+    async def client_writer_drain(self, stream_id):
+        if self._settings_async_drain:
+            asyncio.ensure_future(self.async_drain(stream_id))
+        else:
+            with self._client_drain_lock[stream_id]:
+                await self._client_writer[stream_id].drain()
+
+    async def async_drain(self, stream_id):
+        wbuffer_size = self._client_writer[stream_id].transport.get_write_buffer_size()
+        if wbuffer_size <= CLIENT_WRITE_BUFFER:
+            return
+
+        with self._client_drain_lock[stream_id]:
+            try:
+                # tell client to stop reading
+                self.send_frame(WINDOW_UPDATE, 1, stream_id, bytes(random.randint(64, 256)))
+                await self._client_writer[stream_id].drain()
+                # tell client to resume reading
+                self.send_frame(WINDOW_UPDATE, 0, stream_id, bytes(random.randint(64, 256)))
+            except OSError:
+                await self.close_stream(stream_id)
+                return
