@@ -154,6 +154,7 @@ class get_proxy:
             self.logger.info('%s in china', host or ip)
             return True
         self.logger.info('%s not in china', host or ip)
+        self.host_not_in_china.add(host)
         return False
 
     def isgfwed_resolver(self, host, mode):
@@ -209,8 +210,6 @@ class get_proxy:
 
         if self.ip_in_china(host, ip):
             return False
-
-        self.host_not_in_china.add(host)
 
         if mode == 3:
             return True
