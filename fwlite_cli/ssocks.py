@@ -138,10 +138,10 @@ class SSConn:
         while True:
             fut = self.client_reader.read(self.bufsize)
             try:
-                data = await asyncio.wait_for(fut, timeout=12)
+                data = await asyncio.wait_for(fut, timeout=6)
                 self.last_active = time.time()
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > 120 or self.remote_eof:
+                if time.time() - self.last_active > 180 or self.remote_eof:
                     data = b''
                 else:
                     continue
@@ -179,8 +179,8 @@ class SSConn:
             fut = self.remote_reader.readexactly(_len + 16)
             try:
                 ct = await asyncio.wait_for(fut, timeout=1)
-            except asyncio.TimeoutError:
-                raise IncompleteChunk()
+            except asyncio.TimeoutError as err:
+                raise IncompleteChunk() from err
             if not ct:
                 return b''
         else:
@@ -205,11 +205,11 @@ class SSConn:
         while True:
             try:
                 fut = self._read()
-                data = await asyncio.wait_for(fut, timeout=12)
+                data = await asyncio.wait_for(fut, timeout=6)
                 self.last_active = time.time()
                 self.data_recved = True
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > 120 or self.client_eof:
+                if time.time() - self.last_active > 180 or self.client_eof:
                     data = b''
                 else:
                     continue

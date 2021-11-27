@@ -197,7 +197,7 @@ class BaseHandler(BaseHTTPRequestHandler):
     async def relay_udp(self):
         from .socks5udp import socks5_udp
         proxy = self.server.get_udp_proxy()
-        udp_server = socks5_udp(self, proxy, 60)
+        udp_server = socks5_udp(self, proxy, 180)
         await udp_server.close_event.wait()
 
     def write_udp_reply(self, port):

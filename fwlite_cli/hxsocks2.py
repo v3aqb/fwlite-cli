@@ -284,10 +284,10 @@ class Hxs2Connection:
             await self._client_resume_reading[stream_id].wait()
             fut = client_reader.read(self.bufsize)
             try:
-                data = await asyncio.wait_for(fut, timeout=12)
+                data = await asyncio.wait_for(fut, timeout=6)
                 self._last_active[stream_id] = time.monotonic()
             except asyncio.TimeoutError:
-                if time.monotonic() - self._last_active[stream_id] < 120 and\
+                if time.monotonic() - self._last_active[stream_id] < 180 and\
                         self._stream_status[stream_id] == OPEN:
                     continue
                 data = b''
@@ -390,7 +390,7 @@ class Hxs2Connection:
                     if self._ping_test and time.monotonic() - self._ping_time > 6:
                         self.logger.warning('server no response %s', self.proxy.name)
                         break
-                    if time.monotonic() - self._last_active_c > 120:
+                    if time.monotonic() - self._last_active_c > 180:
                         # no point keeping so long
                         break
                     if time.monotonic() - self._last_active_c > 10:
