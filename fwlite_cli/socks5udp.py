@@ -15,19 +15,17 @@ from hxcrypto import Encryptor, InvalidTag, IVError
 
 
 class socks5_udp:
-    def __init__(self, parent, proxy, timeout=60, mode=0):
+    def __init__(self, parent, proxy, timeout=180):
         self.parent = parent
         self.client_addr = None
         self.client_stream = None
         self.proxy = proxy
         self.timeout = timeout
-        self.mode = mode
 
         self.close_event = asyncio.Event()
-        self.last_active = 0
+        self.last_active = time.monotonic()
 
         self.udp_relay = None
-        self.addr_log = set()
 
         self.logger = logging.getLogger('socks5udp_%d' % self.parent.server_addr[1])
         self.logger.setLevel(logging.INFO)
@@ -42,14 +40,16 @@ class socks5_udp:
 
     async def socks5_udp_client_recv(self):
         self.logger.debug('start udp forward, %s', self.proxy)
-        stream = await asyncio_dgram.bind((self.parent.server_addr[0], 0))
-        self.client_stream = stream
-        self.parent.write_udp_reply(stream.sockname[1])
+        self.client_stream = await asyncio_dgram.bind((self.parent.server_addr[0], 0))
+        self.parent.write_udp_reply(self.client_stream.sockname[1])
         while not self._stop:
             try:
-                fut = stream.recv()
-                data, client_addr = await asyncio.wait_for(fut, timeout=5)
+                fut = self.client_stream.recv()
+                data, client_addr = await asyncio.wait_for(fut, timeout=6)
+                self.last_active = time.monotonic()
             except asyncio.TimeoutError:
+                if time.monotonic() - self.last_active > self.timeout:
+                    break
                 continue
             # source check
             if not self.client_addr:
@@ -63,6 +63,7 @@ class socks5_udp:
             req = data_io.read(4)
             frag = req[2]
             if frag:
+                self.logger.info('frag drop')
                 continue
 
             addrtype = req[3]
@@ -82,19 +83,20 @@ class socks5_udp:
             self.logger.debug('on_server_recv %r', remote_addr)
             # get relay, send
             await self.udp_relay_send(dgram, remote_addr, data[3:])
+        self.on_relay_timeout()
 
     async def udp_relay_send(self, dgram, remote_addr, data):
         if not self.udp_relay:
-            if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
-                if self.proxy and self.proxy.scheme == 'ss':
-                    self.udp_relay = udp_relay_ss(self, self.client_addr, self.proxy, self.timeout, self.mode)
+            # if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
+            if self.proxy and self.proxy.scheme == 'ss':
+                self.udp_relay = UDPRelaySS(self, self.proxy)
         if not self.udp_relay:
-            self.udp_relay = udp_relay_direct(self, self.client_addr, self.proxy, self.timeout, self.mode)
+            self.udp_relay = UDPRelayDirect(self, self.proxy)
 
         await self.udp_relay.send(dgram, remote_addr, data)
 
-    async def on_remote_recv(self, client_addr, remote_addr, dgram, data):
-        self.logger.debug('on_remote_recv %r, %r', remote_addr, client_addr)
+    async def on_remote_recv(self, remote_addr, dgram, data):
+        self.logger.debug('on_remote_recv %r, %r', remote_addr, self.client_addr)
         buf = b'\x00\x00\x00'
         if data:
             buf += data
@@ -104,7 +106,8 @@ class socks5_udp:
             buf += remote_ip.packed
             buf += struct.pack(b'>H', remote_addr[1])
             buf += dgram
-        await self.client_stream.send(buf, client_addr)
+        self.last_active = time.monotonic()
+        await self.client_stream.send(buf, self.client_addr)
 
     def on_relay_timeout(self):
         self._stop = True
@@ -113,22 +116,23 @@ class socks5_udp:
         self.close_event.set()
 
 
-FULL = 0
-RESTRICTED = 1
-PORTRESTRICTED = 2
+class UDPRelayInterface:
+    async def send(self, dgram, remote_addr, data):
+        raise NotImplementedError
+
+    async def recv_from_remote(self):
+        raise NotImplementedError
+
+    def stop(self):
+        raise NotImplementedError
 
 
-class udp_relay_direct:
-    def __init__(self, parent, client_addr, proxy, timeout=60, mode=PORTRESTRICTED):
+class UDPRelayDirect(UDPRelayInterface):
+    def __init__(self, parent, proxy):
         self.parent = parent
-        self.client_addr = client_addr
         self.proxy = proxy
-        self.timeout = timeout
-        self.mode = mode
         self.write_lock = asyncio.Lock()
         self.remote_stream = None
-        self.remote_lastactive = {}
-        self._last_active = time.time()
         self._stop = False
         self.recv_from_remote_task = None
 
@@ -142,22 +146,16 @@ class udp_relay_direct:
         while not self._stop:
             try:
                 fut = self.remote_stream.recv()
-                dgram, remote_addr = await asyncio.wait_for(fut, timeout=5)
-
-                if self.firewall(remote_addr):
-                    self.parent.logger.info('udp drop %r', remote_addr)
-                    continue
-                self.firewall_register(remote_addr)
-
+                dgram, remote_addr = await asyncio.wait_for(fut, timeout=6)
                 dgram, remote_addr, data = self.recv_from_remote_process(dgram, remote_addr)
             except asyncio.TimeoutError:
-                if time.time() - self._last_active > self.timeout:
-                    break
                 continue
-            except (OSError, IVError, InvalidTag):
+            except IVError:
                 continue
+            except (OSError, InvalidTag):
+                break
 
-            await self.parent.on_remote_recv(self.client_addr, remote_addr, dgram, data)
+            await self.parent.on_remote_recv(remote_addr, dgram, data)
         self.remote_stream.close()
         self.parent.on_relay_timeout()
 
@@ -169,37 +167,15 @@ class udp_relay_direct:
         self.recv_from_remote_task = asyncio.ensure_future(self.recv_from_remote())
 
     async def _send(self, dgram, remote_addr, data):
-        self.firewall_register(remote_addr)
         await self.remote_stream.send(dgram, remote_addr)
 
     def recv_from_remote_process(self, dgram, remote_addr):
-        self._last_active = time.time()
         return dgram, remote_addr, None
 
-    def firewall_register(self, remote_addr):
-        if self.mode:
-            key = remote_addr[0] if self.mode == 1 else remote_addr
-            self.remote_lastactive[key] = time.time()
-            self._last_active = time.time()
 
-    def firewall(self, remote_addr):
-        '''
-            dgram received from remote_addr
-            return True if dgram should be droped.
-        '''
-        if self.mode:
-            key = remote_addr[0] if self.mode == 1 else remote_addr
-            if key not in self.remote_lastactive:
-                return True
-            if time.time() - self.remote_lastactive[key] > self.timeout:
-                del self.remote_lastactive[key]
-                return True
-        return None
-
-
-class udp_relay_ss(udp_relay_direct):
-    def __init__(self, parent, client_addr, proxy, timeout=60, mode=PORTRESTRICTED):
-        super().__init__(parent, client_addr, proxy, timeout, mode)
+class UDPRelaySS(UDPRelayDirect):
+    def __init__(self, parent, proxy):
+        super().__init__(parent, proxy)
         self.remote_addr = None
         ssmethod, sspassword = self.proxy.username, self.proxy.password
         if sspassword is None:
@@ -207,7 +183,6 @@ class udp_relay_ss(udp_relay_direct):
         self.ssmethod, self.sspassword = ssmethod, sspassword
         try:
             ipaddress.ip_address(self.proxy.hostname)
-            self.firewall_register((self.proxy.hostname, self.proxy.port))
         except ValueError:
             pass
 
@@ -222,26 +197,7 @@ class udp_relay_ss(udp_relay_direct):
     async def _send(self, dgram, remote_addr, data):
         buf = self.get_cipher().encrypt_once(data)
         await self.remote_stream.send(buf)
-        if self.remote_addr:
-            self.firewall_register(None)
 
     def recv_from_remote_process(self, dgram, remote_addr):
         data = self.get_cipher().decrypt(dgram)
         return None, None, data
-
-    def firewall_register(self, remote_addr):
-        if not self.remote_addr:
-            self.remote_addr = remote_addr
-        self._last_active = time.time()
-
-    def firewall(self, remote_addr):
-        '''
-            dgram received from remote_addr
-            return True if dgram should be droped.
-        '''
-        if not self.remote_addr:
-            self.firewall_register(remote_addr)
-            return None
-        if remote_addr != self.remote_addr:
-            return True
-        return None
