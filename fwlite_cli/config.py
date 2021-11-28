@@ -211,8 +211,10 @@ class Config:
         self.remoteapi = False
         self.remotepass = ''
         self.tcp_nodelay = False
+        self.tcp_timeout = 180
         self.udp_enable = False
         self.udp_proxy = '_D1R3CT_'
+        self.udp_timeout = 300
 
         self.listen = ('127.0.0.1', 8118)
 
@@ -267,6 +269,7 @@ class Config:
         if self.remoteapi and not self.remotepass:
             self.logger.warning('Remote API Enabled WITHOUT password protection!')
         self.tcp_nodelay = self.userconf.dgetbool('FWLite', 'tcp_nodelay', self.tcp_nodelay)
+        self.tcp_timeout = self.userconf.dgetint('FWLite', 'tcp_timeout', self.tcp_timeout)
 
         listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
@@ -284,6 +287,7 @@ class Config:
 
         self.udp_enable = self.userconf.dgetbool('udp', 'enable', self.udp_enable)
         self.udp_proxy = self.userconf.dget('udp', 'proxy', self.udp_proxy)
+        self.udp_timeout = self.userconf.dgetint('udp', 'udp_timeout', self.udp_timeout)
 
         for key, val in self.userconf.items('plugin'):
             if plugin_dir:

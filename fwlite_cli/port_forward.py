@@ -164,6 +164,7 @@ class ForwardManager:
         self.server = {}
         self.server_info = {}
         self.tcp_nodelay = self.conf.tcp_nodelay
+        self.tcp_timeout = self.conf.tcp_timeout
 
     def add(self, target, proxy, port=0):
         soc = None
@@ -182,7 +183,7 @@ class ForwardManager:
         if soc:
             soc.close()
         # start server on port
-        handler = ForwardHandler(target, proxy, timeout=180, tcp_nodelay=self.tcp_nodelay)
+        handler = ForwardHandler(target, proxy, timeout=self.tcp_timeout, tcp_nodelay=self.tcp_nodelay)
         server = await asyncio.start_server(handler.handle, '127.0.0.1', port)
         self.server[port] = server
         self.server_info[port] = (target, proxy.name)

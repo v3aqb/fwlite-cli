@@ -22,7 +22,6 @@ import io
 import base64
 import json
 import time
-import socket
 import traceback
 
 import urllib.parse as urlparse
@@ -144,8 +143,6 @@ class Server:
 
 class BaseProxyHandler(BaseHandler):
     def __init__(self, server):
-        self.conf = server.conf
-        self.timeout = self.conf.timeout
         self.shortpath = ''  # for logging
         self._proxylist = None
         self.ppname = ''
@@ -243,7 +240,7 @@ class BaseProxyHandler(BaseHandler):
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, asyncio.LimitOverrunError, ConnectionError) as err:
             raise ClientReadError(err) from err
 
-    async def _client_writer_write(self, data):
+    async def _client_writer_write(self, data):  # pylint: disable=E0203
         # write to self.client_writer
         self.retryable = False
         # self.traffic_count[1] += len(data)
@@ -832,14 +829,16 @@ class http_handler(BaseProxyHandler):
             if not context.local_eof:
                 await self._do_CONNECT(retry=True)
 
-    async def forward(self, context):
+    async def forward(self, context, timeout=None):
+        if not timeout:
+            timeout = self.tcp_timeout
 
         tasks = [asyncio.create_task(self.forward_from_client(self.client_reader,
                                                               self.remote_writer,
-                                                              context)),
+                                                              context, timeout)),
                  asyncio.create_task(self.forward_from_remote(self.remote_reader,
                                                               self.client_writer,
-                                                              context)),
+                                                              context, timeout)),
                  ]
         try:
             await asyncio.wait(tasks)
@@ -851,14 +850,14 @@ class http_handler(BaseProxyHandler):
                 pass
             self.remote_writer = None
 
-    async def forward_from_client(self, read_from, write_to, context, timeout=120):
+    async def forward_from_client(self, read_from, write_to, context, timeout):
         if self.command == 'CONNECT':
             # send self.rbuffer
             if self.rbuffer:
                 write_to.write(b''.join(self.rbuffer))
                 context.from_client()
         while True:
-            intv = 1 if context.retryable else 12
+            intv = 1 if context.retryable else 6
             try:
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, timeout=intv)
@@ -887,9 +886,9 @@ class http_handler(BaseProxyHandler):
         except OSError:
             pass
 
-    async def forward_from_remote(self, read_from, write_to, context, timeout=120):
+    async def forward_from_remote(self, read_from, write_to, context, timeout):
         while True:
-            intv = 1 if context.retryable else 12
+            intv = 1 if context.retryable else 6
             try:
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)

@@ -70,6 +70,10 @@ class BaseHandler(BaseHTTPRequestHandler):
     def __init__(self, server):  # pylint: disable=super-init-not-called
         # Not calling super-init, not for TCPServer
         self.server = server
+        self.conf = server.conf
+        self.timeout = self.conf.timeout
+        self.tcp_timeout = self.conf.tcp_timeout
+        self.udp_timeout = self.conf.udp_timeout
         self.server_addr = (self.server.addr, self.server.port)
         response = b'\x05\x00\x00'
         serverip = ipaddress.ip_address(self.server.addr)
@@ -80,12 +84,14 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.requestline = ''
         self.request_version = ''
         self.command = ''
+        self.client_reader = None
+        self.client_writer = None
         self.close_connection = True
         self.req_count = 0
         self.path = ''
         self.headers = None
 
-    async def handle(self, client_reader, client_writer):  # pylint: disable=W0221,W0236
+    async def handle(self, client_reader, client_writer):  # pylint: disable=W0236
         self.client_reader = client_reader
         self.client_writer = client_writer
         self.client_writer.transport.set_write_buffer_limits(262144)
@@ -197,14 +203,14 @@ class BaseHandler(BaseHTTPRequestHandler):
     async def relay_udp(self):
         from .socks5udp import socks5_udp
         proxy = self.server.get_udp_proxy()
-        udp_server = socks5_udp(self, proxy, 180)
+        udp_server = socks5_udp(self, proxy, self.udp_timeout)
         await udp_server.close_event.wait()
 
     def write_udp_reply(self, port):
         buf = self.socks5_udp_response + struct.pack(b'>H', port)
         self.client_writer.write(buf)
 
-    async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0221,W0236
+    async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0236
         self.pre_request_init()
 
         try:

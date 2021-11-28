@@ -63,8 +63,9 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
 
 class SSConn:
     bufsize = 65535
+    tcp_timeout = 600
 
-    def __init__(self, proxy):
+    def __init__(self, proxy, ):
         self.logger = logging.getLogger('ss')
         self.proxy = proxy
         ssmethod, sspassword = self.proxy.username, self.proxy.password
@@ -141,7 +142,7 @@ class SSConn:
                 data = await asyncio.wait_for(fut, timeout=6)
                 self.last_active = time.time()
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > 180 or self.remote_eof:
+                if time.time() - self.last_active > self.tcp_timeout or self.remote_eof:
                     data = b''
                 else:
                     continue
@@ -209,7 +210,7 @@ class SSConn:
                 self.last_active = time.time()
                 self.data_recved = True
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > 180 or self.client_eof:
+                if time.time() - self.last_active > self.tcp_timeout or self.client_eof:
                     data = b''
                 else:
                     continue

@@ -61,6 +61,8 @@ CTX = b'hxsocks2'
 MAX_STREAM_ID = 65530
 MAX_CONNECTION = 2
 CLIENT_WRITE_BUFFER = 524288
+CONN_TIMEOUT = 600
+STREAM_TIMEOUT = 600
 
 OPEN = 0
 EOF_SENT = 1   # SENT END_STREAM
@@ -287,7 +289,7 @@ class Hxs2Connection:
                 data = await asyncio.wait_for(fut, timeout=6)
                 self._last_active[stream_id] = time.monotonic()
             except asyncio.TimeoutError:
-                if time.monotonic() - self._last_active[stream_id] < 180 and\
+                if time.monotonic() - self._last_active[stream_id] < STREAM_TIMEOUT and\
                         self._stream_status[stream_id] == OPEN:
                     continue
                 data = b''
@@ -381,7 +383,7 @@ class Hxs2Connection:
         while not self.connection_lost:
             try:
                 # read frame_len
-                intv = 3 if self._ping_test else 6
+                intv = 2 if self._ping_test else 6
 
                 try:
                     frame_len = await self._rfile_read(2, timeout=intv)
@@ -390,7 +392,7 @@ class Hxs2Connection:
                     if self._ping_test and time.monotonic() - self._ping_time > 6:
                         self.logger.warning('server no response %s', self.proxy.name)
                         break
-                    if time.monotonic() - self._last_active_c > 180:
+                    if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
                         # no point keeping so long
                         break
                     if time.monotonic() - self._last_active_c > 10:
@@ -504,7 +506,7 @@ class Hxs2Connection:
                         self._ping_test = False
                         self._ping_time = 0
                     else:
-                        self.send_frame(PING, PONG, 0, bytes(random.randint(64, 4096)))
+                        self.send_frame(PING, PONG, 0, bytes(random.randint(64, 2048)))
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
                     max_stream_id = payload.read(2)
