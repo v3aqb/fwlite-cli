@@ -97,6 +97,33 @@ for fname in os.listdir('./.hxs_known_hosts'):
 CONN_MANAGER = {}  # (server, parentproxy): manager
 
 
+async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
+    # Entry Point
+    if not isinstance(proxy, ParentProxy):
+        proxy = ParentProxy(proxy, proxy)
+    assert proxy.scheme == 'hxs2'
+
+    # get hxs2 connection
+    for _ in range(MAX_CONNECTION + 1):
+        try:
+            conn = await hxs2_get_connection(proxy, timeout)
+
+            soc = await conn.connect(addr, port, timeout, tcp_nodelay)
+
+            reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
+            return reader, writer, conn.name
+        except ConnectionLostError:
+            continue
+    raise ConnectionResetError(0, 'get hxs2 connection failed.')
+
+
+async def hxs2_get_connection(proxy, timeout):
+    if proxy.name not in CONN_MANAGER:
+        CONN_MANAGER[proxy.name] = ConnectionManager(timeout)
+    conn = await CONN_MANAGER[proxy.name].get_connection(proxy)
+    return conn
+
+
 class ConnectionManager:
     def __init__(self, timeout):
         self.timeout = timeout
@@ -118,33 +145,6 @@ class ConnectionManager:
         # this connection is not accepting new streams anymore
         if conn in self.connection_list:
             self.connection_list.remove(conn)
-
-
-async def hxs2_get_connection(proxy, timeout):
-    if proxy.name not in CONN_MANAGER:
-        CONN_MANAGER[proxy.name] = ConnectionManager(timeout)
-    conn = await CONN_MANAGER[proxy.name].get_connection(proxy)
-    return conn
-
-
-async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
-    # Entry Point
-    if not isinstance(proxy, ParentProxy):
-        proxy = ParentProxy(proxy, proxy)
-    assert proxy.scheme == 'hxs2'
-
-    # get hxs2 connection
-    for _ in range(MAX_CONNECTION + 1):
-        try:
-            conn = await hxs2_get_connection(proxy, timeout)
-
-            soc = await conn.connect(addr, port, timeout, tcp_nodelay)
-
-            reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
-            return reader, writer, conn.name
-        except ConnectionLostError:
-            continue
-    raise ConnectionResetError(0, 'get hxs2 connection failed.')
 
 
 class ConnectionLostError(Exception):
