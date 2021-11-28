@@ -106,9 +106,9 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     # get hxs2 connection
     for _ in range(MAX_CONNECTION + 1):
         try:
-            conn = await hxs2_get_connection(proxy, timeout)
+            conn = await hxs2_get_connection(proxy, timeout, tcp_nodelay)
 
-            soc = await conn.connect(addr, port, timeout, tcp_nodelay)
+            soc = await conn.connect(addr, port, timeout)
 
             reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
             return reader, writer, conn.name
@@ -117,27 +117,31 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     raise ConnectionResetError(0, 'get hxs2 connection failed.')
 
 
-async def hxs2_get_connection(proxy, timeout):
+async def hxs2_get_connection(proxy, timeout, tcp_nodelay):
     if proxy.name not in CONN_MANAGER:
-        CONN_MANAGER[proxy.name] = ConnectionManager(timeout)
-    conn = await CONN_MANAGER[proxy.name].get_connection(proxy)
+        CONN_MANAGER[proxy.name] = ConnectionManager()
+    conn = await CONN_MANAGER[proxy.name].get_connection(proxy, timeout, tcp_nodelay)
     return conn
 
 
 class ConnectionManager:
-    def __init__(self, timeout):
-        self.timeout = timeout
+    def __init__(self):
         self.connection_list = []
         self._lock = Lock()
         self.logger = logging.getLogger('hxs2')
 
-    async def get_connection(self, proxy):
+    async def get_connection(self, proxy, timeout, tcp_nodelay):
         # choose / create and return a connection
         async with self._lock:
-            stream_count = sum([conn.count() for conn in self.connection_list])
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
-                self.connection_list.append(Hxs2Connection(proxy, self.timeout, self))
+                hxs2_connection = Hxs2Connection(proxy, self)
+                try:
+                    await hxs2_connection.get_key(timeout, tcp_nodelay)
+                except (OSError, asyncio.TimeoutError) as err:
+                    asyncio.ensure_future(hxs2_connection.close())
+                    raise ConnectionResetError(0, 'hxsocks2 get_key() failed: %s' % err)
+                self.connection_list.append(hxs2_connection)
         list_ = sorted(self.connection_list, key=lambda item: item.busy())
         return list_[0]
 
@@ -154,13 +158,13 @@ class ConnectionLostError(Exception):
 class Hxs2Connection:
     bufsize = 65535 - 22
 
-    def __init__(self, proxy, timeout, manager):
+    def __init__(self, proxy, manager):
         if not isinstance(proxy, ParentProxy):
             proxy = ParentProxy(proxy, proxy)
         self.logger = logging.getLogger('hxs2')
         self.proxy = proxy
         self.name = self.proxy.name
-        self.timeout = timeout
+        self.timeout = 6  # read frame_data timeout
         self._manager = manager
         self._ping_test = False
         self._ping_time = 0
@@ -210,25 +214,14 @@ class Hxs2Connection:
 
         self._lock = Lock()
 
-    async def connect(self, addr, port, timeout=3, tcp_nodelay=False):
+    async def connect(self, addr, port, timeout=3):
         self.logger.debug('hxsocks2 send connect request')
-        async with self._lock:
-            if self.connection_lost:
-                self._manager.remove(self)
-                raise ConnectionLostError(0, 'hxs connection lost')
-            if not self.connected:
-                try:
-                    await self.get_key(timeout, tcp_nodelay)
-                except (ConnectionError, socket.gaierror, asyncio.TimeoutError) as err:
-                    self.logger.error('%s get_key %r', self.name, err)
-                    if self.remote_writer and not self.remote_writer.is_closing():
-                        self.remote_writer.close()
-                        try:
-                            await self.remote_writer.wait_closed()
-                        except ConnectionError:
-                            pass
-                    self.remote_writer = None
-                    raise ConnectionResetError(0, 'hxs get_key failed.')
+        if self.connection_lost:
+            self._manager.remove(self)
+            raise ConnectionLostError(0, 'hxs2 connection lost')
+        if not self.connected:
+            self._manager.remove(self)
+            raise ConnectionResetError(0, 'hxs2 not connected.')
         # send connect request
         payload = b''.join([chr(len(addr)).encode('latin1'),
                             addr.encode(),
@@ -546,12 +539,6 @@ class Hxs2Connection:
             if isinstance(status, Event):
                 self._stream_status[sid] = CLOSED
                 status.set()
-        if not self.remote_writer.is_closing():
-            self.remote_writer.close()
-        try:
-            await self.remote_writer.wait_closed()
-        except ConnectionError:
-            pass
 
         task_list = []
         for stream_id in self._client_writer:
@@ -561,6 +548,7 @@ class Hxs2Connection:
                 task_list.append(self._client_writer[stream_id])
         self._client_writer = {}
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
+        task_list.append(asyncio.create_task(self.close()))
         if task_list:
             await asyncio.wait(task_list)
 
@@ -737,3 +725,12 @@ class Hxs2Connection:
             except OSError:
                 await self.close_stream(stream_id)
                 return
+
+    async def close(self):
+        if self.remote_writer:
+            if not self.remote_writer.is_closing():
+                self.remote_writer.close()
+            try:
+                await self.remote_writer.wait_closed()
+            except OSError:
+                pass
