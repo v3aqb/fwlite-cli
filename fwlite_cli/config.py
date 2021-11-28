@@ -203,7 +203,7 @@ class Config:
 
         self.hello()
 
-    def init(self):
+    def init(self):  # pylint: disable=W0201
         self.timeout = 4
         self.profile = '134'
         self.maxretry = 4
@@ -211,6 +211,8 @@ class Config:
         self.remoteapi = False
         self.remotepass = ''
         self.tcp_nodelay = False
+        self.udp_enable = False
+        self.udp_proxy = '_D1R3CT_'
 
         self.listen = ('127.0.0.1', 8118)
 
@@ -240,7 +242,7 @@ class Config:
             self.logger.error('unsupported host: %s', ip)
             self.logger.error(traceback.format_exc())
 
-    def reload(self, plugin_dir=None):
+    def reload(self, plugin_dir=None):  # pylint: disable=W0201
         self.init()
         self.conf_path = os.path.abspath(self.conf_path)
         self.conf_dir = os.path.dirname(self.conf_path)
@@ -252,19 +254,19 @@ class Config:
 
         self.userconf.read(self.conf_path)
 
-        self.timeout = self.userconf.dgetint('FWLite', 'timeout', 4)
-        self.profile = self.userconf.dget('FWLite', 'profile', '134')
+        self.timeout = self.userconf.dgetint('FWLite', 'timeout', self.timeout)
+        self.profile = self.userconf.dget('FWLite', 'profile', self.profile)
         if '1' not in self.profile:
             self.profile += '1'
         if '3' not in self.profile:
             self.profile += '3'
-        self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', 4)
-        self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', False)
-        self.remoteapi = self.userconf.dgetbool('FWLite', 'remoteapi', False)
-        self.remotepass = self.userconf.dget('FWLite', 'remotepass', '')
+        self.maxretry = self.userconf.dgetint('FWLite', 'maxretry', self.maxretry)
+        self.rproxy = self.userconf.dgetbool('FWLite', 'rproxy', self.rproxy)
+        self.remoteapi = self.userconf.dgetbool('FWLite', 'remoteapi', self.remoteapi)
+        self.remotepass = self.userconf.dget('FWLite', 'remotepass', self.remotepass)
         if self.remoteapi and not self.remotepass:
             self.logger.warning('Remote API Enabled WITHOUT password protection!')
-        self.tcp_nodelay = self.userconf.dgetbool('FWLite', 'tcp_nodelay', False)
+        self.tcp_nodelay = self.userconf.dgetbool('FWLite', 'tcp_nodelay', self.tcp_nodelay)
 
         listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
@@ -274,14 +276,14 @@ class Config:
 
         ParentProxy.DEFAULT_TIMEOUT = self.timeout
 
-        self.gate = self.userconf.dgetint('FWLite', 'gate', 5)
+        self.gate = self.userconf.dgetint('FWLite', 'gate', self.gate)
         if self.gate < 0:
             self.logger.warning('gate < 0, set to 0')
             self.gate = 0
         ParentProxy.GATE = self.gate
 
-        self.udp_enable = self.userconf.dgetbool('udp', 'enable', False)
-        self.udp_proxy = self.userconf.dget('udp', 'proxy', '_D1R3CT_')
+        self.udp_enable = self.userconf.dgetbool('udp', 'enable', self.udp_enable)
+        self.udp_proxy = self.userconf.dget('udp', 'proxy', self.udp_proxy)
 
         for key, val in self.userconf.items('plugin'):
             if plugin_dir:
