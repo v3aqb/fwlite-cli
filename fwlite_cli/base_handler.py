@@ -24,7 +24,6 @@ import ipaddress
 from http.client import HTTPMessage
 from http.server import BaseHTTPRequestHandler
 from http import HTTPStatus
-import traceback
 
 import asyncio
 
@@ -201,9 +200,9 @@ class BaseHandler(BaseHTTPRequestHandler):
         await self.do_CONNECT(socks5=True)  # pylint: disable=E1101
 
     async def relay_udp(self):
-        from .socks5udp import socks5_udp
+        from .socks5udp import socks5_udp_server
         proxy = self.server.get_udp_proxy()
-        udp_server = socks5_udp(self, proxy, self.udp_timeout)
+        udp_server = socks5_udp_server(self, proxy, self.udp_timeout)
         await udp_server.close_event.wait()
 
     def write_udp_reply(self, port):
