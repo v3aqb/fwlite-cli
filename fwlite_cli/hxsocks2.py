@@ -373,8 +373,8 @@ class Hxs2Connection:
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
-        while not self.connection_lost:
-            try:
+        try:
+            while not self.connection_lost:
                 # read frame_len
                 intv = 2 if self._ping_test else 6
 
@@ -517,40 +517,35 @@ class Hxs2Connection:
                         self._client_resume_reading[stream_id].clear()
                     else:
                         self._client_resume_reading[stream_id].set()
-                else:
-                    break
-            except Exception as err:
-                self.logger.error('CONNECTION BOOM! %r', err)
-                self.logger.error(traceback.format_exc())
-                break
-        # out of loop, destroy connection
-        self.connection_lost = True
-        self._manager.remove(self)
-        self.logger.warning('out of loop %s', self.proxy.name)
-        self.logger.info('total_recv: %d, data_recv: %d %.3f',
-                         self._stat_total_recv, self._stat_data_recv,
-                         self._stat_data_recv / self._stat_total_recv)
-        self.logger.info('total_sent: %d, data_sent: %d %.3f',
-                         self._stat_total_sent, self._stat_data_sent,
-                         self._stat_data_sent / self._stat_total_sent)
-        self.print_status()
+        finally:
+            # out of loop, destroy connection
+            self.connection_lost = True
+            self._manager.remove(self)
+            self.logger.warning('out of loop %s', self.proxy.name)
+            self.logger.info('total_recv: %d, data_recv: %d %.3f',
+                             self._stat_total_recv, self._stat_data_recv,
+                             self._stat_data_recv / self._stat_total_recv)
+            self.logger.info('total_sent: %d, data_sent: %d %.3f',
+                             self._stat_total_sent, self._stat_data_sent,
+                             self._stat_data_sent / self._stat_total_sent)
+            self.print_status()
 
-        for sid, status in self._client_status.items():
-            if isinstance(status, Event):
-                self._stream_status[sid] = CLOSED
-                status.set()
+            for sid, status in self._client_status.items():
+                if isinstance(status, Event):
+                    self._stream_status[sid] = CLOSED
+                    status.set()
 
-        task_list = []
-        for stream_id in self._client_writer:
-            self._stream_status[stream_id] = CLOSED
-            if not self._client_writer[stream_id].is_closing():
-                self._client_writer[stream_id].close()
-                task_list.append(self._client_writer[stream_id])
-        self._client_writer = {}
-        task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
-        task_list.append(asyncio.create_task(self.close()))
-        if task_list:
-            await asyncio.wait(task_list)
+            task_list = []
+            for stream_id in self._client_writer:
+                self._stream_status[stream_id] = CLOSED
+                if not self._client_writer[stream_id].is_closing():
+                    self._client_writer[stream_id].close()
+                    task_list.append(self._client_writer[stream_id])
+            self._client_writer = {}
+            task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
+            task_list.append(asyncio.create_task(self.close()))
+            if task_list:
+                await asyncio.wait(task_list)
 
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks2 getKey')
