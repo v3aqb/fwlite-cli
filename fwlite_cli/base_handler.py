@@ -184,6 +184,8 @@ class BaseHandler(BaseHTTPRequestHandler):
             self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
             return
         if request[1] == 3:
+            self.command = 'UDP_ASSOCIATE'
+            self.path = 'udp'
             if sys.platform == 'win32' and sys.version < '3.8':
                 self.logger.error('socks5 UDP ASSOCIATE not supported')
                 # self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
@@ -200,10 +202,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         await self.do_CONNECT(socks5=True)  # pylint: disable=E1101
 
     async def relay_udp(self):
-        from .socks5udp import socks5_udp_server
-        proxy = self.server.get_udp_proxy()
-        udp_server = socks5_udp_server(self, proxy, self.udp_timeout)
-        await udp_server.close_event.wait()
+        raise NotImplementedError
 
     def write_udp_reply(self, port):
         buf = self.socks5_udp_response + struct.pack(b'>H', port)

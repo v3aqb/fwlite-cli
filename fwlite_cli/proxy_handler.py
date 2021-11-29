@@ -130,12 +130,6 @@ class Server:
     def start(self):
         asyncio.ensure_future(self._start())
 
-    def get_udp_proxy(self):
-        proxy = self.conf.parentlist.get(self.conf.udp_proxy)
-        if proxy is None:
-            self.logger.error('self.conf.udp_proxy %s is None', self.conf.udp_proxy)
-        return proxy
-
     async def stop(self):
         self.server.close()
         await self.server.wait_closed()
@@ -945,6 +939,18 @@ class http_handler(BaseProxyHandler):
         self.pproxy = self._proxylist.pop(0)
         self.ppname = self.pproxy.name
         return 0
+
+    async def relay_udp(self):
+        from .socks5udp import Socks5UDPServer
+        proxy = self.get_udp_proxy()
+        udp_server = Socks5UDPServer(self, proxy, self.udp_timeout)
+        await udp_server.close_event.wait()
+
+    def get_udp_proxy(self):
+        # if proxy assigned
+        proxy = self.conf.parentlist.get(self.conf.udp_proxy)
+        if proxy:
+            return proxy
 
     def set_timeout(self):
         if self._proxylist:

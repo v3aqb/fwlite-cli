@@ -14,7 +14,7 @@ import asyncio_dgram
 from hxcrypto import Encryptor, InvalidTag, IVError
 
 
-class socks5_udp_server:
+class Socks5UDPServer:
     '''
     created after recieving UDP_ASSOCIATE request
     '''
@@ -38,7 +38,7 @@ class socks5_udp_server:
         hdr.setFormatter(formatter)
         self.logger.addHandler(hdr)
 
-        self._stop = False
+        self._close = False
         self.client_recv_task = asyncio.ensure_future(self.recv_from_client())
 
     async def recv_from_client(self):
@@ -48,7 +48,7 @@ class socks5_udp_server:
         # tell client the port number
         self.parent.write_udp_reply(self.client_stream.sockname[1])
         # start reading... until timeout
-        while not self._stop:
+        while not self._close:
             try:
                 fut = self.client_stream.recv()
                 data, client_addr = await asyncio.wait_for(fut, timeout=6)
@@ -63,42 +63,38 @@ class socks5_udp_server:
             if client_addr != self.client_addr:
                 self.logger.warning('client_addr not match, drop')
                 continue
+            frag = data[2]
+            if frag:
+                continue
             # get relay, send
-            await self.on_client_recv(data)
-        self.stop(True)
+            await self.on_client_recv(data[3:])
+        self.close(True)
 
     async def on_client_recv(self, data):
         # send recieved dgram to relay
         if not self.udp_relay:
-            # if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
-            if self.proxy and self.proxy.scheme == 'ss':
-                self.udp_relay = UDPRelaySS(self, self.proxy)
-        if not self.udp_relay:
-            self.udp_relay = UDPRelayDirect(self, self.proxy)
+            self.get_relay()
 
         await self.udp_relay.on_client_recv(data)
 
-    async def on_remote_recv(self, remote_addr, dgram, data):
+    def get_relay(self):
+        # if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
+        if self.proxy and self.proxy.scheme == 'ss':
+            self.udp_relay = UDPRelaySS(self, self.proxy)
+        if not self.udp_relay:
+            self.udp_relay = UDPRelayDirect(self, self.proxy)
+
+    async def on_remote_recv(self, data):
         ''' data recieved from remote.
             if data, it is shadowsocks style.
         '''
-        self.logger.debug('on_remote_recv %r, %r', remote_addr, self.client_addr)
-        buf = b'\x00\x00\x00'
-        if data:
-            buf += data
-        else:
-            remote_ip = ipaddress.ip_address(remote_addr[0])
-            buf += b'\x01' if remote_ip.version == 4 else b'\x04'
-            buf += remote_ip.packed
-            buf += struct.pack(b'>H', remote_addr[1])
-            buf += dgram
         self.last_active = time.monotonic()
-        await self.client_stream.send(buf, self.client_addr)
+        await self.client_stream.send(b'\x00\x00\x00' + data, self.client_addr)
 
-    def stop(self, stop_relay=False):
-        self._stop = True
-        if stop_relay:
-            self.udp_relay.stop()
+    def close(self, close_relay=False):
+        self._close = True
+        if close_relay:
+            self.udp_relay.close()
         # tell socks5 server to close connection
         self.close_event.set()
 
@@ -107,16 +103,16 @@ class UDPRelayInterface:
     def __init__(self, udp_server):
         self.udp_server = udp_server
         self.on_remote_recv = self.udp_server.on_remote_recv
-        self._stop = False
+        self._close = False
 
     async def on_client_recv(self, data):
         # datagram recieved from client, relay to server
         raise NotImplementedError
 
-    def stop(self):
-        # stop this relay
-        self._stop = True
-        self.udp_server.stop()
+    def close(self):
+        # close this relay
+        self._close = True
+        self.udp_server.close()
 
 
 class UDPRelayDirect(UDPRelayInterface):
@@ -134,11 +130,11 @@ class UDPRelayDirect(UDPRelayInterface):
         await self._send(data)
 
     async def recv_from_remote(self):
-        while not self._stop:
+        while not self._close:
             try:
                 fut = self.remote_stream.recv()
                 dgram, remote_addr = await asyncio.wait_for(fut, timeout=6)
-                dgram, remote_addr, data = self.recv_from_remote_process(dgram, remote_addr)
+                data = self.recv_from_remote_process(dgram, remote_addr)
             except asyncio.TimeoutError:
                 continue
             except (IVError, InvalidTag):
@@ -146,9 +142,9 @@ class UDPRelayDirect(UDPRelayInterface):
             except OSError:
                 break
 
-            await self.on_remote_recv(remote_addr, dgram, data)
+            await self.on_remote_recv(data)
         self.remote_stream.close()
-        self.stop()
+        self.close()
 
     async def udp_associate(self):
         self.remote_stream = await asyncio_dgram.bind(('0.0.0.0', 0))
@@ -157,12 +153,7 @@ class UDPRelayDirect(UDPRelayInterface):
     async def _send(self, data):
         # if FRAG, drop
         data_io = io.BytesIO(data)
-        req = data_io.read(4)
-        frag = req[2]
-        if frag:
-            return
-
-        addrtype = req[3]
+        addrtype = data_io.read(1)
         if addrtype == 1:  # ipv4
             addr = data_io.read(4)
             addr = socket.inet_ntoa(addr)
@@ -180,7 +171,12 @@ class UDPRelayDirect(UDPRelayInterface):
         await self.remote_stream.send(dgram, remote_addr)
 
     def recv_from_remote_process(self, dgram, remote_addr):
-        return dgram, remote_addr, None
+        remote_ip = ipaddress.ip_address(remote_addr[0])
+        data = b'\x01' if remote_ip.version == 4 else b'\x04'
+        data += remote_ip.packed
+        data += struct.pack(b'>H', remote_addr[1])
+        data += dgram
+        return data
 
 
 class UDPRelaySS(UDPRelayDirect):
@@ -205,9 +201,8 @@ class UDPRelaySS(UDPRelayDirect):
         return cipher
 
     async def _send(self, data):
-        buf = self.get_cipher().encrypt_once(data[3:])
+        buf = self.get_cipher().encrypt_once(data)
         await self.remote_stream.send(buf)
 
     def recv_from_remote_process(self, dgram, remote_addr):
-        data = self.get_cipher().decrypt(dgram)
-        return None, None, data
+        return self.get_cipher().decrypt(dgram)
