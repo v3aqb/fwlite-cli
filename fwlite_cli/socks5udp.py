@@ -24,8 +24,11 @@ class Socks5UDPServer:
         self.client_stream = None
         self.proxy = proxy
         self.timeout = timeout
+        self.lock = asyncio.Lock()
 
         self.close_event = asyncio.Event()
+        self.init_time = time.monotonic()
+        self.log_sent = False
         self.last_active = time.monotonic()
 
         self.udp_relay = None
@@ -56,6 +59,10 @@ class Socks5UDPServer:
             except asyncio.TimeoutError:
                 if time.monotonic() - self.last_active > self.timeout:
                     break
+                if not self.log_sent and time.monotonic() - self.init_time > 16:
+                    # relay not working?
+                    self.log_sent = True
+                    self.proxy.log('udp', 20)
                 continue
             # source check
             if not self.client_addr:
@@ -72,29 +79,42 @@ class Socks5UDPServer:
 
     async def on_client_recv(self, data):
         # send recieved dgram to relay
-        if not self.udp_relay:
-            self.get_relay()
+        async with self.lock:
+            if not self.udp_relay:
+                try:
+                    await self.get_relay()
+                except OSError:
+                    self.close()
+                    return
 
         await self.udp_relay.on_client_recv(data)
 
-    def get_relay(self):
+    async def get_relay(self):
         # if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
         if self.proxy and self.proxy.scheme == 'ss':
             self.udp_relay = UDPRelaySS(self, self.proxy)
         if not self.udp_relay:
             self.udp_relay = UDPRelayDirect(self, self.proxy)
+        self.init_time = time.monotonic()
 
     async def on_remote_recv(self, data):
         ''' data recieved from remote.
             if data, it is shadowsocks style.
         '''
+        if not self.log_sent:
+            self.log_sent = True
+            rtime = time.monotonic() - self.init_time
+            self.proxy.log('udp', rtime)
         self.last_active = time.monotonic()
         await self.client_stream.send(b'\x00\x00\x00' + data, self.client_addr)
 
     def close(self, close_relay=False):
         self._close = True
+        if not self.log_sent:
+            self.proxy.log('udp', 20)
         if close_relay:
-            self.udp_relay.close()
+            if self.udp_relay:
+                self.udp_relay.close()
         # tell socks5 server to close connection
         self.close_event.set()
 

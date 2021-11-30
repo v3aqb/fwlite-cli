@@ -26,6 +26,8 @@ from urllib.parse import unquote
 
 logger = logging.getLogger('parent_proxy')
 
+UDP_SUPPORT = ('', 'ss')
+
 
 def set_logger():
     logger.setLevel(logging.INFO)
@@ -123,13 +125,13 @@ class ParentProxy:
         self.avg_resp_time_ts = 0
         self.avg_resp_time_by_host = DefaultDict(self.gate)
         self.avg_resp_time_by_host_ts = DefaultDict(0)
+        self.avg_resp_time_by_host['udp'] = self.gate if self.scheme in UDP_SUPPORT else 99
 
         self.country_code = self.query.get('location', [''])[0] or None
         self.last_ckeck = 0
 
     def get_priority(self, method=None, host=None):
         result = self.priority
-
         score = self.get_avg_resp_time() + self.get_avg_resp_time(host)
         logger.debug('penalty %s to %s: %.2f', self.name, host, score * 2)
         result += score * 2
@@ -137,7 +139,8 @@ class ParentProxy:
         return result
 
     def log(self, host, rtime):
-        self.avg_resp_time = 0.87 * self.get_avg_resp_time() + (1 - 0.87) * rtime
+        if host != 'udp':
+            self.avg_resp_time = 0.87 * self.get_avg_resp_time() + (1 - 0.87) * rtime
         self.avg_resp_time_by_host[host] = 0.87 * self.avg_resp_time_by_host[host] + (1 - 0.87) * rtime
         self.avg_resp_time_ts = self.avg_resp_time_by_host_ts[host] = time.time()
         logger.debug('%s to %s: %.3fs avg: %.3fs %.3fs', self.name, host, rtime,
@@ -154,7 +157,8 @@ class ParentProxy:
                 self.avg_resp_time_ts = time.time()
             return self.avg_resp_time
         if time.time() - self.avg_resp_time_by_host_ts[host] > 360:
-            if self.avg_resp_time_by_host[host] > self.gate:
+            if self.avg_resp_time_by_host[host] > self.gate and \
+                    self.avg_resp_time_by_host[host] <= 16:
                 self.avg_resp_time_by_host[host] *= 0.93
                 if self.avg_resp_time_by_host[host] < self.gate:
                     self.avg_resp_time_by_host[host] = self.gate
