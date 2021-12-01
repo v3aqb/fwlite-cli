@@ -78,6 +78,19 @@ class Socks5UDPServer:
         self.close(True)
 
     async def on_client_recv(self, data):
+        data_io = io.BytesIO(data)
+        addrtype = data_io.read(1)[0]
+        if addrtype == 1:  # ipv4
+            addr = data_io.read(4)
+            addr = socket.inet_ntoa(addr)
+        elif addrtype == 4:  # ipv6
+            addr = data_io.read(16)
+            addr = socket.inet_ntop(socket.AF_INET6, addr)
+        remote_ip = ipaddress.ip_address(addr)
+        if remote_ip.is_private:
+            self.parent.logger.info('on_server_recv, %r, %r, drop', self.client_addr, addr)
+            return
+
         # send recieved dgram to relay
         async with self.lock:
             if not self.udp_relay:
