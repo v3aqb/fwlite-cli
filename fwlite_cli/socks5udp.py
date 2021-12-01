@@ -173,7 +173,7 @@ class UDPRelayDirect(UDPRelayInterface):
     async def _send(self, data):
         # if FRAG, drop
         data_io = io.BytesIO(data)
-        addrtype = data_io.read(1)
+        addrtype = data_io.read(1)[0]
         if addrtype == 1:  # ipv4
             addr = data_io.read(4)
             addr = socket.inet_ntoa(addr)
