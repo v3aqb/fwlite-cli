@@ -853,7 +853,7 @@ class http_handler(BaseProxyHandler):
             if self.rbuffer:
                 write_to.write(b''.join(self.rbuffer))
                 context.from_client()
-        while True:
+        while not context.local_eof:
             intv = 1 if context.retryable else 6
             try:
                 fut = read_from.read(self.bufsize)
@@ -868,14 +868,14 @@ class http_handler(BaseProxyHandler):
             if not data:
                 context.local_eof = True
                 break
+            if context.retryable:
+                self.rbuffer.append(data)
+            context.from_client()
             try:
-                if context.retryable:
-                    self.rbuffer.append(data)
-                context.from_client()
                 write_to.write(data)
                 await write_to.drain()
             except OSError:
-                context.local_eof = True
+                context.remote_eof = True
                 return
         # client closed, tell remote
         try:
@@ -884,7 +884,7 @@ class http_handler(BaseProxyHandler):
             pass
 
     async def forward_from_remote(self, read_from, write_to, context, timeout):
-        while True:
+        while not context.remote_eof:
             intv = 1 if context.retryable else 6
             try:
                 fut = read_from.read(self.bufsize)
@@ -901,25 +901,28 @@ class http_handler(BaseProxyHandler):
 
             if not data:
                 break
+
+            if context.retryable:
+                # first response
+                rtime = time.monotonic() - context.first_send
+                if self.command == 'CONNECT':
+                    # log server response time
+                    self.pproxy.log(self.request_host[0], rtime)
+                    self.conf.GET_PROXY.notify(self.command,
+                                               self.shortpath or self.path,
+                                               self.request_host,
+                                               True,
+                                               self.failed_parents,
+                                               self.ppname)
+            context.from_remote()
             try:
-                context.from_remote()
-                if context.frc == 1:
-                    rtime = time.monotonic() - context.first_send
-                    if self.command == 'CONNECT':
-                        # log server response time
-                        self.pproxy.log(self.request_host[0], rtime)
-                        self.conf.GET_PROXY.notify(self.command,
-                                                   self.shortpath or self.path,
-                                                   self.request_host,
-                                                   True,
-                                                   self.failed_parents,
-                                                   self.ppname)
                 write_to.write(data)
                 await write_to.drain()
             except ConnectionError:
                 # client closed
                 context.remote_eof = True
-                break
+                context.local_eof = True
+                return
         context.remote_eof = True
         if not context.retryable:
             try:
