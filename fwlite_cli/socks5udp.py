@@ -47,7 +47,7 @@ class Socks5UDPServer:
     async def recv_from_client(self):
         self.logger.debug('start udp forward, %s', self.proxy)
         # find a free port and bind
-        self.client_stream = await asyncio_dgram.bind((self.parent.server_addr[0], 0))
+        self.client_stream = await asyncio_dgram.bind(('0.0.0.0', 0))
         # tell client the port number
         self.parent.write_udp_reply(self.client_stream.sockname[1])
         # start reading... until timeout
@@ -87,27 +87,29 @@ class Socks5UDPServer:
             addr = data_io.read(16)
             addr = socket.inet_ntop(socket.AF_INET6, addr)
         remote_ip = ipaddress.ip_address(addr)
-        if remote_ip.is_private:
-            self.parent.logger.info('on_server_recv, %r, %r, drop', self.client_addr, addr)
-            return
 
         # send recieved dgram to relay
         async with self.lock:
             if not self.udp_relay:
                 try:
-                    await self.get_relay()
+                    await self.get_relay(remote_ip)
                 except OSError:
                     self.close()
                     return
 
         await self.udp_relay.on_client_recv(data)
 
-    async def get_relay(self):
-        # if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
+    async def get_relay(self, remote_ip):
+        if remote_ip.is_private or self.parent.conf.GET_PROXY.ip_in_china(None, remote_ip):
+            self.udp_relay = UDPRelayDirect(self)
+            await self.udp_relay.udp_associate()
+            return
         if self.proxy.scheme == '':
             self.udp_relay = UDPRelayDirect(self)
+            await self.udp_relay.udp_associate()
         elif self.proxy.scheme == 'ss':
             self.udp_relay = UDPRelaySS(self, self.proxy)
+            await self.udp_relay.udp_associate()
         self.init_time = time.monotonic()
 
     async def on_remote_recv(self, data):
@@ -157,9 +159,6 @@ class UDPRelayDirect(UDPRelayInterface):
         self.recv_from_remote_task = None
 
     async def on_client_recv(self, data):
-        async with self.write_lock:
-            if not self.remote_stream:
-                await self.udp_associate()
         await self._send(data)
 
     async def recv_from_remote(self):
@@ -214,7 +213,6 @@ class UDPRelayDirect(UDPRelayInterface):
 
 class UDPRelaySS(UDPRelayDirect):
     def __init__(self, parent, proxy):
-        super().__init__(parent)
         self.proxy = proxy
         self.remote_addr = None
         ssmethod, sspassword = self.proxy.username, self.proxy.password
@@ -225,6 +223,7 @@ class UDPRelaySS(UDPRelayDirect):
             ipaddress.ip_address(self.proxy.hostname)
         except ValueError:
             pass
+        super().__init__(parent)
 
     async def udp_associate(self):
         self.remote_stream = await asyncio_dgram.connect((self.proxy.hostname, self.proxy.port))
