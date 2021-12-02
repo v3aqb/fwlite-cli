@@ -373,151 +373,156 @@ class Hxs2Connection:
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
-
         while not self.connection_lost:
-            # read frame_len
-            intv = 2 if self._ping_test else 6
-
             try:
-                frame_len = await self._rfile_read(2, timeout=intv)
-                frame_len, = struct.unpack('>H', frame_len)
-            except asyncio.TimeoutError:
-                if self._ping_test and time.monotonic() - self._ping_time > 6:
-                    self.logger.warning('server no response %s', self.proxy.name)
-                    break
-                if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
-                    # no point keeping so long
-                    break
-                if time.monotonic() - self._last_active_c > 10:
-                    if not self._ping_test:
-                        self.send_ping()
-                continue
-            except (ConnectionError, asyncio.IncompleteReadError) as err:
-                # destroy connection
-                self.logger.error('read from connection error: %r', err)
-                break
+                # read frame_len
+                intv = 2 if self._ping_test else 6
 
-            # read frame_data
-            try:
-                frame_data = await self._rfile_read(frame_len, timeout=self.timeout)
-                frame_data = self.__cipher.decrypt(frame_data)
-                self._stat_total_recv += frame_len + 2
-                self._stat_recv_tp += frame_len + 2
-            except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
-                # destroy connection
-                self.logger.error('read frame data error: %r, timeout %s', err, self.timeout)
-                break
-
-            if self._last_direction == SEND:
-                self._last_direction = RECV
-                self._last_count = 0
-            self._last_count += 1
-
-            if self._last_count > 10 and random.random() < 0.1:
-                self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
-
-            # parse chunk_data
-            # +------+-------------------+----------+
-            # | type | flags | stream_id | payload  |
-            # +------+-------------------+----------+
-            # |  1   |   1   |     2     | Variable |
-            # +------+-------------------+----------+
-
-            header, payload = frame_data[:4], frame_data[4:]
-            frame_type, frame_flags, stream_id = struct.unpack('>BBH', header)
-            payload = io.BytesIO(payload)
-            self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s', frame_type, stream_id, frame_len)
-
-            if frame_type == DATA:  # 0
-                self._last_active_c = time.monotonic()
-                if self._stream_status[stream_id] & EOF_RECV:
-                    # from server send buffer
-                    self.logger.debug('DATA recv Stream CLOSED, status: %s',
-                                      self._stream_status[stream_id])
-                    continue
-                # first 2 bytes of payload indicates data_len, the rest would be padding
-                data_len, = struct.unpack('>H', payload.read(2))
-                data = payload.read(data_len)
-                if len(data) != data_len:
-                    # something went wrong, destory connection
-                    self.logger.error('len(data) != data_len')
-                    break
-
-                # sent data to stream
                 try:
-                    self._last_active[stream_id] = time.monotonic()
-                    self._client_writer[stream_id].write(data)
-                    await self.client_writer_drain(stream_id)
-                    self._stat_data_recv += data_len
-                except OSError:
-                    # client error, reset stream
-                    asyncio.ensure_future(self.close_stream(stream_id))
-            elif frame_type == HEADERS:  # 1
-                self._last_active_c = time.monotonic()
-                if self._next_stream_id == stream_id:
-                    # server is not supposed to open a new stream
-                    # send connection error?
+                    frame_len = await self._rfile_read(2, timeout=intv)
+                    frame_len, = struct.unpack('>H', frame_len)
+                except asyncio.TimeoutError:
+                    if self._ping_test and time.monotonic() - self._ping_time > 6:
+                        self.logger.warning('server no response %s', self.proxy.name)
+                        break
+                    if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
+                        # no point keeping so long
+                        break
+                    if time.monotonic() - self._last_active_c > 10:
+                        if not self._ping_test:
+                            self.send_ping()
+                    continue
+                except (ConnectionError, asyncio.IncompleteReadError) as err:
+                    # destroy connection
+                    self.logger.error('read from connection error: %r', err)
                     break
-                if stream_id < self._next_stream_id:
-                    if frame_flags == END_STREAM_FLAG:
-                        self._stream_status[stream_id] |= EOF_RECV
-                        if stream_id in self._client_writer:
-                            try:
-                                self._client_writer[stream_id].write_eof()
-                            except OSError:
-                                self._stream_status[stream_id] = CLOSED
-                        if self._stream_status[stream_id] == CLOSED:
-                            asyncio.ensure_future(self.close_stream(stream_id))
-                    else:
-                        # confirm a stream is opened
-                        if stream_id in self._client_status:
-                            self._stream_status[stream_id] = OPEN
-                            self._client_status[stream_id].set()
-                        else:
-                            addr = '%s:%s' % self._stream_addr[stream_id]
-                            self.logger.info('%s stream open, client closed, %s', self.name, addr)
-                            self._stream_status[stream_id] = CLOSED
-                            self.send_frame(RST_STREAM, 0, stream_id,
-                                            bytes(random.randint(8, 256)))
-            elif frame_type == RST_STREAM:  # 3
-                self._last_active_c = time.monotonic()
-                self._stream_status[stream_id] = CLOSED
-                if stream_id in self._client_status:
-                    self._client_status[stream_id].set()
-                asyncio.ensure_future(self.close_stream(stream_id))
-            elif frame_type == SETTINGS:
-                if stream_id == 1:
-                    self._settings_async_drain = True
-            elif frame_type == PING:  # 6
-                if frame_flags == PONG:
-                    resp_time = time.monotonic() - self._ping_time
-                    if time.monotonic() - self._last_ping_log > 30:
-                        self.logger.info('server response time: %.3f %s', resp_time, self.proxy.name)
-                        self._last_ping_log = time.monotonic()
-                        if resp_time < 0.5:
-                            self.proxy.log('', resp_time)
-                    self._ping_test = False
-                    self._ping_time = 0
-                else:
-                    self.send_frame(PING, PONG, 0, bytes(random.randint(64, 2048)))
-            elif frame_type == GOAWAY:  # 7
-                # no more new stream
-                max_stream_id = payload.read(2)
-                self._manager.remove(self)
-                for stream_id, client_writer in self._client_writer:
-                    if stream_id > max_stream_id:
-                        # reset stream
-                        client_writer.close()
-                        try:
-                            await client_writer.wait_closed()
-                        except ConnectionError:
-                            pass
-            elif frame_type == WINDOW_UPDATE:  # 8
-                if frame_flags == 1:
-                    self._client_resume_reading[stream_id].clear()
-                else:
-                    self._client_resume_reading[stream_id].set()
 
+                # read frame_data
+                try:
+                    frame_data = await self._rfile_read(frame_len, timeout=self.timeout)
+                    frame_data = self.__cipher.decrypt(frame_data)
+                    self._stat_total_recv += frame_len + 2
+                    self._stat_recv_tp += frame_len + 2
+                except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
+                    # destroy connection
+                    self.logger.error('read frame data error: %r, timeout %s', err, self.timeout)
+                    break
+
+                if self._last_direction == SEND:
+                    self._last_direction = RECV
+                    self._last_count = 0
+                self._last_count += 1
+
+                if self._last_count > 10 and random.random() < 0.1:
+                    self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
+
+                # parse chunk_data
+                # +------+-------------------+----------+
+                # | type | flags | stream_id | payload  |
+                # +------+-------------------+----------+
+                # |  1   |   1   |     2     | Variable |
+                # +------+-------------------+----------+
+
+                header, payload = frame_data[:4], frame_data[4:]
+                frame_type, frame_flags, stream_id = struct.unpack('>BBH', header)
+                payload = io.BytesIO(payload)
+                self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s', frame_type, stream_id, frame_len)
+
+                if frame_type == DATA:  # 0
+                    self._last_active_c = time.monotonic()
+                    if self._stream_status[stream_id] & EOF_RECV:
+                        # from server send buffer
+                        self.logger.debug('DATA recv Stream CLOSED, status: %s',
+                                          self._stream_status[stream_id])
+                        continue
+                    # first 2 bytes of payload indicates data_len, the rest would be padding
+                    data_len, = struct.unpack('>H', payload.read(2))
+                    data = payload.read(data_len)
+                    if len(data) != data_len:
+                        # something went wrong, destory connection
+                        self.logger.error('len(data) != data_len')
+                        break
+
+                    # sent data to stream
+                    try:
+                        self._last_active[stream_id] = time.monotonic()
+                        self._client_writer[stream_id].write(data)
+                        await self.client_writer_drain(stream_id)
+                        self._stat_data_recv += data_len
+                    except OSError:
+                        # client error, reset stream
+                        asyncio.ensure_future(self.close_stream(stream_id))
+                elif frame_type == HEADERS:  # 1
+                    self._last_active_c = time.monotonic()
+                    if self._next_stream_id == stream_id:
+                        # server is not supposed to open a new stream
+                        # send connection error?
+                        break
+                    if stream_id < self._next_stream_id:
+                        if frame_flags == END_STREAM_FLAG:
+                            self._stream_status[stream_id] |= EOF_RECV
+                            if stream_id in self._client_writer:
+                                try:
+                                    self._client_writer[stream_id].write_eof()
+                                except OSError:
+                                    self._stream_status[stream_id] = CLOSED
+                            if self._stream_status[stream_id] == CLOSED:
+                                asyncio.ensure_future(self.close_stream(stream_id))
+                        else:
+                            # confirm a stream is opened
+                            if stream_id in self._client_status:
+                                self._stream_status[stream_id] = OPEN
+                                self._client_status[stream_id].set()
+                            else:
+                                addr = '%s:%s' % self._stream_addr[stream_id]
+                                self.logger.info('%s stream open, client closed, %s', self.name, addr)
+                                self._stream_status[stream_id] = CLOSED
+                                self.send_frame(RST_STREAM, 0, stream_id,
+                                                bytes(random.randint(8, 256)))
+                elif frame_type == RST_STREAM:  # 3
+                    self._last_active_c = time.monotonic()
+                    self._stream_status[stream_id] = CLOSED
+                    if stream_id in self._client_status:
+                        self._client_status[stream_id].set()
+                    asyncio.ensure_future(self.close_stream(stream_id))
+                elif frame_type == SETTINGS:
+                    if stream_id == 1:
+                        self._settings_async_drain = True
+                elif frame_type == PING:  # 6
+                    if frame_flags == PONG:
+                        resp_time = time.monotonic() - self._ping_time
+                        if time.monotonic() - self._last_ping_log > 30:
+                            self.logger.info('server response time: %.3f %s', resp_time, self.proxy.name)
+                            self._last_ping_log = time.monotonic()
+                            if resp_time < 0.5:
+                                self.proxy.log('', resp_time)
+                        self._ping_test = False
+                        self._ping_time = 0
+                    else:
+                        self.send_frame(PING, PONG, 0, bytes(random.randint(64, 2048)))
+                elif frame_type == GOAWAY:  # 7
+                    # no more new stream
+                    max_stream_id = payload.read(2)
+                    self._manager.remove(self)
+                    for stream_id, client_writer in self._client_writer:
+                        if stream_id > max_stream_id:
+                            # reset stream
+                            client_writer.close()
+                            try:
+                                await client_writer.wait_closed()
+                            except ConnectionError:
+                                pass
+                elif frame_type == WINDOW_UPDATE:  # 8
+                    if frame_flags == 1:
+                        self._client_resume_reading[stream_id].clear()
+                    else:
+                        self._client_resume_reading[stream_id].set()
+                else:
+                    break
+            except Exception as err:
+                self.logger.error('CONNECTION BOOM! %r', err)
+                self.logger.error(traceback.format_exc())
+                break
         # out of loop, destroy connection
         self.connection_lost = True
         self._manager.remove(self)
