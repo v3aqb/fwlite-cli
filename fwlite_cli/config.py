@@ -213,7 +213,7 @@ class Config:
         self.tcp_nodelay = False
         self.tcp_timeout = 180
         self.udp_enable = False
-        self.udp_proxy = '_D1R3CT_'
+        self.udp_proxy = ''
         self.udp_timeout = 300
 
         self.listen = ('127.0.0.1', 8118)

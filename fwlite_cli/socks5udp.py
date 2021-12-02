@@ -24,8 +24,8 @@ class Socks5UDPServer:
         self.client_stream = None
         self.proxy = proxy
         self.timeout = timeout
-        self.lock = asyncio.Lock()
 
+        self.lock = asyncio.Lock()
         self.close_event = asyncio.Event()
         self.init_time = time.monotonic()
         self.log_sent = False
@@ -104,10 +104,10 @@ class Socks5UDPServer:
 
     async def get_relay(self):
         # if not self.parent.conf.GET_PROXY.ip_in_china(None, remote_addr[0]):
-        if self.proxy and self.proxy.scheme == 'ss':
-            self.udp_relay = UDPRelaySS(self, self.proxy)
-        if not self.udp_relay:
+        if self.proxy.scheme == '':
             self.udp_relay = UDPRelayDirect(self)
+        elif self.proxy.scheme == 'ss':
+            self.udp_relay = UDPRelaySS(self, self.proxy)
         self.init_time = time.monotonic()
 
     async def on_remote_recv(self, data):
@@ -135,6 +135,7 @@ class Socks5UDPServer:
 class UDPRelayInterface:
     def __init__(self, udp_server):
         self.udp_server = udp_server
+        self.logger = self.udp_server.logger
         self.on_remote_recv = self.udp_server.on_remote_recv
         self._close = False
 

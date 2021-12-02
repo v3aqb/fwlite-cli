@@ -181,6 +181,9 @@ class get_proxy:
         if mode == 0:
             return False
 
+        if ip is None:
+            return True
+
         if int(ip) == 0:
             return True
 
@@ -233,7 +236,10 @@ class get_proxy:
                    4 -- global:      proxy if not local
                    5 -- global:      proxy if not localhost
         '''
-        host, port = host
+        if host:
+            host, port = host
+        else:
+            port = 0
         if mode == 2:
             mode = 1
 

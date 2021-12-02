@@ -45,6 +45,9 @@ WELCOME = '''<!DOCTYPE html>
 <p><a href="http://{host}:{port}/api/proxy">Proxy</a></p>
 </body>
 </html>'''
+UDP_SCHEME = ['',
+              'ss',
+              ]
 
 
 class ClientError(Exception):
@@ -951,6 +954,13 @@ class http_handler(BaseProxyHandler):
         proxy = self.conf.parentlist.get(self.conf.udp_proxy)
         if proxy:
             return proxy
+        while True:
+            if self.getparent(gfwed=True):
+                break
+            if self.pproxy and self.pproxy.scheme in UDP_SCHEME:
+                return self.pproxy
+        self.logger.warning('get_udp_proxy() failed, use _D1R3CT_')
+        return self.conf.parentlist.get('_D1R3CT_')
 
     def set_timeout(self):
         if self._proxylist:
