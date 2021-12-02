@@ -107,7 +107,7 @@ class Socks5UDPServer:
         if self.proxy and self.proxy.scheme == 'ss':
             self.udp_relay = UDPRelaySS(self, self.proxy)
         if not self.udp_relay:
-            self.udp_relay = UDPRelayDirect(self, self.proxy)
+            self.udp_relay = UDPRelayDirect(self)
         self.init_time = time.monotonic()
 
     async def on_remote_recv(self, data):
@@ -149,9 +149,8 @@ class UDPRelayInterface:
 
 
 class UDPRelayDirect(UDPRelayInterface):
-    def __init__(self, udp_server, proxy):
+    def __init__(self, udp_server):
         super().__init__(udp_server)
-        self.proxy = proxy
         self.write_lock = asyncio.Lock()
         self.remote_stream = None
         self.recv_from_remote_task = None
@@ -214,7 +213,8 @@ class UDPRelayDirect(UDPRelayInterface):
 
 class UDPRelaySS(UDPRelayDirect):
     def __init__(self, parent, proxy):
-        super().__init__(parent, proxy)
+        super().__init__(parent)
+        self.proxy = proxy
         self.remote_addr = None
         ssmethod, sspassword = self.proxy.username, self.proxy.password
         if sspassword is None:
