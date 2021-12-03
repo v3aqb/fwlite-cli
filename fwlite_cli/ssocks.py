@@ -146,7 +146,7 @@ class SSConn:
                     data = b''
                 else:
                     continue
-            except ConnectionError:
+            except OSError:
                 data = b''
 
             if not data:
@@ -170,23 +170,23 @@ class SSConn:
         except ConnectionError:
             pass
 
-    async def _read(self, size=None):
+    async def _read(self):
         if self.aead:
-            _len = await self.remote_reader.readexactly(18)
+            fut = self.remote_reader.readexactly(18)
+            _len = await asyncio.wait_for(fut, timeout=6)
             if not _len:
                 return b''
             _len = self.crypto.decrypt(_len)
             _len, = struct.unpack("!H", _len)
             fut = self.remote_reader.readexactly(_len + 16)
             try:
-                ct = await asyncio.wait_for(fut, timeout=1)
+                ct = await asyncio.wait_for(fut, timeout=2)
             except asyncio.TimeoutError as err:
                 raise IncompleteChunk() from err
             if not ct:
                 return b''
         else:
-            size = size or self.bufsize
-            ct = await self.remote_reader.read(size)
+            ct = await self.remote_reader.read(self.bufsize)
         return self.crypto.decrypt(ct)
 
     async def forward_from_remote(self):
@@ -205,8 +205,7 @@ class SSConn:
 
         while True:
             try:
-                fut = self._read()
-                data = await asyncio.wait_for(fut, timeout=6)
+                data = await self._read()
                 self.last_active = time.time()
                 self.data_recved = True
             except asyncio.TimeoutError:
