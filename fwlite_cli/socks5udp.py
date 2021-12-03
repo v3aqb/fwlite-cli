@@ -7,6 +7,7 @@ import time
 import logging
 
 import base64
+import traceback
 
 import asyncio
 import asyncio_dgram
@@ -18,13 +19,13 @@ class Socks5UDPServer:
     '''
     created after recieving UDP_ASSOCIATE request
     '''
-    def __init__(self, parent, proxy, timeout=180):
+    def __init__(self, parent, timeout=180):
         self.parent = parent
         self.client_addr = None
         self.client_stream = None
-        self.proxy = proxy
         self.timeout = timeout
 
+        self.proxy = None
         self.lock = asyncio.Lock()
         self.close_event = asyncio.Event()
         self.init_time = time.monotonic()
@@ -45,12 +46,14 @@ class Socks5UDPServer:
         self.client_recv_task = asyncio.ensure_future(self.recv_from_client())
 
     async def recv_from_client(self):
-        self.logger.debug('start udp forward, %s', self.proxy)
+        self.logger.debug('start udp forward')
         # find a free port and bind
         self.client_stream = await asyncio_dgram.bind(('0.0.0.0', 0))
         # tell client the port number
         self.parent.write_udp_reply(self.client_stream.sockname[1])
         # start reading... until timeout
+        # tell socks5 server to close connection
+        self.close_event.set()
         while not self._close:
             try:
                 fut = self.client_stream.recv()
@@ -61,9 +64,12 @@ class Socks5UDPServer:
                     break
                 if not self.log_sent and time.monotonic() - self.init_time > 16:
                     # relay not working?
-                    self.log_sent = True
-                    self.proxy.log('udp', 20)
+                    if self.proxy:
+                        self.log_sent = True
+                        self.proxy.log('udp', 20)
                 continue
+            except OSError:
+                break
             # source check
             if not self.client_addr:
                 self.client_addr = client_addr
@@ -74,7 +80,11 @@ class Socks5UDPServer:
             if frag:
                 continue
             # get relay, send
-            await self.on_client_recv(data[3:])
+            try:
+                await self.on_client_recv(data[3:])
+            except OSError:
+                break
+        self.logger.debug('udp forward finish, %s', self.proxy)
         self.close(True)
 
     async def on_client_recv(self, data):
@@ -93,9 +103,10 @@ class Socks5UDPServer:
             if not self.udp_relay:
                 try:
                     await self.get_relay(remote_ip)
-                except OSError:
+                except OSError as err:
+                    self.logger.error(repr(err))
                     self.close()
-                    return
+                    raise
 
         await self.udp_relay.on_client_recv(data)
 
@@ -103,13 +114,37 @@ class Socks5UDPServer:
         if remote_ip.is_private or self.parent.conf.GET_PROXY.ip_in_china(None, remote_ip):
             self.udp_relay = UDPRelayDirect(self)
             await self.udp_relay.udp_associate()
+            self.proxy = self.parent.conf.parentlist.get('_D1R3CT_')
             return
-        if self.proxy.scheme == '':
-            self.udp_relay = UDPRelayDirect(self)
-            await self.udp_relay.udp_associate()
-        elif self.proxy.scheme == 'ss':
-            self.udp_relay = UDPRelaySS(self, self.proxy)
-            await self.udp_relay.udp_associate()
+        proxy = self.parent.conf.parentlist.get(self.parent.conf.udp_proxy)
+        if proxy:
+            proxy_list = [proxy, ]
+        else:
+            proxy_list = self.parent.conf.GET_PROXY.get_proxy(
+                'udp', (str(remote_ip), 0), 'UDP_ASSOCIATE',
+                remote_ip, 3)
+        for proxy in proxy_list:
+            try:
+                if proxy.scheme == '':
+                    udp_relay = UDPRelayDirect(self)
+                    await udp_relay.udp_associate()
+                    self.udp_relay = udp_relay
+                    self.proxy = proxy
+                elif proxy.scheme == 'ss':
+                    udp_relay = UDPRelaySS(self, proxy)
+                    await udp_relay.udp_associate()
+                    self.udp_relay = udp_relay
+                    self.proxy = proxy
+                if proxy.scheme == 'hxs2':
+                    from .hxsocks2 import hxs2_get_connection
+                    conn = await hxs2_get_connection(proxy, timeout=8, tcp_nodelay=True)
+                    self.udp_relay = await conn.udp_associate(self)
+                    self.proxy = proxy
+            except OSError:
+                proxy.log('udp', 20)
+        if not self.udp_relay:
+            raise OSError(0, 'get_relay failed.')
+        self.logger.debug(repr(self.udp_relay))
         self.init_time = time.monotonic()
 
     async def on_remote_recv(self, data):
@@ -121,17 +156,19 @@ class Socks5UDPServer:
             rtime = time.monotonic() - self.init_time
             self.proxy.log('udp', rtime)
         self.last_active = time.monotonic()
-        await self.client_stream.send(b'\x00\x00\x00' + data, self.client_addr)
+        try:
+            await self.client_stream.send(b'\x00\x00\x00' + data, self.client_addr)
+        except OSError:
+            self.close(True)
 
     def close(self, close_relay=False):
         self._close = True
         if not self.log_sent:
-            self.proxy.log('udp', 20)
+            if self.proxy:
+                self.proxy.log('udp', 20)
         if close_relay:
             if self.udp_relay:
                 self.udp_relay.close()
-        # tell socks5 server to close connection
-        self.close_event.set()
 
 
 class UDPRelayInterface:

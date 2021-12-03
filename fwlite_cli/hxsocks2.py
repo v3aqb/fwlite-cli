@@ -40,6 +40,7 @@ from six import byte2int
 from hxcrypto import InvalidTag, is_aead, Encryptor, ECC, AEncryptor, InvalidSignature
 
 from .parent_proxy import ParentProxy
+from .socks5udp import UDPRelayInterface
 
 
 def set_logger():
@@ -83,6 +84,7 @@ PING = 6
 GOAWAY = 7
 WINDOW_UPDATE = 8
 # CONTINUATION = 9
+UDP_ASSOCIATE = 20
 
 PONG = 1
 END_STREAM_FLAG = 1
@@ -155,6 +157,33 @@ class ConnectionLostError(Exception):
     pass
 
 
+class UDPRelayHxs2(UDPRelayInterface):
+    def __init__(self, udp_server, stream_id, hxs2conn):
+        super().__init__(udp_server)
+        self.hxs2conn = hxs2conn
+        self.stream_id = stream_id
+
+    async def on_client_recv(self, data):
+        # datagram recieved from client, relay to server
+        await self.hxs2conn.send_data_frame(self.stream_id, data)
+
+    def write(self, data):
+        asyncio.ensure_future(self.on_remote_recv(data))
+
+    async def drain(self):
+        return
+
+    def is_closing(self):
+        return self._close
+
+    def close(self):
+        super().close()
+        asyncio.ensure_future(self.hxs2conn.close_stream(self.stream_id))
+
+    async def wait_closed(self):
+        return
+
+
 class Hxs2Connection:
     bufsize = 65535 - 22
 
@@ -170,6 +199,8 @@ class Hxs2Connection:
         self._ping_time = 0
         self.connected = False
         self.connection_lost = False
+        self.udp_relay_support = None
+        self.udp_event = None
 
         self._psk = self.proxy.query.get('PSK', [''])[0]
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()
@@ -371,6 +402,42 @@ class Hxs2Connection:
             except ConnectionError:
                 self.connection_lost = True
 
+    async def udp_associate(self, udp_server):
+        if self.connection_lost:
+            self._manager.remove(self)
+            raise ConnectionLostError(0, 'hxs2 connection lost')
+        if not self.connected:
+            self._manager.remove(self)
+            raise ConnectionResetError(0, 'hxs2 not connected.')
+        if self.udp_relay_support is None:
+            # ask server for udp_support
+            self.send_frame(UDP_ASSOCIATE, OPEN, 0, bytes(random.randint(64, 256)))
+            if not self.udp_event:
+                self.udp_event = Event()
+            fut = self.udp_event.wait()
+            try:
+                await asyncio.wait_for(fut, timeout=self.timeout)
+            except asyncio.TimeoutError:
+                if not self.udp_relay_support:
+                    self.udp_relay_support = False
+                    self.logger.error('%s does not seem to support UDP_ASSOCIATE, timeout: %d', self.name, self.timeout)
+        if not self.udp_relay_support:
+            raise ConnectionResetError(0, '%s does not seem to support UDP_ASSOCIATE' % self.name)
+        # send udp_assicoate request
+        stream_id = self._next_stream_id
+        self._next_stream_id += 1
+        if self._next_stream_id > MAX_STREAM_ID:
+            self.logger.error('MAX_STREAM_ID reached')
+            self._manager.remove(self)
+
+        self.send_frame(UDP_ASSOCIATE, OPEN, stream_id, bytes(random.randint(64, 256)))
+        self._stream_status[stream_id] = OPEN
+        self._client_resume_reading[stream_id] = asyncio.Event()
+        self._client_resume_reading[stream_id].set()
+        relay = UDPRelayHxs2(udp_server, stream_id, self)
+        self._client_writer[stream_id] = relay
+        return relay
+
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
         while not self.connection_lost:
@@ -446,8 +513,11 @@ class Hxs2Connection:
                     # sent data to stream
                     try:
                         self._last_active[stream_id] = time.monotonic()
-                        self._client_writer[stream_id].write(data)
-                        await self.client_writer_drain(stream_id)
+                        if isinstance(self._client_writer[stream_id], UDPRelayHxs2):
+                            await self._client_writer[stream_id].on_remote_recv(data)
+                        else:
+                            self._client_writer[stream_id].write(data)
+                            await self.client_writer_drain(stream_id)
                         self._stat_data_recv += data_len
                     except OSError:
                         # client error, reset stream
@@ -517,8 +587,11 @@ class Hxs2Connection:
                         self._client_resume_reading[stream_id].clear()
                     else:
                         self._client_resume_reading[stream_id].set()
-                else:
-                    break
+                elif frame_type == UDP_ASSOCIATE:  # 20
+                    if stream_id == 0:
+                        self.udp_relay_support = True
+                        if self.udp_event:
+                            self.udp_event.set()
             except Exception as err:
                 self.logger.error('CONNECTION BOOM! %r', err)
                 self.logger.error(traceback.format_exc())
@@ -711,6 +784,8 @@ class Hxs2Connection:
             await self._client_writer[stream_id].drain()
 
     async def async_drain(self, stream_id):
+        if isinstance(self._client_writer[stream_id], UDPRelayHxs2):
+            return
         wbuffer_size = self._client_writer[stream_id].transport.get_write_buffer_size()
         if wbuffer_size <= CLIENT_WRITE_BUFFER:
             return

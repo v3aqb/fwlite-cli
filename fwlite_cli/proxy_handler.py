@@ -47,6 +47,7 @@ WELCOME = '''<!DOCTYPE html>
 </html>'''
 UDP_SCHEME = ['',
               'ss',
+              'hxs2',
               ]
 
 
@@ -948,22 +949,8 @@ class http_handler(BaseProxyHandler):
 
     async def relay_udp(self):
         from .socks5udp import Socks5UDPServer
-        proxy = self.get_udp_proxy()
-        udp_server = Socks5UDPServer(self, proxy, self.udp_timeout)
+        udp_server = Socks5UDPServer(self, self.udp_timeout)
         await udp_server.close_event.wait()
-
-    def get_udp_proxy(self):
-        # if proxy assigned
-        proxy = self.conf.parentlist.get(self.conf.udp_proxy)
-        if proxy:
-            return proxy
-        while True:
-            if self.getparent(gfwed=True):
-                break
-            if self.pproxy and self.pproxy.scheme in UDP_SCHEME:
-                return self.pproxy
-        self.logger.warning('get_udp_proxy() failed, use _D1R3CT_')
-        return self.conf.parentlist.get('_D1R3CT_')
 
     def set_timeout(self):
         if self._proxylist:
