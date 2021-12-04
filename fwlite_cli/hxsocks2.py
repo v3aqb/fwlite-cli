@@ -708,7 +708,7 @@ class Hxs2Connection:
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
                     shared_secret = ecc.get_dh_key(server_key)
                     self.logger.debug('hxs key exchange success')
-                    self.__cipher = AEncryptor(shared_secret, self.method, CTX)
+                    self.__cipher = AEncryptor(shared_secret, self.method, CTX, check_iv=False)
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.stat())
