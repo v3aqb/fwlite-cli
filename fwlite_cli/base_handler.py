@@ -144,7 +144,10 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.command = 'CONNECT'
         # Client greeting
         fut = self.client_reader.readexactly(1)
-        auth_len = await asyncio.wait_for(fut, timeout=1)
+        try:
+            auth_len = await asyncio.wait_for(fut, timeout=1)
+        except ConnectionError:
+            return
         fut = self.client_reader.readexactly(auth_len[0])
         auth = await asyncio.wait_for(fut, timeout=1)
         if b'\x00' not in auth:
@@ -154,7 +157,10 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.client_writer.write(b'\x05\x00')
         # Client connection request
         fut = self.client_reader.readexactly(4)
-        request = await asyncio.wait_for(fut, timeout=1)
+        try:
+            request = await asyncio.wait_for(fut, timeout=1)
+        except asyncio.TimeoutError:
+            return
         addrtype = request[3]
         if addrtype == 1:  # ipv4
             fut = self.client_reader.readexactly(4)
