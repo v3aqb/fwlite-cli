@@ -131,19 +131,27 @@ class ConnectionManager:
         self.connection_list = []
         self._lock = Lock()
         self.logger = logging.getLogger('hxs2')
+        self._err = None
+        self._err_time = 0
 
     async def get_connection(self, proxy, timeout, tcp_nodelay):
         # choose / create and return a connection
         async with self._lock:
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
+                if self._err and time.time() - self._err_time < 6:
+                    raise self._err
                 hxs2_connection = Hxs2Connection(proxy, self)
                 try:
                     await hxs2_connection.get_key(timeout, tcp_nodelay)
                 except (OSError, asyncio.TimeoutError) as err:
                     asyncio.ensure_future(hxs2_connection.close())
-                    raise ConnectionResetError(0, 'hxsocks2 get_key() failed: %s' % err)
-                self.connection_list.append(hxs2_connection)
+                    self._err = ConnectionResetError(0, 'hxsocks2 get_key() failed: %r' % err)
+                    self._err_time = time.time()
+                    raise self._err
+                else:
+                    self._err = None
+                    self.connection_list.append(hxs2_connection)
         list_ = sorted(self.connection_list, key=lambda item: item.busy())
         return list_[0]
 

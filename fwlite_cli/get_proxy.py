@@ -259,6 +259,7 @@ class get_proxy:
         if len(parentlist) > 1:
             # random.shuffle(parentlist)
             parentlist = sorted(parentlist, key=priority)
+        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time() < 14]
 
         if gfwed:
             if not parentlist:
