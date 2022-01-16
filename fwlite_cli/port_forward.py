@@ -1,6 +1,7 @@
 
 import asyncio
 import socket
+import ssl
 import time
 import logging
 
@@ -63,7 +64,7 @@ async def forward_from_client(read_from, write_to, context, timeout=180):
     # client closed, tell remote
     try:
         write_to.write_eof()
-    except ConnectionError:
+    except (ConnectionError, NotImplementedError):
         pass
 
 
@@ -112,17 +113,31 @@ class ForwardHandler:
         self.ctimeout = ctimeout
         self.tcp_nodelay = tcp_nodelay
 
+    async def connect_tls(self, mode):
+        ssl_ctx = ssl.create_default_context()
+        if mode == 'TLS_SELF_SIGNED':
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+        reader, writer = await asyncio.open_connection(self.addr,
+                                                       self.port,
+                                                       ssl=ssl_ctx,
+                                                       ssl_handshake_timeout=self.ctimeout)
+        return reader, writer
+
     async def handle(self, client_reader, client_writer):
         remote_writer = None
         client_writer.transport.set_write_buffer_limits(262144)
         try:
             # connect to target
-            from .connection import open_connection
-            remote_reader, remote_writer, _ = await open_connection(self.addr,
-                                                                    self.port,
-                                                                    proxy=self.proxy,
-                                                                    timeout=self.ctimeout,
-                                                                    tunnel=True)
+            if self.proxy in ('TLS', 'TLS_SELF_SIGNED'):
+                remote_reader, remote_writer = await self.connect_tls(self.proxy)
+            else:
+                from .connection import open_connection
+                remote_reader, remote_writer, _ = await open_connection(self.addr,
+                                                                        self.port,
+                                                                        proxy=self.proxy,
+                                                                        timeout=self.ctimeout,
+                                                                        tunnel=True)
         except ConnectionError:
             logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy)
             client_writer.close()
@@ -178,15 +193,16 @@ class ForwardManager:
         return port
 
     async def add_forward(self, target, proxy, port, soc=None):
-        if isinstance(proxy, str):
+        if isinstance(proxy, str) and proxy not in ('TLS', 'TLS_SELF_SIGNED'):
             proxy = self.conf.parentlist.get(proxy)
         if soc:
             soc.close()
+        name = proxy.name if hasattr(proxy, 'name') else proxy
         # start server on port
         handler = ForwardHandler(target, proxy, timeout=self.tcp_timeout, tcp_nodelay=self.tcp_nodelay)
         server = await asyncio.start_server(handler.handle, '127.0.0.1', port)
         self.server[port] = server
-        self.server_info[port] = (target, proxy.name)
+        self.server_info[port] = (target, name)
         self.conf.stdout('forward')
 
     def stop(self, port):
