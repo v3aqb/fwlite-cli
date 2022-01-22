@@ -140,9 +140,9 @@ class ParentProxy:
 
     def log(self, host, rtime):
         if host != 'udp':
-            self.avg_resp_time = 0.87 * self.get_avg_resp_time() + (1 - 0.87) * rtime
+            self.avg_resp_time = 0.08 * rtime + (1 - 0.08) * self.get_avg_resp_time()
         if host:
-            self.avg_resp_time_by_host[host] = 0.87 * self.avg_resp_time_by_host[host] + (1 - 0.87) * rtime
+            self.avg_resp_time_by_host[host] = 0.08 * rtime + (1 - 0.08) * self.avg_resp_time_by_host[host]
             self.avg_resp_time_by_host_ts[host] = time.monotonic()
         self.avg_resp_time_ts = time.monotonic()
         logger.debug('%s to %s: %.3fs avg: %.3fs %.3fs', self.name, host, rtime,
@@ -151,12 +151,12 @@ class ParentProxy:
 
     def get_avg_resp_time(self, host=None):
         if host is None:
-            if time.monotonic() - self.avg_resp_time_ts > 360:
+            if time.monotonic() - self.avg_resp_time_ts > 60:
                 self.avg_resp_time_ts = time.monotonic()
                 if self.avg_resp_time > self.gate:
                     self.log(host, self.gate)
             return self.avg_resp_time
-        if time.monotonic() - self.avg_resp_time_by_host_ts[host] > 360:
+        if time.monotonic() - self.avg_resp_time_by_host_ts[host] > 60:
             self.avg_resp_time_by_host_ts[host] = time.monotonic()
             if self.avg_resp_time_by_host[host] > self.gate and \
                     self.avg_resp_time_by_host[host] <= 16:
