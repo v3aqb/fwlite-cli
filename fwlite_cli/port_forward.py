@@ -64,7 +64,7 @@ async def forward_from_client(read_from, write_to, context, timeout=180):
     # client closed, tell remote
     try:
         write_to.write_eof()
-    except (ConnectionError, NotImplementedError):
+    except (OSError, NotImplementedError):
         pass
 
 
@@ -101,7 +101,7 @@ async def forward_from_remote(read_from, write_to, context, timeout=180):
 
     try:
         write_to.write_eof()
-    except ConnectionError:
+    except OSError:
         pass
 
 
