@@ -115,7 +115,7 @@ class ForwardHandler:
 
     async def connect_tls(self, mode):
         ssl_ctx = ssl.create_default_context()
-        if mode == 'TLS_SELF_SIGNED':
+        if mode in ('TLS_SELF_SIGNED', 'TLS_INSECURE'):
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
         reader, writer = await asyncio.open_connection(self.addr,
@@ -129,7 +129,7 @@ class ForwardHandler:
         client_writer.transport.set_write_buffer_limits(262144)
         try:
             # connect to target
-            if self.proxy in ('TLS', 'TLS_SELF_SIGNED'):
+            if self.proxy in ('TLS', 'TLS_SELF_SIGNED', 'TLS_INSECURE'):
                 remote_reader, remote_writer = await self.connect_tls(self.proxy)
             else:
                 from .connection import open_connection
@@ -193,7 +193,7 @@ class ForwardManager:
         return port
 
     async def add_forward(self, target, proxy, port, soc=None):
-        if isinstance(proxy, str) and proxy not in ('TLS', 'TLS_SELF_SIGNED'):
+        if isinstance(proxy, str) and proxy not in ('TLS', 'TLS_SELF_SIGNED', 'TLS_INSECURE'):
             proxy = self.conf.parentlist.get(proxy)
         if soc:
             soc.close()
