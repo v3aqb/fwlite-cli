@@ -798,7 +798,7 @@ class Hxs2Connection:
         if wbuffer_size <= CLIENT_WRITE_BUFFER:
             return
 
-        with self._client_drain_lock[stream_id]:
+        async with self._client_drain_lock[stream_id]:
             try:
                 # tell client to stop reading
                 self.send_frame(WINDOW_UPDATE, 1, stream_id, bytes(random.randint(64, 256)))
