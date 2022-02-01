@@ -81,7 +81,7 @@ async def forward_from_remote(read_from, write_to, context, timeout=180):
                 data = b''
             else:
                 continue
-        except ConnectionError:
+        except OSError:
             data = b''
 
         if not data:
