@@ -171,7 +171,7 @@ class UDPRelayHxs2(UDPRelayInterface):
         self.hxs2conn = hxs2conn
         self.stream_id = stream_id
 
-    async def on_client_recv(self, data):
+    async def send(self, addr, port, dgram, data):
         # datagram recieved from client, relay to server
         await self.hxs2conn.send_data_frame(self.stream_id, data)
 

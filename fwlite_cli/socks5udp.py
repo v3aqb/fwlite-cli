@@ -96,8 +96,10 @@ class Socks5UDPServer:
         elif addrtype == 4:  # ipv6
             addr = data_io.read(16)
             addr = socket.inet_ntop(socket.AF_INET6, addr)
-        remote_ip = ipaddress.ip_address(addr)
+        port = struct.unpack(b">H", data_io.read(2))[0]
+        dgram = data_io.read()
 
+        remote_ip = ipaddress.ip_address(addr)
         # send recieved dgram to relay
         async with self.lock:
             if not self.udp_relay:
@@ -108,7 +110,7 @@ class Socks5UDPServer:
                     self.close()
                     raise
 
-        await self.udp_relay.on_client_recv(data)
+        await self.udp_relay.send(addr, port, dgram, data)
 
     async def get_relay(self, remote_ip):
         if remote_ip.is_private or self.parent.conf.GET_PROXY.ip_in_china(None, remote_ip):
@@ -178,7 +180,7 @@ class UDPRelayInterface:
         self.on_remote_recv = self.udp_server.on_remote_recv
         self._close = False
 
-    async def on_client_recv(self, data):
+    async def send(self, addr, port, dgram, data):
         # datagram recieved from client, relay to server
         raise NotImplementedError
 
@@ -195,8 +197,9 @@ class UDPRelayDirect(UDPRelayInterface):
         self.remote_stream = None
         self.recv_from_remote_task = None
 
-    async def on_client_recv(self, data):
-        await self._send(data)
+    async def send(self, addr, port, dgram, data):
+        remote_addr = (addr, port)
+        await self.remote_stream.send(dgram, remote_addr)
 
     async def recv_from_remote(self):
         while not self._close:
@@ -218,26 +221,6 @@ class UDPRelayDirect(UDPRelayInterface):
     async def udp_associate(self):
         self.remote_stream = await asyncio_dgram.bind(('0.0.0.0', 0))
         self.recv_from_remote_task = asyncio.ensure_future(self.recv_from_remote())
-
-    async def _send(self, data):
-        # if FRAG, drop
-        data_io = io.BytesIO(data)
-        addrtype = data_io.read(1)[0]
-        if addrtype == 1:  # ipv4
-            addr = data_io.read(4)
-            addr = socket.inet_ntoa(addr)
-        elif addrtype == 3:  # hostname
-            addrlen = data_io.read(1)
-            addr = data_io.read(addrlen[0])
-            addr = addr.decode()
-        elif addrtype == 4:  # ipv6
-            addr = data_io.read(16)
-            addr = socket.inet_ntop(socket.AF_INET6, addr)
-        port = struct.unpack(b">H", data_io.read(2))[0]
-        remote_addr = (addr, port)
-        dgram = data_io.read()
-
-        await self.remote_stream.send(dgram, remote_addr)
 
     def recv_from_remote_process(self, dgram, remote_addr):
         remote_ip = ipaddress.ip_address(remote_addr[0])
@@ -270,7 +253,7 @@ class UDPRelaySS(UDPRelayDirect):
         cipher = Encryptor(self.sspassword, self.ssmethod)
         return cipher
 
-    async def _send(self, data):
+    async def send(self, addr, port, dgram, data):
         buf = self.get_cipher().encrypt_once(data)
         await self.remote_stream.send(buf)
 
