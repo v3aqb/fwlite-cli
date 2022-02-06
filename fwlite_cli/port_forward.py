@@ -169,7 +169,7 @@ class ForwardHandler:
                 writer.close()
             try:
                 await writer.wait_closed()
-            except ConnectionError:
+            except (ConnectionError, ssl.SSLError):
                 pass
 
 
