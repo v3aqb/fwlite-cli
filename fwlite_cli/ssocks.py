@@ -192,9 +192,9 @@ class SSConn:
     async def forward_from_remote(self):
         # read from remote, decrypt, sent to client
         try:
-            fut = self.remote_reader.readexactly(self.crypto._iv_len)
-            iv = await asyncio.wait_for(fut, timeout=12)
-            self.crypto.decrypt(iv)
+            fut = self.remote_reader.readexactly(self.crypto.iv_len)
+            iv_ = await asyncio.wait_for(fut, timeout=12)
+            self.crypto.decrypt(iv_)
         except (asyncio.TimeoutError, asyncio.IncompleteReadError):
             self.remote_eof = True
             try:

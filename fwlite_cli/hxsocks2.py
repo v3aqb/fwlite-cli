@@ -39,8 +39,8 @@ from six import byte2int
 
 from hxcrypto import InvalidTag, is_aead, Encryptor, ECC, AEncryptor, InvalidSignature
 
-from .parent_proxy import ParentProxy
-from .socks5udp import UDPRelayInterface
+from fwlite_cli.parent_proxy import ParentProxy
+from fwlite_cli.socks5udp import UDPRelayInterface
 
 
 def set_logger():
@@ -140,7 +140,7 @@ class ConnectionManager:
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 if self._err and time.time() - self._err_time < 6:
-                    raise self._err
+                    raise self._err  # pylint: disable=E0702
                 hxs2_connection = Hxs2Connection(proxy, self)
                 try:
                     await hxs2_connection.get_key(timeout, tcp_nodelay)
@@ -148,7 +148,7 @@ class ConnectionManager:
                     asyncio.ensure_future(hxs2_connection.close())
                     self._err = ConnectionResetError(0, 'hxsocks2 get_key() failed: %r' % err)
                     self._err_time = time.time()
-                    raise self._err
+                    raise self._err  # pylint: disable=E0702
                 else:
                     self._err = None
                     self.connection_list.append(hxs2_connection)
@@ -650,7 +650,7 @@ class Hxs2Connection:
 
         # prep key exchange request
         self.__pskcipher = Encryptor(self._psk, self.method)
-        ecc = ECC(self.__pskcipher._key_len)
+        ecc = ECC(self.__pskcipher.key_len)
         pubk = ecc.get_pub_key()
         timestamp = struct.pack('>I', int(time.time()) // 30)
         data = b''.join([chr(len(pubk)).encode('latin1'),
@@ -666,17 +666,17 @@ class Hxs2Connection:
         await self.remote_writer.drain()
 
         # read iv
-        iv = await self._rfile_read(self.__pskcipher._iv_len, timeout)
-        self.__pskcipher.decrypt(iv)
+        iv_ = await self._rfile_read(self.__pskcipher.iv_len, timeout)
+        self.__pskcipher.decrypt(iv_)
 
         # read server response
         if is_aead(self.method):
             ct_len = await self._rfile_read(18, timeout)
             ct_len = self.__pskcipher.decrypt(ct_len)
             ct_len, = struct.unpack('!H', ct_len)
-            ct = await self._rfile_read(ct_len + 16)
-            ct = self.__pskcipher.decrypt(ct)
-            data = ct[2:]
+            ct_ = await self._rfile_read(ct_len + 16)
+            ct_ = self.__pskcipher.decrypt(ct_)
+            data = ct_[2:]
         else:
             resp_len = await self._rfile_read(2, timeout)
             resp_len = self.__pskcipher.decrypt(resp_len)
