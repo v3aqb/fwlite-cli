@@ -38,6 +38,7 @@ from asyncio import Event, Lock
 from six import byte2int
 
 from hxcrypto import InvalidTag, is_aead, Encryptor, ECC, AEncryptor, InvalidSignature
+from hxcrypto.encrypt import EncryptorStream
 
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.socks5udp import UDPRelayInterface
@@ -212,6 +213,7 @@ class Hxs2Connection:
 
         self._psk = self.proxy.query.get('PSK', [''])[0]
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()
+        self.mode = int(self.proxy.query.get('mode', ['0'])[0])
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
 
         self.remote_reader = None
@@ -656,7 +658,8 @@ class Hxs2Connection:
         data = b''.join([chr(len(pubk)).encode('latin1'),
                          pubk,
                          hmac.new(psw.encode(), timestamp + pubk + usn.encode(), hashlib.sha256).digest(),
-                         bytes(random.randint(64, 255))])
+                         bytes((self.mode, )),
+                         bytes(random.randint(64, 450))])
         data = chr(20).encode() + struct.pack('>H', len(data)) + data
 
         ct = self.__pskcipher.encrypt(data)
@@ -697,6 +700,7 @@ class Hxs2Connection:
             auth = data.read(32)
             server_cert = data.read(scertlen)
             signature = data.read(siglen)
+            mode = data.read(1)[0]
 
             # TODO: ask user if a certificate should be accepted or not.
             host, port = self.proxy._host_port
@@ -716,7 +720,10 @@ class Hxs2Connection:
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
                     shared_secret = ecc.get_dh_key(server_key)
                     self.logger.debug('hxs key exchange success')
-                    self.__cipher = AEncryptor(shared_secret, self.method, CTX, check_iv=False)
+                    if mode == 1:
+                        self.__cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False)
+                    else:
+                        self.__cipher = AEncryptor(shared_secret, self.method, CTX, check_iv=False)
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.stat())
