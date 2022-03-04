@@ -362,7 +362,7 @@ class Config:
         if subscription:
             self.load_subscription(subscription)
 
-        if not self.rproxy and not [parent for parent in self.parentlist.parents() if parent.priority < 100]:
+        if not self.rproxy and not [parent for parent in self.parentlist.get_proxy_list() if parent.priority < 100]:
             self.logger.warning('No parent proxy available!')
 
         for port, target_proxy in self.userconf.items('port_forward'):

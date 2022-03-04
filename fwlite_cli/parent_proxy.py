@@ -225,8 +225,18 @@ class ParentProxyList:
         self._parents.discard(pxy)
         self.conf.stdout('proxy')
 
-    def parents(self):
-        return list(self._parents)
+    def get_proxy_list(self, host=None):
+        parentlist = list(self._parents)
+
+        def priority(parent):
+            return parent.get_priority(host)
+
+        if len(parentlist) > 1:
+            # random.shuffle(parentlist)
+            parentlist = sorted(parentlist, key=priority)
+
+        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time() < 14]
+        return parentlist
 
     def get(self, key):
         return self.dict.get(key)

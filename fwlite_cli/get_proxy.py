@@ -251,15 +251,7 @@ class get_proxy:
                 return [self.conf.parentlist.local or self.conf.parentlist.direct]
             return [self.conf.parentlist.direct]
 
-        parentlist = self.conf.parentlist.parents()
-
-        def priority(parent):
-            return parent.get_priority(command, host)
-
-        if len(parentlist) > 1:
-            # random.shuffle(parentlist)
-            parentlist = sorted(parentlist, key=priority)
-        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time() < 14]
+        parentlist = self.conf.parentlist.get_proxy_list(host)
 
         if gfwed:
             if not parentlist:
