@@ -47,6 +47,8 @@ features
 install
 -------
 
+You may want to install ``python3-uvloop`` to increase performance.
+
 ::
 
     pip3 install https://github.com/v3aqb/hxcrypto/archive/master.zip
@@ -55,7 +57,7 @@ install
 update
 ------
 
-using `pip -U` may cause problems, better uninstall and install.
+using ``pip -U`` may cause problems, better uninstall and install.
 
 ::
 
@@ -85,7 +87,7 @@ It looks like this:
 Set browser
 -----------
 
-Set proxy setting to `http://127.0.0.1:8118` (default, or as configured).
+Set proxy setting to ``http|socks5://127.0.0.1:8118`` (default, or as configured in ``config.ini``).
 
 Run
 ---
