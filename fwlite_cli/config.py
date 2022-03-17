@@ -32,6 +32,12 @@ from collections import defaultdict, deque
 
 from ipaddress import IPv4Address, ip_address
 
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass
+
 from .parent_proxy import ParentProxyList, ParentProxy
 from .get_proxy import get_proxy
 from .redirector import redirector
@@ -614,13 +620,7 @@ class Config:
         except RuntimeError:
             new_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(new_loop)
-        loop = asyncio.get_event_loop()
-        if sys.platform == 'win32' and not isinstance(loop, asyncio.ProactorEventLoop):
-            # since python 3.8, ProactorEventLoop is default loop
-            self.logger.info('set ProactorEventLoop for windows')
-            loop = asyncio.ProactorEventLoop()
-            asyncio.set_event_loop(loop)
-        self.loop = loop
+        self.loop = asyncio.get_event_loop()
 
     def start(self):
         self.set_loop()
