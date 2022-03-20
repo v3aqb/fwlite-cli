@@ -722,6 +722,7 @@ class Hxs2Connection:
                     self.logger.debug('hxs key exchange success')
                     if mode == 1:
                         self.__cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False)
+                        self.bufsize += 16
                     else:
                         self.__cipher = AEncryptor(shared_secret, self.method, CTX, check_iv=False)
                     # start reading from connection
