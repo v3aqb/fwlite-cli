@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="fwlite-cli",
-    version="0.3",
+    version="0.4",
     license='GPLv3',
     description="A anti-censorship HTTP proxy with builtin shadowsocks support",
     author='v3aqb',
@@ -20,7 +20,7 @@ setup(
         ]
     },
     dependency_links=['https://github.com/v3aqb/hxcrypto/archive/master.zip#egg=hxcrypto-0.0.3'],
-    install_requires=["hxcrypto", "repoze.lru", "asyncio-dgram"],
+    install_requires=["hxcrypto", "repoze.lru", "asyncio-dgram", "websockets"],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3.7',

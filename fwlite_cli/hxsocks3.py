@@ -30,12 +30,17 @@ import hmac
 import io
 import hashlib
 import random
+import ssl
 import logging
 import traceback
 import asyncio
+from ipaddress import ip_address
 from asyncio import Event, Lock
 
-from hxcrypto import InvalidTag, is_aead, Encryptor, ECC, AEncryptor, InvalidSignature
+import websockets.client
+from websockets.exceptions import ConnectionClosedError, ConnectionClosed
+
+from hxcrypto import InvalidTag, ECC, AEncryptor, InvalidSignature
 from hxcrypto.encrypt import EncryptorStream
 
 from fwlite_cli.parent_proxy import ParentProxy
@@ -43,7 +48,7 @@ from fwlite_cli.socks5udp import UDPRelayInterface
 
 
 def set_logger():
-    logger = logging.getLogger('hxs2')
+    logger = logging.getLogger('hxs3')
     logger.setLevel(logging.INFO)
     hdr = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
@@ -98,16 +103,16 @@ for fname in os.listdir('./.hxs_known_hosts'):
 CONN_MANAGER = {}  # (server, parentproxy): manager
 
 
-async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
+async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     # Entry Point
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
-    assert proxy.scheme == 'hxs2'
+    assert proxy.scheme in ('hxs3', 'hxs3s')
 
     # get hxs2 connection
     for _ in range(MAX_CONNECTION + 1):
         try:
-            conn = await hxs2_get_connection(proxy, timeout, tcp_nodelay)
+            conn = await hxs3_get_connection(proxy, timeout, tcp_nodelay)
 
             soc = await conn.connect(addr, port, timeout)
 
@@ -115,10 +120,10 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
             return reader, writer, conn.name
         except ConnectionLostError:
             continue
-    raise ConnectionResetError(0, 'get hxs2 connection failed.')
+    raise ConnectionResetError(0, 'get hxs3 connection failed.')
 
 
-async def hxs2_get_connection(proxy, timeout, tcp_nodelay):
+async def hxs3_get_connection(proxy, timeout, tcp_nodelay):
     if proxy.name not in CONN_MANAGER:
         CONN_MANAGER[proxy.name] = ConnectionManager()
     conn = await CONN_MANAGER[proxy.name].get_connection(proxy, timeout, tcp_nodelay)
@@ -129,7 +134,7 @@ class ConnectionManager:
     def __init__(self):
         self.connection_list = []
         self._lock = Lock()
-        self.logger = logging.getLogger('hxs2')
+        self.logger = logging.getLogger('hxs3')
         self._err = None
         self._err_time = 0
 
@@ -140,17 +145,17 @@ class ConnectionManager:
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 if self._err and time.time() - self._err_time < 6:
                     raise self._err  # pylint: disable=E0702
-                hxs2_connection = Hxs2Connection(proxy, self)
+                connection = Hxs3Connection(proxy, self)
                 try:
-                    await hxs2_connection.get_key(timeout, tcp_nodelay)
-                except (OSError, asyncio.TimeoutError) as err:
-                    asyncio.ensure_future(hxs2_connection.close())
-                    self._err = ConnectionResetError(0, 'hxsocks2 get_key() failed: %r' % err)
+                    await connection.get_key(timeout, tcp_nodelay)
+                except (OSError, asyncio.TimeoutError, ConnectionClosed) as err:
+                    asyncio.ensure_future(connection.close())
+                    self._err = ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err)
                     self._err_time = time.time()
                     raise self._err  # pylint: disable=E0702
                 else:
                     self._err = None
-                    self.connection_list.append(hxs2_connection)
+                    self.connection_list.append(connection)
         list_ = sorted(self.connection_list, key=lambda item: item.busy())
         return list_[0]
 
@@ -191,13 +196,21 @@ class UDPRelayHxs2(UDPRelayInterface):
         return
 
 
-class Hxs2Connection:
+def is_ipaddr(host):
+    try:
+        ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+class Hxs3Connection:
     bufsize = 65535 - 22
 
     def __init__(self, proxy, manager):
         if not isinstance(proxy, ParentProxy):
             proxy = ParentProxy(proxy, proxy)
-        self.logger = logging.getLogger('hxs2')
+        self.logger = logging.getLogger('hxs3')
         self.proxy = proxy
         self.name = self.proxy.name
         self.timeout = 6  # read frame_data timeout
@@ -209,16 +222,15 @@ class Hxs2Connection:
         self.udp_relay_support = None
         self.udp_event = None
 
-        self._psk = self.proxy.query.get('PSK', [''])[0]
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()
         self.mode = int(self.proxy.query.get('mode', ['0'])[0])
+        if self.method == 'rc4-md5':
+            self.mode = 1
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
 
-        self.remote_reader = None
-        self.remote_writer = None
+        self.remote_ws = None
         self._socport = None
 
-        self.__pskcipher = None
         self.__cipher = None
         self._next_stream_id = 1
         self._settings_async_drain = None
@@ -238,11 +250,11 @@ class Hxs2Connection:
 
         self._last_direction = SEND
         self._last_count = 0
-        self._buffer_size_ewma = 0
         self._recv_tp_max = 0
         self._recv_tp_ewma = 0
         self._sent_tp_max = 0
         self._sent_tp_ewma = 0
+        self._buffer_size_ewma = 0
 
         self._stat_data_recv = 0
         self._stat_total_recv = 1
@@ -254,13 +266,13 @@ class Hxs2Connection:
         self._lock = Lock()
 
     async def connect(self, addr, port, timeout=3):
-        self.logger.debug('hxsocks2 send connect request')
+        self.logger.debug('hxsocks3 send connect request')
         if self.connection_lost:
             self._manager.remove(self)
-            raise ConnectionLostError(0, 'hxs2 connection lost')
+            raise ConnectionLostError(0, 'hxs3 connection lost')
         if not self.connected:
             self._manager.remove(self)
-            raise ConnectionResetError(0, 'hxs2 not connected.')
+            raise ConnectionResetError(0, 'hxs3 not connected.')
         # send connect request
         payload = b''.join([chr(len(addr)).encode('latin1'),
                             addr.encode(),
@@ -273,7 +285,7 @@ class Hxs2Connection:
             self.logger.error('MAX_STREAM_ID reached')
             self._manager.remove(self)
 
-        self.send_frame(HEADERS, OPEN, stream_id, payload)
+        await self.send_frame(HEADERS, OPEN, stream_id, payload)
         self._stream_addr[stream_id] = (addr, port)
 
         # wait for server response
@@ -290,7 +302,7 @@ class Hxs2Connection:
             self.logger.error('no response from %s, timeout=%.3f', self.name, timeout)
             del self._client_status[stream_id]
             self.print_status()
-            self.send_ping()
+            await self.send_ping()
             raise
 
         del self._client_status[stream_id]
@@ -332,7 +344,7 @@ class Hxs2Connection:
             if not data:
                 # close stream(LOCAL)
                 self._stream_status[stream_id] |= EOF_SENT
-                self.send_frame(HEADERS, END_STREAM_FLAG, stream_id, bytes(random.randint(8, 256)))
+                await self.send_frame(HEADERS, END_STREAM_FLAG, stream_id, bytes(random.randint(8, 256)))
                 break
 
             if self._stream_status[stream_id] & EOF_SENT:
@@ -344,7 +356,7 @@ class Hxs2Connection:
             await asyncio.sleep(6)
         await self.close_stream(stream_id)
 
-    def send_frame(self, type_, flags, stream_id, payload):
+    async def send_frame(self, type_, flags, stream_id, payload):
         self.logger.debug('send_frame type: %d, stream_id: %d', type_, stream_id)
         if self.connection_lost:
             self.logger.error('send_frame: connection closed. %s', self.name)
@@ -360,28 +372,31 @@ class Hxs2Connection:
 
         header = struct.pack('>BBH', type_, flags, stream_id)
         data = header + payload
-        ct = self.__cipher.encrypt(data)
-        self.remote_writer.write(struct.pack('>H', len(ct)) + ct)
-        self._stat_total_sent += len(ct) + 2
-        self._stat_sent_tp += len(ct) + 2
+        ct_ = self.__cipher.encrypt(data)
+        try:
+            await self.remote_ws.send(ct_)
+        except ConnectionClosed:
+            self.connection_lost = True
+        self._stat_total_sent += len(ct_) + 2
+        self._stat_sent_tp += len(ct_) + 2
         self._last_count += 1
 
         if self._settings_async_drain is None and random.random() < 0.1:
             self._settings_async_drain = False
-            self.send_frame(SETTINGS, 0, 1, bytes(random.randint(64, 256)))
+            await self.send_frame(SETTINGS, 0, 1, bytes(random.randint(64, 256)))
         if type_ == DATA and self._last_count > 10 and random.random() < 0.01:
-            self.send_ping(False)
+            await self.send_ping(False)
 
-    def send_ping(self, test=True):
+    async def send_ping(self, test=True):
         if self._ping_time == 0:
             self._ping_test = test
-            self.send_frame(PING, 0, 0, bytes(random.randint(64, 256)))
+            await self.send_frame(PING, 0, 0, bytes(random.randint(64, 256)))
 
-    def send_one_data_frame(self, stream_id, data):
+    async def send_one_data_frame(self, stream_id, data):
         payload = struct.pack('>H', len(data)) + data
         diff = self.bufsize - len(data)
         payload += bytes(random.randint(min(diff, 8), min(diff, 255)))
-        self.send_frame(DATA, 0, stream_id, payload)
+        await self.send_frame(DATA, 0, stream_id, payload)
 
     async def send_data_frame(self, stream_id, data):
         data_len = len(data)
@@ -389,37 +404,27 @@ class Hxs2Connection:
             data = io.BytesIO(data)
             data_ = data.read(random.randint(256, 16386 - 22))
             while data_:
-                self.send_one_data_frame(stream_id, data_)
+                await self.send_one_data_frame(stream_id, data_)
                 if random.random() < 0.1:
-                    self.send_frame(PING, 0, 0, bytes(random.randint(256, 1024)))
+                    await self.send_frame(PING, 0, 0, bytes(random.randint(256, 1024)))
                 data_ = data.read(random.randint(256, 8192 - 22))
                 await asyncio.sleep(0)
         else:
-            self.send_one_data_frame(stream_id, data)
+            await self.send_one_data_frame(stream_id, data)
         self._stat_data_sent += data_len
-        buffer_size = self.remote_writer.transport.get_write_buffer_size()
-        self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
-        await self.drain()
-
-    async def drain(self):
-        async with self._lock:
-            if self.connection_lost:
-                return
-            try:
-                await self.remote_writer.drain()
-            except ConnectionError:
-                self.connection_lost = True
+        buffer_size = self.remote_ws.transport.get_write_buffer_size()
+        self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
 
     async def udp_associate(self, udp_server):
         if self.connection_lost:
             self._manager.remove(self)
-            raise ConnectionLostError(0, 'hxs2 connection lost')
+            raise ConnectionLostError(0, 'hxs3 connection lost')
         if not self.connected:
             self._manager.remove(self)
-            raise ConnectionResetError(0, 'hxs2 not connected.')
+            raise ConnectionResetError(0, 'hxs3 not connected.')
         if self.udp_relay_support is None:
             # ask server for udp_support
-            self.send_frame(UDP_ASSOCIATE, OPEN, 0, bytes(random.randint(64, 256)))
+            await self.send_frame(UDP_ASSOCIATE, OPEN, 0, bytes(random.randint(64, 256)))
             if not self.udp_event:
                 self.udp_event = Event()
             fut = self.udp_event.wait()
@@ -438,7 +443,7 @@ class Hxs2Connection:
             self.logger.error('MAX_STREAM_ID reached')
             self._manager.remove(self)
 
-        self.send_frame(UDP_ASSOCIATE, OPEN, stream_id, bytes(random.randint(64, 256)))
+        await self.send_frame(UDP_ASSOCIATE, OPEN, stream_id, bytes(random.randint(64, 256)))
         self._stream_status[stream_id] = OPEN
         self._client_resume_reading[stream_id] = asyncio.Event()
         self._client_resume_reading[stream_id].set()
@@ -450,12 +455,13 @@ class Hxs2Connection:
         self.logger.debug('start read from connection')
         while not self.connection_lost:
             try:
-                # read frame_len
-                intv = 2 if self._ping_test else 6
-
+                # read frame
                 try:
-                    frame_len = await self._rfile_read(2, timeout=intv)
-                    frame_len, = struct.unpack('>H', frame_len)
+                    fut = self.remote_ws.recv()
+                    frame_data = await asyncio.wait_for(fut, timeout=6)
+                    frame_data = self.__cipher.decrypt(frame_data)
+                    self._stat_total_recv += len(frame_data)
+                    self._stat_recv_tp += len(frame_data)
                 except asyncio.TimeoutError:
                     if self._ping_test and time.monotonic() - self._ping_time > 6:
                         self.logger.warning('server no response %s', self.proxy.name)
@@ -465,22 +471,11 @@ class Hxs2Connection:
                         break
                     if time.monotonic() - self._last_active_c > 10:
                         if not self._ping_test:
-                            self.send_ping()
+                            await self.send_ping()
                     continue
-                except (ConnectionError, asyncio.IncompleteReadError) as err:
+                except (ConnectionClosedError, RuntimeError, InvalidTag) as err:
                     # destroy connection
                     self.logger.error('read from connection error: %r', err)
-                    break
-
-                # read frame_data
-                try:
-                    frame_data = await self._rfile_read(frame_len, timeout=self.timeout)
-                    frame_data = self.__cipher.decrypt(frame_data)
-                    self._stat_total_recv += frame_len + 2
-                    self._stat_recv_tp += frame_len + 2
-                except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
-                    # destroy connection
-                    self.logger.error('read frame data error: %r, timeout %s', err, self.timeout)
                     break
 
                 if self._last_direction == SEND:
@@ -489,7 +484,7 @@ class Hxs2Connection:
                 self._last_count += 1
 
                 if self._last_count > 10 and random.random() < 0.1:
-                    self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
+                    await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
 
                 # parse chunk_data
                 # +------+-------------------+----------+
@@ -501,7 +496,8 @@ class Hxs2Connection:
                 header, payload = frame_data[:4], frame_data[4:]
                 frame_type, frame_flags, stream_id = struct.unpack('>BBH', header)
                 payload = io.BytesIO(payload)
-                self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s', frame_type, stream_id, frame_len)
+                self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s',
+                                  frame_type, stream_id, len(frame_data))
 
                 if frame_type == DATA:  # 0
                     self._last_active_c = time.monotonic()
@@ -555,8 +551,8 @@ class Hxs2Connection:
                                 addr = '%s:%s' % self._stream_addr[stream_id]
                                 self.logger.info('%s stream open, client closed, %s', self.name, addr)
                                 self._stream_status[stream_id] = CLOSED
-                                self.send_frame(RST_STREAM, 0, stream_id,
-                                                bytes(random.randint(8, 256)))
+                                await self.send_frame(RST_STREAM, 0, stream_id,
+                                                      bytes(random.randint(8, 256)))
                 elif frame_type == RST_STREAM:  # 3
                     self._last_active_c = time.monotonic()
                     self._stream_status[stream_id] = CLOSED
@@ -577,7 +573,7 @@ class Hxs2Connection:
                         self._ping_test = False
                         self._ping_time = 0
                     else:
-                        self.send_frame(PING, PONG, 0, bytes(random.randint(64, 2048)))
+                        await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 2048)))
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
                     max_stream_id = payload.read(2)
@@ -634,23 +630,25 @@ class Hxs2Connection:
             await asyncio.wait(task_list)
 
     async def get_key(self, timeout, tcp_nodelay):
-        self.logger.debug('hxsocks2 getKey')
+        self.logger.debug('hxsocks3 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
         self.logger.info('%s connect to server', self.name)
-        from .connection import open_connection
-        self.remote_reader, self.remote_writer, _ = await open_connection(
-            self.proxy.hostname,
-            self.proxy.port,
-            proxy=self.proxy.get_via(),
-            timeout=timeout,
-            tunnel=True,
-            limit=262144,
-            tcp_nodelay=tcp_nodelay)
-        self.remote_writer.transport.set_write_buffer_limits(262144)
+        ssl_ctx = None
+        scheme = 'ws'
+        if self.proxy.scheme == 'hxs3s':
+            scheme = 'wss'
+            ssl_ctx = ssl.create_default_context()
+            if is_ipaddr(self.proxy.hostname):
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = ssl.CERT_NONE
+
+        uri = '%s://%s:%d/%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
+        self.remote_ws = await websockets.client.connect(uri, ssl=ssl_ctx, compression=None,
+                                                         read_limit=2 ** 18,
+                                                         write_limit=2 ** 18,)
 
         # prep key exchange request
-        self.__pskcipher = Encryptor(self._psk, self.method)
-        ecc = ECC(self.__pskcipher.key_len)
+        ecc = ECC(32)
         pubk = ecc.get_pub_key()
         timestamp = struct.pack('>I', int(time.time()) // 30)
         data = b''.join([chr(len(pubk)).encode('latin1'),
@@ -658,32 +656,13 @@ class Hxs2Connection:
                          hmac.new(psw.encode(), timestamp + pubk + usn.encode(), hashlib.sha256).digest(),
                          bytes((self.mode, )),
                          bytes(random.randint(64, 450))])
-        data = chr(20).encode() + struct.pack('>H', len(data)) + data
-
-        ct = self.__pskcipher.encrypt(data)
+        data = chr(0).encode() + data
 
         # send key exchange request
-        self.remote_writer.write(ct)
-        await self.remote_writer.drain()
+        await self.remote_ws.send(data)
 
-        # read iv
-        iv_ = await self._rfile_read(self.__pskcipher.iv_len, timeout)
-        self.__pskcipher.decrypt(iv_)
-
-        # read server response
-        if is_aead(self.method):
-            ct_len = await self._rfile_read(18, timeout)
-            ct_len = self.__pskcipher.decrypt(ct_len)
-            ct_len, = struct.unpack('!H', ct_len)
-            ct_ = await self._rfile_read(ct_len + 16)
-            ct_ = self.__pskcipher.decrypt(ct_)
-            data = ct_[2:]
-        else:
-            resp_len = await self._rfile_read(2, timeout)
-            resp_len = self.__pskcipher.decrypt(resp_len)
-            resp_len, = struct.unpack('>H', resp_len)
-            data = await self._rfile_read(resp_len)
-            data = self.__pskcipher.decrypt(data)
+        fut = self.remote_ws.recv()
+        data = await asyncio.wait_for(fut, timeout=timeout)
 
         data = io.BytesIO(data)
 
@@ -727,7 +706,7 @@ class Hxs2Connection:
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.stat())
                     self.connected = True
-                    self._socport = self.remote_writer.get_extra_info('sockname')[1]
+                    self._socport = self.remote_ws.local_address[1]
                     return
                 except InvalidSignature:
                     self.logger.error('hxs getKey Error: server auth failed, bad signature')
@@ -736,11 +715,6 @@ class Hxs2Connection:
         else:
             self.logger.error('hxs getKey Error. bad password or timestamp.')
         raise ConnectionResetError(0, 'hxs getKey Error')
-
-    async def _rfile_read(self, size, timeout=3):
-        fut = self.remote_reader.readexactly(size)
-        data = await asyncio.wait_for(fut, timeout=timeout)
-        return data
 
     def count(self):
         return len(self._client_writer)
@@ -756,8 +730,9 @@ class Hxs2Connection:
             if self._sent_tp_ewma > self._sent_tp_max:
                 self._sent_tp_max = self._sent_tp_ewma
             self._stat_sent_tp = 0
-            buffer_size = self.remote_writer.transport.get_write_buffer_size()
-            self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
+            if self.remote_ws.transport:
+                buffer_size = self.remote_ws.transport.get_write_buffer_size()
+                self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
 
     def busy(self):
         return self._recv_tp_ewma + self._sent_tp_ewma
@@ -779,7 +754,7 @@ class Hxs2Connection:
         if not self._client_resume_reading[stream_id].is_set():
             self._client_resume_reading[stream_id].set()
         if self._stream_status[stream_id] != CLOSED:
-            self.send_frame(RST_STREAM, 0, stream_id, bytes(random.randint(8, 256)))
+            await self.send_frame(RST_STREAM, 0, stream_id, bytes(random.randint(8, 256)))
             self._stream_status[stream_id] = CLOSED
         if stream_id in self._client_writer:
             writer = self._client_writer[stream_id]
@@ -807,19 +782,14 @@ class Hxs2Connection:
         async with self._client_drain_lock[stream_id]:
             try:
                 # tell client to stop reading
-                self.send_frame(WINDOW_UPDATE, 1, stream_id, bytes(random.randint(64, 256)))
+                await self.send_frame(WINDOW_UPDATE, 1, stream_id, bytes(random.randint(64, 256)))
                 await self._client_writer[stream_id].drain()
                 # tell client to resume reading
-                self.send_frame(WINDOW_UPDATE, 0, stream_id, bytes(random.randint(64, 256)))
+                await self.send_frame(WINDOW_UPDATE, 0, stream_id, bytes(random.randint(64, 256)))
             except OSError:
                 await self.close_stream(stream_id)
                 return
 
     async def close(self):
-        if self.remote_writer:
-            if not self.remote_writer.is_closing():
-                self.remote_writer.close()
-            try:
-                await self.remote_writer.wait_closed()
-            except OSError:
-                pass
+        if self.remote_ws:
+            await self.remote_ws.close()
