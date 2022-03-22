@@ -813,7 +813,11 @@ class http_handler(BaseProxyHandler):
             await self._do_CONNECT(True)
             return
         except Exception:
+            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
+                                       False, self.failed_parents, self.ppname)
             self.logger.error(traceback.format_exc())
+            await self._do_CONNECT(True)
+            return
         self.logger.debug('%s connected', self.path)
 
         if self.ppname != self.pproxy.name:
@@ -930,7 +934,7 @@ class http_handler(BaseProxyHandler):
         if not context.retryable:
             try:
                 write_to.write_eof()
-            except OSError:
+            except (OSError, RuntimeError):
                 pass
 
     def getparent(self, gfwed=False):

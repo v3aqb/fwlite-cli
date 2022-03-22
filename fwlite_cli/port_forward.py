@@ -91,7 +91,7 @@ async def forward_from_remote(read_from, write_to, context, timeout=180):
             context.retryable = False
             write_to.write(data)
             await write_to.drain()
-        except ConnectionError:
+        except (ConnectionError, RuntimeError):
             # client closed
             context.remote_eof = True
             context.retryable = False
@@ -138,7 +138,7 @@ class ForwardHandler:
                                                                         proxy=self.proxy,
                                                                         timeout=self.ctimeout,
                                                                         tunnel=True)
-        except ConnectionError:
+        except OSError:
             logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy)
             client_writer.close()
             await client_writer.wait_closed()
@@ -169,7 +169,7 @@ class ForwardHandler:
                 writer.close()
             try:
                 await writer.wait_closed()
-            except (ConnectionError, ssl.SSLError):
+            except (OSError, ssl.SSLError, asyncio.TimeoutError):
                 pass
 
 

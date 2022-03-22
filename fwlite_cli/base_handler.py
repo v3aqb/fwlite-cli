@@ -113,7 +113,7 @@ class BaseHandler(BaseHTTPRequestHandler):
             self.client_writer.close()
             try:
                 await self.client_writer.wait_closed()
-            except ConnectionError:
+            except OSError:
                 pass
 
     async def _handle(self):
