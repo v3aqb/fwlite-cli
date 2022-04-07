@@ -3,7 +3,7 @@ fwlite-cli
 
 A anti-censorship HTTP/Socks5 proxy with builtin shadowsocks support, CLI part only.
 
-Support Python 3.6 and above.
+Support Python 3.8 and above.
 
 Current Version: 0
 
@@ -34,8 +34,9 @@ features
 
   - HTTP
   - socks5
-  - shadowsocks (with AEAD and UDP relay support)
+  - shadowsocks
   - hxsocks2
+  - hxsocks3
 - Support SIP003 plugin (`fwlite-cli#1`_)
 - Prioritize parent proxies by response time
 - Redirector
