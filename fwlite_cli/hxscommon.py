@@ -605,9 +605,11 @@ class HxsConnection:
             if self._sent_tp_ewma > self._sent_tp_max:
                 self._sent_tp_max = self._sent_tp_ewma
             self._stat_sent_tp = 0
-            if self.remote_writer.transport:
+            try:
                 buffer_size = self.remote_writer.transport.get_write_buffer_size()
                 self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
+            except AttributeError:
+                pass
 
     def busy(self):
         return self._recv_tp_ewma + self._sent_tp_ewma
