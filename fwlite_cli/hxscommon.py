@@ -284,7 +284,7 @@ class HxsConnection:
         elif flags == 0:
             self._ping_time = time.monotonic()
 
-        if self._last_direction == RECV:
+        if type_ == DATA and self._last_direction == RECV:
             self._last_direction = SEND
             self._last_count = 0
 
@@ -297,7 +297,7 @@ class HxsConnection:
         if self._settings_async_drain is None and random.random() < 0.1:
             self._settings_async_drain = False
             await self.send_frame(SETTINGS, 0, 1, bytes(random.randint(64, 256)))
-        if type_ == DATA and self._last_count > 10 and random.random() < 0.01:
+        if type_ == DATA and self._last_count > 5 and random.random() < 0.1:
             await self.send_ping(False)
 
     async def send_ping(self, test=True):
@@ -388,14 +388,6 @@ class HxsConnection:
                     self.logger.error('read frame error: %r', err.err)
                     break
 
-                if self._last_direction == SEND:
-                    self._last_direction = RECV
-                    self._last_count = 0
-                self._last_count += 1
-
-                if self._last_count > 10 and random.random() < 0.1:
-                    await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
-
                 # parse chunk_data
                 # +------+-------------------+----------+
                 # | type | flags | stream_id | payload  |
@@ -408,6 +400,14 @@ class HxsConnection:
                 payload = io.BytesIO(payload)
                 self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s',
                                   frame_type, stream_id, len(frame_data))
+
+                if frame_type == DATA and self._last_direction == SEND:
+                    self._last_direction = RECV
+                    self._last_count = 0
+                self._last_count += 1
+
+                if self._last_count > 5 and random.random() < 0.1:
+                    await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
 
                 if frame_type == DATA:  # 0
                     self._last_active_c = time.monotonic()
