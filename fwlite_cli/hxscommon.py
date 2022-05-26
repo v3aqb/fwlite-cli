@@ -406,7 +406,7 @@ class HxsConnection:
                     self._last_count = 0
                 self._last_count += 1
 
-                if self._last_count > 5 and random.random() < 0.1:
+                if self._last_count > 5 and random.random() < 0.2:
                     await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
 
                 if frame_type == DATA:  # 0
