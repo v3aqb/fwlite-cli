@@ -30,8 +30,10 @@ import urllib.parse
 import logging
 try:
     from .util import parse_hostport
+    from .ipfilter import NetFilter
 except ImportError:
     from util import parse_hostport
+    from ipfilter import NetFilter
 
 logger = logging.getLogger('apfilter')
 
@@ -54,10 +56,9 @@ class ExpiredError(Exception):
         super().__init__()
 
 
-class ap_rule(object):
+class ap_rule:
 
     def __init__(self, rule, msg=None, expire=None):
-        super(ap_rule, self).__init__()
         self.rule = rule.strip()
         if len(self.rule) < 3 or self.rule.startswith(('!', '[')) or '#' in self.rule or ' ' in self.rule:
             raise ValueError("invalid abp_rule: %s" % self.rule)
@@ -99,15 +100,17 @@ class ap_rule(object):
         return '<ap_rule: %s>' % self.rule
 
 
-class ap_filter(object):
-    KEYLEN = 8
+class ap_filter:
+    KEYLEN = 10
 
     def __init__(self, lst=None):
         self.excludes = []
         self.slow = []
         self.domains = set()
-        self.exclude_domains = set()
+        self.domains_exclude = set()
         self.fast = defaultdict(list)
+        self.net_filter = NetFilter()
+        self.net_filter_exclude = NetFilter()
         self.rules = set()
         self.expire = {}
         if lst:
@@ -124,7 +127,7 @@ class ap_filter(object):
         if rule.startswith('||') and '*' not in rule:
             self._add_domain(rule)
         elif rule.startswith('@@||') and '*' not in rule:
-            self._add_exclude_domain(rule)
+            self._add_domain_exclude(rule)
         elif rule.startswith('@@|'):
             # strip and treat as domain rule
             rule = '@@||' + urllib.parse.urlparse(rule[3:]).hostname
@@ -165,18 +168,28 @@ class ap_filter(object):
         lst = self.excludes if rule_o.override else self.slow
         lst.append(rule_o)
 
-    def _add_exclude_domain(self, rule):
+    def _add_domain_exclude(self, rule):
         rule = rule.rstrip('/^')
         domain = rule[4:]
-        if domain in self.exclude_domains:
+        try:
+            self.net_filter_exclude.add(domain)
+            return
+        except ValueError:
+            pass
+        if domain in self.domains_exclude:
             raise ValueError('%s already in exclude_domains' % domain)
-        self.exclude_domains.add(domain)
+        self.domains_exclude.add(domain)
 
     def _add_domain(self, rule):
         rule = rule.rstrip('/^')
         domain = rule[2:]
-        if domain in self.exclude_domains:
-            raise ValueError('%s already in domain_list' % domain)
+        try:
+            self.net_filter.add(domain)
+            return
+        except ValueError:
+            pass
+        if domain in self.domains:
+            raise ValueError('%s already in domains' % domain)
         self.domains.add(domain)
 
     def match(self, url, host=None, domain_only=False):
@@ -200,8 +213,12 @@ class ap_filter(object):
         return None
 
     def _domainmatch(self, host):
+        if host in self.net_filter_exclude:
+            return False
+        if host in self.net_filter:
+            return True
         lst = ['.'.join(host.split('.')[i:]) for i in range(len(host.split('.')))]
-        if any(host in self.exclude_domains for host in lst):
+        if any(host in self.domains_exclude for host in lst):
             return False
         if any(host in self.domains for host in lst):
             return True
@@ -222,25 +239,41 @@ class ap_filter(object):
     def _listmatch(lst, url):
         return any(r.match(url) for r in lst)
 
+    def remove_domain(self, rule):
+        domain = rule.rstrip('/')[2:]
+        try:
+            self.net_filter.remove(domain)
+            return
+        except ValueError:
+            pass
+        self.domains.discard(domain)
+
+    def remove_domain_exclude(self, rule):
+        domain = rule.rstrip('/')[4:]
+        try:
+            self.net_filter_exclude.remove(domain)
+            return
+        except ValueError:
+            pass
+        self.domains_exclude.discard(domain)
+
     def remove(self, rule, delay=None):
         if delay:
             time.sleep(delay)
         if rule not in self.rules:
             return
         if rule.startswith('||') and '*' not in rule:
-            rule = rule.rstrip('/')
-            self.domains.discard(rule[2:])
+            self.remove_domain(rule)
         elif rule.startswith('@@||') and '*' not in rule:
-            rule = rule.rstrip('/')
-            self.exclude_domains.discard(rule[4:])
+            self.remove_domain_exclude(rule)
         elif rule.startswith('@@|'):
             # strip and treat as domain rule
             rule = '@@||' + urllib.parse.urlparse(rule[3:]).hostname
-            self.exclude_domains.discard(rule[4:])
+            self.remove_domain_exclude(rule)
         elif rule.startswith('|https://') and '*' not in rule:
             # strip and treat as domain rule
             rule = '||' + urllib.parse.urlparse(rule[1:]).hostname
-            self.domains.discard(rule[2:])
+            self.remove_domain(rule)
         elif rule.startswith(('@', '/')):
             lst = self.excludes if rule.startswith('@') else self.slow
             for rule_o in lst[:]:
@@ -268,7 +301,7 @@ class ap_filter(object):
                     break
         else:
             # some small key word, treat as domain rule
-            self.domains.discard(rule.strip('./'))
+            self.remove_domain('||' + rule.strip('./'))
         self.rules.discard(rule)
         del self.expire[rule]
         if '-GUI' in sys.argv:
@@ -279,7 +312,7 @@ class ap_filter(object):
 def test():
     gfwlist = ap_filter()
     t = time.perf_counter()
-    with open('gfwlist.txt') as f:
+    with open('../gfwlist.txt') as f:
         data = f.read()
         if '!' not in data:
             import base64
@@ -292,6 +325,7 @@ def test():
             except Exception:
                 pass
         del data
+    gfwlist.add('||127.0.0.0/24')
     print('loading: %fs' % (time.perf_counter() - t))
     print('result for inxian: %r' % gfwlist.match('http://www.inxian.com', 'www.inxian.com'))
     print('result for twitter: %r' % gfwlist.match('twitter.com:443', 'twitter.com'))
@@ -302,6 +336,8 @@ def test():
     print('result for url_startswith: %r' % gfwlist.match('http://ff.im/whatever', 'ff.im'))
     print('result for google.com.au: %r' % gfwlist.match('www.google.com.au:443', 'www.google.com.au'))
     print('result for riseup.net:443: %r' % gfwlist.match('riseup.net:443', 'riseup.net'))
+    print('result for 85.17.73.31: %r' % ('85.17.73.31' in gfwlist.net_filter))
+    print('result for 127.0.0.1: %r' % ('127.0.0.1' in gfwlist.net_filter))
 
     url = 'http://news.163.com/16/1226/18/C97U4AI50001875N.html'
     host = urllib.parse.urlparse(url).hostname
@@ -316,6 +352,7 @@ def test():
     print('O(n): %d' % (len(gfwlist.excludes) + len(gfwlist.slow)))
     print('domain rules: %d' % len(gfwlist.domains))
     print('total: %d' % len(gfwlist.rules))
+    print(repr(gfwlist.net_filter))
 
     fast_key_list = gfwlist.fast.keys()
     fast_key_list = sorted(fast_key_list, key=lambda x: len(gfwlist.fast[x]))
