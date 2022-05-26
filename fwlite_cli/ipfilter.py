@@ -24,14 +24,21 @@ class NetFilter:
         # keep this list sorted
         self.net_list_4 = []
         self.net_list_6 = []
+        self.ip_set = set()
 
     def add(self, network):
         if not any([isinstance(network, ipaddress.IPv4Network),
                     isinstance(network, ipaddress.IPv6Network)]):
             network = ipaddress.ip_network(network)
+            # raises ValueError
+
+        if network.num_addresses == 1:
+            self.ip_set.add(int(network.network_address))
+            return
 
         network_list = self.net_list_4 if network.version == 4 else self.net_list_6
 
+        # if network_list is empty
         if not network_list:
             network_list.append(network)
             return
@@ -46,10 +53,36 @@ class NetFilter:
             index = bisect.bisect(network_list, network)
             network_list.insert(index, network)
 
+    def remove(self, network):
+        if not any([isinstance(network, ipaddress.IPv4Network),
+                    isinstance(network, ipaddress.IPv6Network)]):
+            network = ipaddress.ip_network(network)
+            # raises ValueError
+
+        if network.num_addresses == 1:
+            self.ip_set.discard(int(network.network_address))
+            return
+
+        network_list = self.net_list_4 if network.version == 4 else self.net_list_6
+
+        if not network_list:
+            return
+
+        item = self.contains(network.network_address)
+        if item:
+            network_list.remove(item)
+            return
+
     def contains(self, item):
         if not any([isinstance(item, ipaddress.IPv4Network),
                     isinstance(item, ipaddress.IPv6Network)]):
-            item = ipaddress.ip_network(item)
+            try:
+                item = ipaddress.ip_network(item)
+            except ValueError:
+                return False
+
+        if item.num_addresses == 1 and int(item.network_address) in self.ip_set:
+            return True
 
         network_list = self.net_list_4 if item.version == 4 else self.net_list_6
 
@@ -66,3 +99,6 @@ class NetFilter:
         if self.contains(item):
             return True
         return False
+
+    def __repr__(self):
+        return "NetFilter v4: %d, v6: %d, ip: %d" % (len(self.net_list_4), len(self.net_list_6), len(self.ip_set))
