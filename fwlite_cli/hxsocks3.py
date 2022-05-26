@@ -152,7 +152,7 @@ class Hxs3Connection(HxsConnection):
             self._stat_total_recv += len(frame_data)
             self._stat_recv_tp += len(frame_data)
             return frame_data
-        except (ConnectionClosed, RuntimeError, InvalidTag) as err:
+        except (ConnectionClosed, RuntimeError, InvalidTag, OSError) as err:
             raise ReadFrameError(err) from err
 
     async def get_key(self, timeout, tcp_nodelay):
