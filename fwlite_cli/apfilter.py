@@ -177,7 +177,8 @@ class ap_filter:
         except ValueError:
             pass
         if domain in self.domains_exclude:
-            raise ValueError('%s already in exclude_domains' % domain)
+            logger.error('%s already in domains_exclude', rule)
+            return
         self.domains_exclude.add(domain)
 
     def _add_domain(self, rule):
@@ -189,7 +190,8 @@ class ap_filter:
         except ValueError:
             pass
         if domain in self.domains:
-            raise ValueError('%s already in domains' % domain)
+            logger.error('%s already in domains', rule)
+            return
         self.domains.add(domain)
 
     def match(self, url, host=None, domain_only=False):
