@@ -141,8 +141,11 @@ class Server:
 
 class BaseProxyHandler(BaseHandler):
     def __init__(self, server):
+        super().__init__(server)
+        self.mode = self.server.mode
         self.shortpath = ''  # for logging
         self._proxylist = None
+        self.path = ''
         self.ppname = ''
         self.pproxy = None
         self.rbuffer = []
@@ -151,13 +154,13 @@ class BaseProxyHandler(BaseHandler):
         self.retryable = True
         self.request_host = None
         # for dns, GET method hostname, gfwlist domain match, getproxy log, getproxy priority
+        self.client_writer = None
         self.remote_reader = None
         self.remote_writer = None
         self.request_ip = None
         self.retry_count = 0
         self.failed_parents = []
         self.close_connection = True
-        super().__init__(server)
 
     def pre_request_init(self):
         super().pre_request_init()
@@ -352,7 +355,7 @@ class http_handler(BaseProxyHandler):
                                           parse.path.split(':')[0],
                                           '?' if parse.query else '')
 
-        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.server.mode)
+        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.mode)
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
@@ -764,7 +767,7 @@ class http_handler(BaseProxyHandler):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # random.shuffle(self._proxylist)
 
-        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.server.mode)
+        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.mode)
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
@@ -939,7 +942,7 @@ class http_handler(BaseProxyHandler):
 
     def getparent(self, gfwed=False):
         if self._proxylist is None:
-            mode = max(3, self.server.mode) if gfwed else self.server.mode
+            mode = max(3, self.mode) if gfwed else self.mode
             self._proxylist = self.conf.GET_PROXY.get_proxy(
                 self.shortpath or self.path, self.request_host, self.command,
                 self.request_ip, mode)
@@ -952,11 +955,6 @@ class http_handler(BaseProxyHandler):
         self.pproxy = self._proxylist.pop(0)
         self.ppname = self.pproxy.name
         return 0
-
-    async def relay_udp(self):
-        from .socks5udp import Socks5UDPServer
-        udp_server = Socks5UDPServer(self, self.udp_timeout)
-        await udp_server.close_event.wait()
 
     def set_timeout(self):
         if self._proxylist:

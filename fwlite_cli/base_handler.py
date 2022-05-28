@@ -75,9 +75,6 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.udp_timeout = self.conf.udp_timeout
         self.server_addr = (self.server.addr, self.server.port)
         response = b'\x05\x00\x00'
-        serverip = ipaddress.ip_address(self.server.addr)
-        response += b'\x01' if serverip.version == 4 else b'\x04'
-        response += serverip.packed
         self.socks5_udp_response = response
         self.logger = server.logger
         self.requestline = ''
@@ -208,10 +205,17 @@ class BaseHandler(BaseHTTPRequestHandler):
         await self.do_CONNECT(socks5=True)  # pylint: disable=E1101
 
     async def relay_udp(self):
-        raise NotImplementedError
+        from .socks5udp import Socks5UDPServer
+        udp_server = Socks5UDPServer(self, self.udp_timeout)
+        await udp_server.bind()
+        await udp_server.close_event.wait()
 
-    def write_udp_reply(self, port):
-        buf = self.socks5_udp_response + struct.pack(b'>H', port)
+    def write_udp_reply(self, addr):
+        buf = self.socks5_udp_response
+        serverip = ipaddress.ip_address(addr[0])
+        buf += b'\x01' if serverip.version == 4 else b'\x04'
+        buf += serverip.packed
+        buf += struct.pack(b'>H', addr[1])
         self.client_writer.write(buf)
 
     async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0236
