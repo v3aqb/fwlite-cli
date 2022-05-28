@@ -325,8 +325,11 @@ class HxsConnection:
         else:
             await self.send_one_data_frame(stream_id, data)
         self._stat_data_sent += data_len
-        buffer_size = self.remote_writer.transport.get_write_buffer_size()
-        self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
+        try:
+            buffer_size = self.remote_writer.transport.get_write_buffer_size()
+            self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
+        except AttributeError:
+            pass
 
     async def udp_associate(self, udp_server):
         if self.connection_lost:
