@@ -36,18 +36,12 @@ except ImportError:
     from ipfilter import NetFilter
 
 logger = logging.getLogger('apfilter')
-
-
-def set_logger():
-    logger.setLevel(logging.INFO)
-    hdr = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                                  datefmt='%H:%M:%S')
-    hdr.setFormatter(formatter)
-    logger.addHandler(hdr)
-
-
-set_logger()
+logger.setLevel(logging.INFO)
+# hdr = logging.StreamHandler()
+# formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+#                               datefmt='%H:%M:%S')
+# hdr.setFormatter(formatter)
+# logger.addHandler(hdr)
 
 
 class ExpiredError(Exception):
@@ -132,7 +126,10 @@ class ap_filter:
             # strip and treat as domain rule
             rule = '@@||' + urllib.parse.urlparse(rule[3:]).hostname
             return self.add(rule)
-        elif rule.startswith('|https://') and '*' not in rule:
+        elif rule.startswith('|https://'):
+            if '*' in rule:
+                logger.warning('%s ignored', rule)
+                return
             # strip and treat as domain rule
             rule = '||' + urllib.parse.urlparse(rule[1:]).hostname
             return self.add(rule)
@@ -143,7 +140,7 @@ class ap_filter:
             if '*' not in hostname:
                 return self.add('||' + hostname)
             self._add_fast(rule)
-        elif any(len(s) > (self.KEYLEN) for s in rule.split('*')):
+        elif '*' in rule and '.' in rule and any(len(s) > (self.KEYLEN) for s in rule.split('*')):
             self._add_fast(rule)
         else:
             # some small key word, treat as domain rule
@@ -272,7 +269,7 @@ class ap_filter:
             # strip and treat as domain rule
             rule = '@@||' + urllib.parse.urlparse(rule[3:]).hostname
             self.remove_domain_exclude(rule)
-        elif rule.startswith('|https://') and '*' not in rule:
+        elif rule.startswith('|https://'):
             # strip and treat as domain rule
             rule = '||' + urllib.parse.urlparse(rule[1:]).hostname
             self.remove_domain(rule)
@@ -292,7 +289,7 @@ class ap_filter:
                     if not self.fast[key]:
                         del self.fast[key]
                     break
-        elif any(len(s) > (self.KEYLEN) for s in rule.split('*')):
+        elif '*' in rule and '.' in rule and any(len(s) > (self.KEYLEN) for s in rule.split('*')):
             lst = [s for s in rule.split('*') if len(s) > self.KEYLEN]
             key = lst[-1][self.KEYLEN * -1:]
             for rule_o in self.fast[key][:]:

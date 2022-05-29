@@ -20,7 +20,7 @@
 
 import base64
 import logging
-import ipaddress
+import traceback
 
 from repoze.lru import lru_cache
 
@@ -115,6 +115,7 @@ class get_proxy:
                         self.gfwlist.add(line)
             except Exception as e:
                 self.logger.warning('gfwlist is corrupted! %r', e)
+                self.logger.warning(traceback.format_exc())
 
         for dns_server in DNS_SERVER_LIST:
             self.gfwlist.add('||' + dns_server)
