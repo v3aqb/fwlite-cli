@@ -48,13 +48,18 @@ class Socks5UDPServer:
 
     async def bind(self):
         # find a free port and bind
-        self.client_stream = await asyncio_dgram.bind(('0.0.0.0', 0))
+        client_ip = self.parent.client_address[0]
+        stream = await asyncio_dgram.connect((client_ip, 53))
+        stream.close()
+        self.client_stream = await asyncio_dgram.bind((stream.sockname[0], 0))
         # tell client the port number
         self.parent.write_udp_reply(self.client_stream.sockname)
-        self.logger.info('start udp relay, %d', self.client_stream.sockname[1])
+        self.logger.info('start udp relay, %s', self.client_stream.sockname)
         self.client_recv_task = asyncio.ensure_future(self.recv_from_client())
 
     async def recv_from_client(self):
+        # tell socks5 server to close connection
+        self.close_event.set()
         # start reading... until timeout
         while not self._closed:
             try:
@@ -89,8 +94,6 @@ class Socks5UDPServer:
                 break
         self.logger.info('udp relay finish, %d', self.client_stream.sockname[1])
         self.close(True)
-        # tell socks5 server to close connection
-        self.close_event.set()
 
     async def on_client_recv(self, data):
         data_io = io.BytesIO(data)
