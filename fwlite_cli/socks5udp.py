@@ -47,11 +47,11 @@ class Socks5UDPServer:
         self.client_recv_task = None
 
     async def bind(self):
-        # find a free port and bind
         client_ip = self.parent.client_address[0]
         stream = await asyncio_dgram.connect((client_ip, 53))
+        interface = stream.sockname[0]
         stream.close()
-        self.client_stream = await asyncio_dgram.bind((stream.sockname[0], 0))
+        self.client_stream = await asyncio_dgram.bind((interface, 0))
         # tell client the port number
         self.parent.write_udp_reply(self.client_stream.sockname)
         self.logger.info('start udp relay, %s', self.client_stream.sockname)
