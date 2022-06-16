@@ -217,7 +217,8 @@ class HxsConnection:
         try:
             await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
-            self.logger.error('no response from %s, timeout=%.3f', self.name, timeout)
+            self.logger.error('%s connect %s no response, timeout=%d',
+                              self.name, '%s:%d' % (addr, port), timeout)
             del self._client_status[stream_id]
             self.print_status()
             await self.send_ping()
@@ -377,7 +378,7 @@ class HxsConnection:
                     frame_data = await self.read_frame(intv)
                 except asyncio.TimeoutError:
                     if self._ping_test and time.monotonic() - self._ping_time > 6:
-                        self.logger.warning('server no response %s', self.proxy.name)
+                        self.logger.warning('server no response %s in %ds', self.proxy.name, intv)
                         break
                     if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
                         # no point keeping so long
@@ -479,7 +480,10 @@ class HxsConnection:
                     if frame_flags == PONG:
                         resp_time = time.monotonic() - self._ping_time
                         if time.monotonic() - self._last_ping_log > 30:
-                            self.logger.info('server response time: %.3f %s', resp_time, self.proxy.name)
+                            self.logger.info('server response time: %.3f %s, stream %s',
+                                             resp_time,
+                                             self.proxy.name,
+                                             self.count())
                             self._last_ping_log = time.monotonic()
                             if resp_time < 0.5:
                                 self.proxy.log('', resp_time)
