@@ -210,7 +210,7 @@ class Config:
         self.hello()
 
     def init(self):  # pylint: disable=W0201
-        self.timeout = 4
+        self.timeout = 6
         self.profile = '134'
         self.maxretry = 4
         self.rproxy = False
