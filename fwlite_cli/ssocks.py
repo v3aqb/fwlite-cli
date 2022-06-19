@@ -62,7 +62,7 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
 
 
 class SSConn:
-    bufsize = 65535
+    bufsize = 16383
     tcp_timeout = 600
 
     def __init__(self, proxy, ):
