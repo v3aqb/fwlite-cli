@@ -173,7 +173,7 @@ class Hxs2Connection(HxsConnection):
         timestamp = struct.pack('>I', int(time.time()) // 30)
         data = b''.join([chr(len(pubk)).encode('latin1'),
                          pubk,
-                         hmac.new(psw.encode(), timestamp + pubk + usn.encode(), hashlib.sha256).digest(),
+                         hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
                          bytes(random.randint(64, 450))])
         data = chr(20).encode() + struct.pack('>H', len(data)) + data
