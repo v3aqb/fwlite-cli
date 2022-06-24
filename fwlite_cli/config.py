@@ -554,6 +554,9 @@ class Config:
         proxy = self.parentlist.get(name)
         return proxy.proxy
 
+    def proxy_log(self, proxy, host, rtime):
+        proxy.log(host, rtime)
+
     def list_forward(self):
         return [('%s:%s' % target, proxy, port)
                 for target, proxy, port in self.port_forward.list()]

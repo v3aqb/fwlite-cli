@@ -653,7 +653,7 @@ class http_handler(BaseProxyHandler):
             await self.client_writer_write()
             self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True,
                                        self.failed_parents, self.ppname)
-            self.pproxy.log(self.request_host[0], rtime)
+            self.conf.proxy_log(self.pproxy, self.request_host[0], rtime)
             if remote_close or self.close_connection:
                 self.remote_writer.close()
                 try:
@@ -693,7 +693,7 @@ class http_handler(BaseProxyHandler):
         if self.ppname:
             self.logger.warning('%s %s via %s failed: %r',
                                 self.command, self.shortpath, self.ppname, err)
-            self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
+            self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             await self._do_GET(True)
             return
         self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
@@ -782,7 +782,7 @@ class http_handler(BaseProxyHandler):
     async def _do_CONNECT(self, retry=False, gfwed=False):
         if retry:
             self.failed_parents.append(self.ppname)
-            self.pproxy.log(self.request_host[0], MAX_TIMEOUT)
+            self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             self.retry_count += 1
             if self.retry_count > 10:
                 self.logger.error('retry time exceeded 10, pls check!')
@@ -917,7 +917,7 @@ class http_handler(BaseProxyHandler):
                 rtime = time.monotonic() - context.first_send
                 if self.command == 'CONNECT':
                     # log server response time
-                    self.pproxy.log(self.request_host[0], rtime)
+                    self.conf.proxy_log(self.pproxy, self.request_host[0], rtime)
                     self.conf.GET_PROXY.notify(self.command,
                                                self.shortpath or self.path,
                                                self.request_host,
