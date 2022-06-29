@@ -27,7 +27,7 @@ class Socks5UDPServer:
     '''
     created after recieving UDP_ASSOCIATE request
     '''
-    def __init__(self, parent, timeout=180):
+    def __init__(self, parent, timeout=300):
         self.parent = parent
         self.client_addr = None
         self.client_stream = None
