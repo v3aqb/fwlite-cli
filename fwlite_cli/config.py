@@ -220,7 +220,7 @@ class Config:
         self.tcp_timeout = 180
         self.udp_enable = False
         self.udp_proxy = ''
-        self.udp_timeout = 300
+        self.udp_timeout = 600
 
         self.listen = ('127.0.0.1', 8118)
 
@@ -556,6 +556,8 @@ class Config:
 
     def proxy_log(self, proxy, host, rtime):
         proxy.log(host, rtime)
+        if proxy.name not in ('_D1R3CT_', '_L0C4L_'):
+            self.parentlist.get('_D1R3CT_').log('', rtime)
 
     def list_forward(self):
         return [('%s:%s' % target, proxy, port)
