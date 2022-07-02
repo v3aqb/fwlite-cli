@@ -39,7 +39,7 @@ class Socks5UDPServer:
         self.close_event = asyncio.Event()
         self.init_time = time.monotonic()
         self.log_sent = False
-        self.last_active = time.monotonic()
+        self.last_active = None
 
         self.udp_relay = None
 
@@ -67,15 +67,22 @@ class Socks5UDPServer:
                 data, client_addr = await asyncio.wait_for(fut, timeout=6)
                 self.last_active = time.monotonic()
             except asyncio.TimeoutError:
-                if time.monotonic() - self.last_active > self.timeout:
+                if not self.log_sent and time.monotonic() - self.init_time > self.timeout * 2:
+                    if self.last_active:
+                        self.logger.warning('udp no response')
+                    else:
+                        self.logger.warning('udp not used')
                     break
-                if not self.log_sent and time.monotonic() - self.init_time > 16:
-                    # relay not working?
-                    if self.proxy:
-                        self.log_sent = True
-                        self.proxy.log('udp', 20)
+                if not self.last_active:
+                    continue
+                if time.monotonic() - self.last_active > self.timeout:
+                    self.logger.warning('udp idle')
+                    break
                 continue
             except OSError:
+                if not self.last_active and self.proxy:
+                    self.log_sent = True
+                    self.proxy.log('udp', 20)
                 break
             # source check
             if not self.client_addr:
@@ -92,7 +99,8 @@ class Socks5UDPServer:
                 await self.on_client_recv(data[3:])
             except OSError:
                 break
-        self.logger.info('udp relay finish, %d', self.client_stream.sockname[1])
+        self.logger.info('udp relay finish, %ds, closed: %s',
+                         time.monotonic() - self.init_time, self._closed)
         self.close(True)
 
     async def on_client_recv(self, data):
