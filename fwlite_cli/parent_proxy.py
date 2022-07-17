@@ -27,6 +27,7 @@ from urllib.parse import unquote
 logger = logging.getLogger('parent_proxy')
 
 UDP_SUPPORT = ('', 'ss', 'hxs2', 'hxs3', 'hxs3s')
+RESPONSE_LIMIT = 14
 
 
 def set_logger():
@@ -126,6 +127,7 @@ class ParentProxy:
         self.avg_resp_time_by_host = DefaultDict(self.gate)
         self.avg_resp_time_by_host_ts = DefaultDict(0)
         self.avg_resp_time_by_host['udp'] = self.gate if self.scheme in UDP_SUPPORT else 99
+        self.last_limit_reach = 0
 
         self.country_code = self.query.get('location', [''])[0] or None
         self.last_ckeck = 0
@@ -145,6 +147,11 @@ class ParentProxy:
             self.avg_resp_time_by_host[host] = 0.08 * rtime + (1 - 0.08) * self.avg_resp_time_by_host[host]
             self.avg_resp_time_by_host_ts[host] = time.monotonic()
         self.avg_resp_time_ts = time.monotonic()
+        if self.avg_resp_time > RESPONSE_LIMIT:
+            if time.monotonic() - self.last_limit_reach > 60:
+                self.avg_resp_time = RESPONSE_LIMIT * 0.8
+            self.last_limit_reach = time.monotonic()
+
         logger.debug('%s to %s: %.3fs avg: %.3fs %.3fs', self.name, host, rtime,
                      self.avg_resp_time, self.avg_resp_time_by_host[host])
         self.conf.stdout('proxy')
@@ -235,7 +242,7 @@ class ParentProxyList:
             # random.shuffle(parentlist)
             parentlist = sorted(parentlist, key=priority)
 
-        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time() < 14]
+        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time() < RESPONSE_LIMIT]
         return parentlist
 
     def get(self, key):
