@@ -26,7 +26,7 @@ from urllib.parse import unquote
 
 logger = logging.getLogger('parent_proxy')
 
-UDP_SUPPORT = ('', 'ss')
+UDP_SUPPORT = ('', 'ss', 'hxs2', 'hxs3', 'hxs3s')
 
 
 def set_logger():
