@@ -58,8 +58,6 @@ class Socks5UDPServer:
         self.client_recv_task = asyncio.ensure_future(self.recv_from_client())
 
     async def recv_from_client(self):
-        # tell socks5 server to close connection
-        self.close_event.set()
         # start reading... until timeout
         while not self._closed:
             try:
@@ -102,6 +100,8 @@ class Socks5UDPServer:
         self.logger.info('udp relay finish, %ds, closed: %s',
                          time.monotonic() - self.init_time, self._closed)
         self.close(True)
+        # tell socks5 server to close connection
+        self.close_event.set()
 
     async def on_client_recv(self, data):
         data_io = io.BytesIO(data)

@@ -27,6 +27,8 @@ from http import HTTPStatus
 
 import asyncio
 
+from .util import set_keepalive
+
 __version__ = '0'
 
 
@@ -205,10 +207,16 @@ class BaseHandler(BaseHTTPRequestHandler):
         await self.do_CONNECT(socks5=True)  # pylint: disable=E1101
 
     async def relay_udp(self):
+        soc = self.client_writer.transport.get_extra_info('socket')
+        set_keepalive(soc)
+
         from .socks5udp import Socks5UDPServer
         udp_server = Socks5UDPServer(self, self.udp_timeout)
         await udp_server.bind()
-        await udp_server.close_event.wait()
+        try:
+            await self.client_reader.read()
+        except OSError:
+            pass
 
     def write_udp_reply(self, addr):
         buf = self.socks5_udp_response

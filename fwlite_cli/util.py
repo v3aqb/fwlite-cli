@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 import re
 import io
 import struct
@@ -122,3 +123,16 @@ def get_port(addr, port=0):
         return port
     except OSError:
         return 0
+
+
+def set_keepalive(soc):
+    soc.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    if sys.platform.startswith('win32'):
+        soc.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 15000, 5000))
+    elif sys.platform.startswith('linux'):
+        soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
+        soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 5)
+        soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    elif sys.platform.startswith('darwin'):
+        tcp_keepintvl = 0x10
+        soc.setsockopt(socket.IPPROTO_TCP, tcp_keepintvl, 5)
