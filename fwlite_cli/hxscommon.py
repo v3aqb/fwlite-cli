@@ -288,6 +288,7 @@ class HxsConnection:
         if type_ == DATA and self._last_direction == RECV:
             self._last_direction = SEND
             self._last_count = 0
+        self._last_count += 1
 
         header = struct.pack('>BBH', type_, flags, stream_id)
         data = header + payload
@@ -434,11 +435,8 @@ class HxsConnection:
                     # sent data to stream
                     try:
                         self._last_active[stream_id] = time.monotonic()
-                        if isinstance(self._client_writer[stream_id], UDPRelayHxs2):
-                            await self._client_writer[stream_id].on_remote_recv(data)
-                        else:
-                            self._client_writer[stream_id].write(data)
-                            await self.client_writer_drain(stream_id)
+                        self._client_writer[stream_id].write(data)
+                        await self.client_writer_drain(stream_id)
                         self._stat_data_recv += data_len
                     except OSError:
                         # client error, reset stream
