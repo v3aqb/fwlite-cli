@@ -7,6 +7,8 @@ Support Python 3.8 and above.
 
 Current Version: 0
 
+2022.07.24: update hxsocks authentication method. before updating to this version, make sure your hxsocks server is updated.
+
 Portable package for `Windows`_
 
 `fwlite-gui`_
