@@ -30,6 +30,7 @@ from ipaddress import ip_address
 import asyncio
 import asyncio.streams
 
+from .socks5udp import Socks5UDPServer
 from .connection import open_connection
 from .base_handler import BaseHandler, read_header_data, read_headers
 from .httputil import ConnectionPool
@@ -112,6 +113,7 @@ class Server:
         self.port = port
         self.conf = conf
         self.udp_enable = self.conf.udp_enable
+        self.udp_server_holder = {}  # {client_ip: socks5_udp_server}
         self.server = None
 
         self.logger = logging.getLogger('fwlite_%d' % port)
@@ -137,6 +139,12 @@ class Server:
     async def stop(self):
         self.server.close()
         await self.server.wait_closed()
+
+    def get_udp_server(self, handler):
+        client_ip = handler.client_address[0]
+        if client_ip not in self.udp_server_holder:
+            self.udp_server_holder[client_ip] = Socks5UDPServer(handler, self.conf.udp_timeout)
+        return self.udp_server_holder[client_ip]
 
 
 class BaseProxyHandler(BaseHandler):

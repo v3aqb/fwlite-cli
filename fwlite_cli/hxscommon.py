@@ -93,12 +93,12 @@ class ReadFrameError(Exception):
 
 
 class UDPRelayHxs2(UDPRelayInterface):
-    def __init__(self, udp_server, stream_id, hxs2conn):
-        super().__init__(udp_server)
+    def __init__(self, udp_server, stream_id, hxs2conn, client_addr):
+        super().__init__(udp_server, hxs2conn.proxy, client_addr)
         self.hxs2conn = hxs2conn
         self.stream_id = stream_id
 
-    async def send(self, addr, port, dgram, data):
+    async def _send(self, addr, port, dgram, data):
         # datagram recieved from client, relay to server
         await self.hxs2conn.send_data_frame(self.stream_id, data)
 
@@ -111,8 +111,8 @@ class UDPRelayHxs2(UDPRelayInterface):
     def is_closing(self):
         return self._close
 
-    def close(self):
-        super().close()
+    def close(self, close_server=True):
+        super().close(close_server)
         asyncio.ensure_future(self.hxs2conn.close_stream(self.stream_id))
 
     async def wait_closed(self):
@@ -333,7 +333,7 @@ class HxsConnection:
         except AttributeError:
             pass
 
-    async def udp_associate(self, udp_server):
+    async def udp_associate(self, udp_server, client_addr):
         if self.connection_lost:
             self._manager.remove(self)
             raise ConnectionLostError(0, 'hxs connection lost')
@@ -365,7 +365,7 @@ class HxsConnection:
         self._stream_status[stream_id] = OPEN
         self._client_resume_reading[stream_id] = asyncio.Event()
         self._client_resume_reading[stream_id].set()
-        relay = UDPRelayHxs2(udp_server, stream_id, self)
+        relay = UDPRelayHxs2(udp_server, stream_id, self, client_addr)
         self._client_writer[stream_id] = relay
         return relay
 

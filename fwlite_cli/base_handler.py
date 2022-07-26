@@ -74,7 +74,6 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.conf = server.conf
         self.timeout = self.conf.timeout
         self.tcp_timeout = self.conf.tcp_timeout
-        self.udp_timeout = self.conf.udp_timeout
         self.server_addr = (self.server.addr, self.server.port)
         response = b'\x05\x00\x00'
         self.socks5_udp_response = response
@@ -210,21 +209,18 @@ class BaseHandler(BaseHTTPRequestHandler):
         soc = self.client_writer.transport.get_extra_info('socket')
         set_keepalive(soc)
 
-        from .socks5udp import Socks5UDPServer
-        udp_server = Socks5UDPServer(self, self.udp_timeout)
-        await udp_server.bind()
-        try:
-            await self.client_reader.read()
-        except OSError:
-            pass
-
-    def write_udp_reply(self, addr):
+        udp_server = self.server.get_udp_server(self)
+        addr = await udp_server.bind()
         buf = self.socks5_udp_response
         serverip = ipaddress.ip_address(addr[0])
         buf += b'\x01' if serverip.version == 4 else b'\x04'
         buf += serverip.packed
         buf += struct.pack(b'>H', addr[1])
         self.client_writer.write(buf)
+        try:
+            await self.client_reader.read()
+        except OSError:
+            pass
 
     async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0236
         self.pre_request_init()
