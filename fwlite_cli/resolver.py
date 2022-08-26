@@ -80,7 +80,7 @@ DC = DNSCache()
 
 async def getaddrinfo(host, port):
     loop = asyncio.get_event_loop()
-    fut = loop.getaddrinfo(host, port, family=socket.AF_INET)
+    fut = loop.getaddrinfo(host, port)
     result = await asyncio.wait_for(fut, timeout=4)
     return result
 
@@ -146,8 +146,11 @@ class Resolver:
             return self.zero
         try:
             result = await self.resolve(host, port)
-            result = [ip for ip in result if ip[0] == socket.AF_INET]
-            ipaddr = ip_address(result[0][1])
+            result_v4 = [ip for ip in result if ip[0] == socket.AF_INET]
+            if result_v4:
+                ipaddr = ip_address(result_v4[0][1])
+            else:
+                ipaddr = ip_address(result[0][1])
             return ipaddr
         except IndexError:
             return self.zero
