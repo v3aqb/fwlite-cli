@@ -258,6 +258,7 @@ class Config:
         self.local_path = os.path.join(self.conf_dir, 'local.txt')
         self.gfwlist_path = os.path.join(self.conf_dir, 'gfwlist.txt')
         self.china_ip_path = os.path.join(self.conf_dir, 'china_ip_list.txt')
+        self.china_ipv6_path = os.path.join(self.conf_dir, 'china_ip_list_v6.txt')
         self.adblock_path = os.path.join(self.conf_dir, 'adblock.txt')
 
         self.userconf.read(self.conf_path)
@@ -439,6 +440,7 @@ class Config:
 
         file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'),
                      self.china_ip_path: self.userconf.dget('FWLite', 'china_ip_list', 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt'),
+                     self.china_ipv6_path: self.userconf.dget('FWLite', 'china_ipv6_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute-v6.txt'),
                      self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://cdn.jsdelivr.net/gh/neoFelhz/neohosts@gh-pages/basic/hosts')
                      }
 

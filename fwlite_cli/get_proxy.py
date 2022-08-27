@@ -132,6 +132,10 @@ class get_proxy:
                 for line in f:
                     if line.strip() and '#' not in line:
                         self.china_ip_filter.add(line.strip())
+            with open(self.conf.china_ipv6_path) as f:
+                for line in f:
+                    if line.strip() and '#' not in line:
+                        self.china_ip_filter.add(line.strip())
         for network in CHINA_IP:
             self.china_ip_filter.add(network)
 
