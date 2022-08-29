@@ -170,6 +170,7 @@ class Hxs3Connection(HxsConnection):
 
         uri = '%s://%s:%d/%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
         self.remote_writer = await websockets.client.connect(uri, ssl=ssl_ctx, compression=None,
+                                                             ping_interval=None,
                                                              read_limit=2 ** 18,
                                                              write_limit=2 ** 18,)
         self._socport = self.remote_writer.local_address[1]
