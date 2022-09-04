@@ -176,15 +176,15 @@ class Socks5UDPServer:
             del self.udp_relay_holder[client_addr]
 
     def close(self, client_addr=None):
-        self.running = False
         if not client_addr:
             # close all:
+            self.running = False
             for _, relay in self.udp_relay_holder.items():
                 relay.close(close_server=False)
             self.udp_relay_holder = {}
             return
         if client_addr in self.udp_relay_holder:
-            self.udp_relay_holder[client_addr].close()
+            self.udp_relay_holder[client_addr].close(close_server=False)
             del self.udp_relay_holder[client_addr]
 
 
