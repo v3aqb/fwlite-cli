@@ -72,6 +72,7 @@ class get_proxy:
         self.conf = conf
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
+        self.chinalist = ap_filter()
         self.local = ap_filter()
         self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
         self.china_ip_filter = NetFilter()
@@ -90,52 +91,54 @@ class get_proxy:
             else:
                 self.add_temp(line)
 
-    def load(self, gfwlist=None, china_ip_list=None):
+    def load(self):
         if self.conf.rproxy:
             return
 
-        self.load_gfwlist(gfwlist)
-        self.load_china_ip_list(china_ip_list)
+        self.load_gfwlist()
+        self.load_china_ip_list()
 
-    def load_gfwlist(self, gfwlist):
+    def load_gfwlist(self):
         self.logger.info('loading gfwlist...')
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
-        if gfwlist is not None:
-            for line in gfwlist:
-                self.gfwlist.add(line)
-        else:
-            try:
-                with open(self.conf.gfwlist_path) as f:
-                    data = f.read()
-                    if '!' not in data:
-                        data = ''.join(data.split())
-                        data = base64.b64decode(data).decode()
-                    for line in data.splitlines():
-                        self.gfwlist.add(line)
-            except Exception as e:
-                self.logger.warning('gfwlist is corrupted! %r', e)
-                self.logger.warning(traceback.format_exc())
+        self.chinalist = ap_filter()
+
+        try:
+            with open(self.conf.gfwlist_path) as gfwlist:
+                data = gfwlist.read()
+                if '!' not in data:
+                    data = ''.join(data.split())
+                    data = base64.b64decode(data).decode()
+                for line in data.splitlines():
+                    self.gfwlist.add(line)
+        except Exception as err:
+            self.logger.warning('gfw_list is corrupted! %r', err)
+            self.logger.warning(traceback.format_exc())
+
+        try:
+            with open(self.conf.chinalist_path) as chinalist:
+                for line in chinalist:
+                    self.chinalist.add(line)
+        except Exception as err:
+            self.logger.warning('china_list is corrupted! %r', err)
+            self.logger.warning(traceback.format_exc())
 
         for dns_server in DNS_SERVER_LIST:
             self.gfwlist.add('||' + dns_server)
 
-    def load_china_ip_list(self, china_ip_list):
+    def load_china_ip_list(self):
         self.logger.info('loading china_ip_list.txt...')
         self.china_ip_filter = NetFilter()
 
-        if china_ip_list is not None:
-            for ipn in china_ip_list:
-                self.china_ip_filter.add(ipn)
-        else:
-            with open(self.conf.china_ip_path) as f:
-                for line in f:
-                    if line.strip() and '#' not in line:
-                        self.china_ip_filter.add(line.strip())
-            with open(self.conf.china_ipv6_path) as f:
-                for line in f:
-                    if line.strip() and '#' not in line:
-                        self.china_ip_filter.add(line.strip())
+        with open(self.conf.china_ip_path) as f:
+            for line in f:
+                if line.strip() and '#' not in line:
+                    self.china_ip_filter.add(line.strip())
+        with open(self.conf.china_ipv6_path) as f:
+            for line in f:
+                if line.strip() and '#' not in line:
+                    self.china_ip_filter.add(line.strip())
         for network in CHINA_IP:
             self.china_ip_filter.add(network)
 
@@ -173,6 +176,9 @@ class get_proxy:
 
         if self.ignore.match(uri, host):
             return None
+
+        if self.chinalist.match(uri, host):
+            return False
 
         if self.conf.gfwlist_enable:
             result = self.gfwlist.match(uri, host)
@@ -216,6 +222,9 @@ class get_proxy:
             result = self.gfwlist.match(uri, host)
             if result is not None:
                 return result
+
+        if self.chinalist.match(uri, host):
+            return False
 
         if self.ip_in_china(host, ip):
             return False
