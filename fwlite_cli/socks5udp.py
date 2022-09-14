@@ -7,7 +7,6 @@ import time
 import logging
 
 import base64
-import traceback
 
 import asyncio
 import asyncio_dgram
@@ -152,7 +151,7 @@ class Socks5UDPServer:
                 proxy.log('udp', 20)
         if not self.udp_relay_holder[client_addr]:
             raise OSError(0, 'get_relay failed.')
-        self.logger.info(repr(self.udp_relay_holder[client_addr]))
+        self.logger.debug('%r', self.udp_relay_holder[client_addr])
         self.init_time = time.monotonic()
 
     async def on_remote_recv(self, data, client_addr):
