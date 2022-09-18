@@ -86,6 +86,16 @@ class ConnectionLostError(Exception):
     pass
 
 
+class ConnectionDenied(Exception):
+    def __init__(self, err):
+        super().__init__()
+        self.err = err
+        self.repr = 'HxsConnectionDenied: ' + err
+
+    def __repr__(self):
+        return self.repr
+
+
 class ReadFrameError(Exception):
     def __init__(self, err):
         super().__init__()
@@ -240,6 +250,7 @@ class HxsConnection:
             # start forwarding
             self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
             return socketpair_a
+        await self.send_ping()
         raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
 
     async def read_from_client(self, stream_id, client_reader):
@@ -379,10 +390,11 @@ class HxsConnection:
                     frame_data = await self.read_frame(intv)
                 except asyncio.TimeoutError:
                     if self._ping_test and time.monotonic() - self._ping_time > 6:
-                        self.logger.warning('server no response %s in %ds', self.proxy.name, intv)
+                        self.logger.warning('server ping no response %s in %ds',
+                                            self.proxy.name, time.monotonic() - self._ping_time)
                         break
                     if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
-                        # no point keeping so long
+                        self.logger.info('time.monotonic() - last_active_c > %s', CONN_TIMEOUT)
                         break
                     if time.monotonic() - self._last_active_c > 60 and not self.count():
                         self.logger.info('connection idle %s', self.proxy.name)

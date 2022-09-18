@@ -37,7 +37,7 @@ from websockets.exceptions import ConnectionClosed
 from hxcrypto import InvalidTag, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
+from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError, ConnectionDenied
 
 
 def set_logger():
@@ -73,7 +73,9 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
 
             reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
             return reader, writer, conn.name
-        except ConnectionLostError:
+        except ConnectionLostError as err:
+            logger = logging.getLogger('hxs3')
+            logger.error('%r', err)
             continue
     raise ConnectionResetError(0, 'get hxs3 connection failed.')
 
@@ -99,15 +101,15 @@ class ConnectionManager:
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 if self._err and time.time() - self._err_time < 6:
-                    raise self._err  # pylint: disable=E0702
+                    raise ConnectionDenied(self._err)
                 connection = Hxs3Connection(proxy, self)
                 try:
                     await connection.get_key(timeout, tcp_nodelay)
                 except (OSError, asyncio.TimeoutError, ConnectionClosed) as err:
                     asyncio.ensure_future(connection.close())
-                    self._err = ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err)
+                    self._err = repr(err)
                     self._err_time = time.time()
-                    raise self._err  # pylint: disable=E0702
+                    raise ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err) from err
                 else:
                     self._err = None
                     self.connection_list.append(connection)

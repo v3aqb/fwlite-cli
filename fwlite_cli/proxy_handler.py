@@ -35,6 +35,7 @@ from .connection import open_connection
 from .base_handler import BaseHandler, read_header_data, read_headers
 from .httputil import ConnectionPool
 from .util import extract_tls_extension, parse_hostport
+from fwlite_cli.hxscommon import ConnectionDenied
 
 MAX_TIMEOUT = 16
 WELCOME = '''<!DOCTYPE html>
@@ -816,6 +817,10 @@ class http_handler(BaseProxyHandler):
             addr, port = parse_hostport(path, 443)
             self.remote_reader, self.remote_writer, self.ppname = \
                 await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
+        except ConnectionDenied as err:
+            self.logger.warning('%s %s via %s failed on connect! %r',
+                                self.command, self.shortpath or self.path, self.ppname, err)
+            return
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
