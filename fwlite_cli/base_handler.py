@@ -42,7 +42,10 @@ async def read_response_line(reader, timeout=1, first_byte=b''):
     if not request_line.endswith(b'\n'):
         raise asyncio.TimeoutError()
 
-    a, b, c = request_line.strip().split(b' ', 2)
+    try:
+        a, b, c = request_line.strip().split(b' ', 2)
+    except ValueError as err:
+        raise ValueError('request_line: %r, %r' % (request_line, err)) from err
     return request_line, a, b, c
 
 
@@ -236,11 +239,19 @@ class BaseHandler(BaseHTTPRequestHandler):
             self.logger.debug('base_handler read request failed! %r', err)
             self.close_connection = True
             return
+        except ValueError as err:
+            self.logger.error('base_handler read request failed! %r', err)
+            self.close_connection = True
+            return
 
-        self.command = command.decode('ascii')
-        self.path = path.decode('ascii')
-        self.request_version = request_version.decode('ascii')
-
+        try:
+            self.command = command.decode('ascii')
+            self.path = path.decode('ascii')
+            self.request_version = request_version.decode('ascii')
+        except UnicodeDecodeError:
+            self.logger.error('UnicodeDecodeError! requestline: %r', self.requestline)
+            self.close_connection = True
+            return
         base_version_number = self.request_version.split('/', 1)[1]
         version_number = base_version_number.split(".")
         version_number = int(version_number[0]), int(version_number[1])
