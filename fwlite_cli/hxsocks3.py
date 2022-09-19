@@ -38,6 +38,12 @@ from hxcrypto import InvalidTag, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError, ConnectionDenied
+from fwlite_cli.util import cipher_test
+
+# see "openssl ciphers" command for cipher names
+CIPHERS_A = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
+CIPHERS_C = "TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES256-GCM-SHA384"
+CIPHERS = CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C
 
 
 def set_logger():
@@ -48,6 +54,7 @@ def set_logger():
                                   datefmt='%H:%M:%S')
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
+    logger.info(repr(cipher_test))
 
 
 set_logger()
@@ -165,7 +172,10 @@ class Hxs3Connection(HxsConnection):
         scheme = 'ws'
         if self.proxy.scheme == 'hxs3s':
             scheme = 'wss'
-            ssl_ctx = ssl.create_default_context()
+            # ssl_ctx = ssl.create_default_context()
+            ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
+            ssl_ctx.set_alpn_protocols(["http/1.1"])
+            ssl_ctx.set_ciphers(CIPHERS)
             if is_ipaddr(self.proxy.hostname):
                 ssl_ctx.check_hostname = False
                 ssl_ctx.verify_mode = ssl.CERT_NONE

@@ -39,9 +39,11 @@ from hxcrypto.encrypt import EncryptorStream
 
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.socks5udp import UDPRelayInterface
+from fwlite_cli.util import cipher_test
 
-
-DEFAULT_METHOD = 'chacha20-ietf-poly1305'
+DEFAULT_METHOD = 'chacha20-ietf-poly1305'  # for hxsocks2 handshake
+FAST_METHOD = 'aes-128-gcm' if cipher_test[2] < 1.2 else 'chacha20-ietf-poly1305'
+DEFAULT_MODE = '0' if cipher_test[1] < 0.1 else '1'
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
 MAX_STREAM_ID = 65530
@@ -148,8 +150,8 @@ class HxsConnection:
         self.udp_event = None
 
         self._psk = self.proxy.query.get('PSK', [''])[0]
-        self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()
-        self.mode = int(self.proxy.query.get('mode', ['0'])[0])
+        self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()  # for handshake
+        self.mode = int(self.proxy.query.get('mode', [DEFAULT_MODE])[0])
         if self.method == 'rc4-md5':
             self.mode = 1
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
@@ -597,7 +599,7 @@ class HxsConnection:
                         self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False)
                         self.bufsize += 16
                     else:
-                        self._cipher = AEncryptor(shared_secret, self.method, CTX, check_iv=False)
+                        self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False)
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.stat())

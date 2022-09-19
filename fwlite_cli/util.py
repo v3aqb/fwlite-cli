@@ -136,3 +136,35 @@ def set_keepalive(soc):
     elif sys.platform.startswith('darwin'):
         tcp_keepintvl = 0x10
         soc.setsockopt(socket.IPPROTO_TCP, tcp_keepintvl, 5)
+
+
+import time
+from hxcrypto import AEncryptor
+
+
+def test_one(method, block, repeat):
+    data = b'\0' * block
+    cipher = AEncryptor(b'123456', method, b"ctx", check_iv=False)
+    cipher.encrypt(data)
+    time_log = time.time()
+    for _ in range(repeat):
+        cipher.encrypt(data)
+    return time.time() - time_log
+
+
+def test_cipher():
+    '''
+    result_chacha20 on different CPU:
+    Intel i3:   0.01
+    Cortex-A7:  0.21
+    Cortex-A76: 0.05
+    on CPU with AES-NI, aes128 is 10% faster than chacha20
+    without AES-NI, chacha20 is twice faster
+    '''
+    result_aes = test_one('aes-128-gcm', 10240, 512)
+    result_chacha20 = test_one('chacha20-ietf-poly1305', 10240, 512)
+    result = result_aes / result_chacha20
+    return (result_aes, result_chacha20, result)
+
+
+cipher_test = test_cipher()
