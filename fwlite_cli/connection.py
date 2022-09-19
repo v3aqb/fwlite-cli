@@ -61,7 +61,7 @@ async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay
                 err = exc
         raise err
 
-    fut = asyncio.open_connection(addr, port)
+    fut = asyncio.open_connection(addr, port, limit=limit, happy_eyeballs_delay=0.25)
     remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
     remote_writer.transport.set_write_buffer_limits(262144)
     if tcp_nodelay:
