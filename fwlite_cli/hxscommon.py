@@ -387,11 +387,11 @@ class HxsConnection:
         while not self.connection_lost:
             try:
                 # read frame
-                intv = 3 if self._ping_test else 6
+                intv = 6 if self._ping_test else 12
                 try:
                     frame_data = await self.read_frame(intv)
                 except asyncio.TimeoutError:
-                    if self._ping_test and time.monotonic() - self._ping_time > 6:
+                    if self._ping_test and time.monotonic() - self._ping_time > 10:
                         self.logger.warning('server ping no response %s in %ds',
                                             self.proxy.name, time.monotonic() - self._ping_time)
                         break
