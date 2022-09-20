@@ -451,8 +451,8 @@ class Config:
             self.logger.warning('"%s" not found! downloading...', file_name)
             try:
                 url_retreive(url, path, proxy)
-            except Exception:
-                self.logger.warning('download "%s" failed!', file_name)
+            except Exception as err:
+                self.logger.warning('download "%s" failed! %r', file_name, err)
                 open(path, 'a').close()
             else:
                 if path == self.gfwlist_path:
