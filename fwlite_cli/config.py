@@ -441,9 +441,9 @@ class Config:
 
         file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'),
                      self.chinalist_path: self.userconf.dget('FWLite', 'chinalist_url', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chinalist.txt'),
-                     self.china_ip_path: self.userconf.dget('FWLite', 'china_ip_list', 'https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt'),
+                     self.china_ip_path: self.userconf.dget('FWLite', 'china_ip_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute.txt'),
                      self.china_ipv6_path: self.userconf.dget('FWLite', 'china_ipv6_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute-v6.txt'),
-                     self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://cdn.jsdelivr.net/gh/neoFelhz/neohosts@gh-pages/basic/hosts')
+                     self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts')
                      }
 
         def _dl(path, url, proxy):
