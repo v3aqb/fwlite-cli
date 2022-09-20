@@ -32,7 +32,7 @@ import asyncio
 from ipaddress import ip_address
 
 import websockets.client
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, InvalidMessage
 
 from hxcrypto import InvalidTag, ECC
 
@@ -112,7 +112,7 @@ class ConnectionManager:
                 connection = Hxs3Connection(proxy, self)
                 try:
                     await connection.get_key(timeout, tcp_nodelay)
-                except (OSError, asyncio.TimeoutError, ConnectionClosed) as err:
+                except (OSError, asyncio.TimeoutError, ConnectionClosed, InvalidMessage) as err:
                     asyncio.ensure_future(connection.close())
                     self._err = repr(err)
                     self._err_time = time.time()
@@ -161,7 +161,7 @@ class Hxs3Connection(HxsConnection):
             self._stat_total_recv += len(frame_data)
             self._stat_recv_tp += len(frame_data)
             return frame_data
-        except (ConnectionClosed, RuntimeError, InvalidTag, OSError) as err:
+        except (ConnectionClosed, RuntimeError, InvalidTag) as err:
             raise ReadFrameError(err) from err
 
     async def get_key(self, timeout, tcp_nodelay):
