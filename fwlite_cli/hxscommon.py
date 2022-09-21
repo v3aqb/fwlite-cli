@@ -48,7 +48,11 @@ CTX = b'hxsocks2'
 MAX_STREAM_ID = 65530
 MAX_CONNECTION = 2
 CLIENT_WRITE_BUFFER = 524288
+
+PING_TIMEOUT = 12
 CONN_TIMEOUT = 600
+IDLE_TIMEOUT = 60
+PING_INTV = 10
 STREAM_TIMEOUT = 600
 
 OPEN = 0
@@ -173,6 +177,7 @@ class HxsConnection:
         self._stream_task = {}
         self._last_active = {}
         self._last_active_c = time.monotonic()
+        self._last_ping = 0
         self._last_ping_log = 0
         self._connection_task = None
         self._connection_stat = None
@@ -317,6 +322,7 @@ class HxsConnection:
 
     async def send_ping(self, test=True):
         if self._ping_time == 0:
+            self._last_ping = time.monotonic()
             self._ping_test = test
             await self.send_frame(PING, 0, 0, bytes(random.randint(64, 256)))
 
@@ -387,25 +393,9 @@ class HxsConnection:
         while not self.connection_lost:
             try:
                 # read frame
-                intv = 6 if self._ping_test else 12
                 try:
-                    frame_data = await self.read_frame(intv)
-                except asyncio.TimeoutError:
-                    if self._ping_test and time.monotonic() - self._ping_time > 10:
-                        self.logger.warning('server ping no response %s in %ds',
-                                            self.proxy.name, time.monotonic() - self._ping_time)
-                        break
-                    if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
-                        self.logger.info('time.monotonic() - last_active_c > %s', CONN_TIMEOUT)
-                        break
-                    if time.monotonic() - self._last_active_c > 60 and not self.count():
-                        self.logger.info('connection idle %s', self.proxy.name)
-                        break
-                    if time.monotonic() - self._last_active_c > 10:
-                        if not self._ping_test:
-                            await self.send_ping()
-                    continue
-                except ReadFrameError as err:
+                    frame_data = await self.read_frame()
+                except (ReadFrameError, asyncio.TimeoutError) as err:
                     # destroy connection
                     self.logger.error('read frame error: %r', err.err)
                     break
@@ -601,7 +591,7 @@ class HxsConnection:
                         self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False)
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
-                    self._connection_stat = asyncio.ensure_future(self.stat())
+                    self._connection_stat = asyncio.ensure_future(self.monitor())
                     self.connected = True
                     return
                 except InvalidSignature:
@@ -615,22 +605,42 @@ class HxsConnection:
     def count(self):
         return len(self._client_writer)
 
-    async def stat(self):
+    async def monitor(self):
         while not self.connection_lost:
             await asyncio.sleep(1)
-            self._recv_tp_ewma = self._recv_tp_ewma * 0.8 + self._stat_recv_tp * 0.2
-            if self._recv_tp_ewma > self._recv_tp_max:
-                self._recv_tp_max = self._recv_tp_ewma
-            self._stat_recv_tp = 0
-            self._sent_tp_ewma = self._sent_tp_ewma * 0.8 + self._stat_sent_tp * 0.2
-            if self._sent_tp_ewma > self._sent_tp_max:
-                self._sent_tp_max = self._sent_tp_ewma
-            self._stat_sent_tp = 0
-            try:
-                buffer_size = self.remote_writer.transport.get_write_buffer_size()
-                self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
-            except AttributeError:
-                pass
+            self.update_stat()
+            if time.monotonic() - self._last_active_c > 1 and self._ping_test and \
+                    time.monotonic() - self._ping_time > PING_TIMEOUT:
+                self.logger.warning('server ping no response %s in %ds',
+                                    self.proxy.name, time.monotonic() - self._ping_time)
+                break
+            if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
+                self.logger.info('time.monotonic() - last_active_c > %s', CONN_TIMEOUT)
+                break
+            if time.monotonic() - self._last_active_c > IDLE_TIMEOUT and not self.count():
+                self.logger.info('connection idle %s', self.proxy.name)
+                break
+            if time.monotonic() - self._last_active_c > PING_INTV:
+                if not self._ping_test and time.monotonic() - self._last_ping > PING_INTV:
+                    await self.send_ping()
+            continue
+        self.connection_lost = True
+        await self.close()
+
+    def update_stat(self):
+        self._recv_tp_ewma = self._recv_tp_ewma * 0.8 + self._stat_recv_tp * 0.2
+        if self._recv_tp_ewma > self._recv_tp_max:
+            self._recv_tp_max = self._recv_tp_ewma
+        self._stat_recv_tp = 0
+        self._sent_tp_ewma = self._sent_tp_ewma * 0.8 + self._stat_sent_tp * 0.2
+        if self._sent_tp_ewma > self._sent_tp_max:
+            self._sent_tp_max = self._sent_tp_ewma
+        self._stat_sent_tp = 0
+        try:
+            buffer_size = self.remote_writer.transport.get_write_buffer_size()
+            self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
+        except AttributeError:
+            pass
 
     def busy(self):
         return self._recv_tp_ewma + self._sent_tp_ewma
@@ -696,7 +706,7 @@ class HxsConnection:
     async def send_frame_data(self, ct_):
         raise NotImplementedError
 
-    async def read_frame(self, intv):
+    async def read_frame(self):
         raise NotImplementedError
 
     async def close(self):

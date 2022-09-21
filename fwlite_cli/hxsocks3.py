@@ -153,10 +153,9 @@ class Hxs3Connection(HxsConnection):
         except ConnectionClosed:
             self.connection_lost = True
 
-    async def read_frame(self, intv):
+    async def read_frame(self):
         try:
-            fut = self.remote_writer.recv()
-            frame_data = await asyncio.wait_for(fut, timeout=intv)
+            frame_data = await self.remote_writer.recv()
             frame_data = self._cipher.decrypt(frame_data)
             self._stat_total_recv += len(frame_data)
             self._stat_recv_tp += len(frame_data)

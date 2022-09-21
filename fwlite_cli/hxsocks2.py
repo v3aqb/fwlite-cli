@@ -35,6 +35,8 @@ from hxcrypto import InvalidTag, is_aead, Encryptor, ECC
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError, ConnectionDenied
 
+READ_FRAME_TIMEOUT = 8
+
 
 def set_logger():
     logger = logging.getLogger('hxs2')
@@ -134,9 +136,9 @@ class Hxs2Connection(HxsConnection):
         except OSError:
             self.connection_lost = True
 
-    async def read_frame(self, intv):
+    async def read_frame(self):
         try:
-            frame_len = await self._rfile_read(2, timeout=intv)
+            frame_len = await self._rfile_read(2)
             frame_len, = struct.unpack('>H', frame_len)
         except (ConnectionError, asyncio.IncompleteReadError) as err:
             # destroy connection
@@ -144,7 +146,7 @@ class Hxs2Connection(HxsConnection):
 
         # read frame_data
         try:
-            frame_data = await self._rfile_read(frame_len, timeout=self.timeout)
+            frame_data = await self._rfile_read(frame_len, timeout=READ_FRAME_TIMEOUT)
             frame_data = self._cipher.decrypt(frame_data)
             self._stat_total_recv += frame_len + 2
             self._stat_recv_tp += frame_len + 2
