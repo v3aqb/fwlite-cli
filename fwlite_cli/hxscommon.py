@@ -306,7 +306,8 @@ class HxsConnection:
         data = header + payload
         ct_ = self._cipher.encrypt(data)
 
-        await self.send_frame_data(ct_)
+        async with self._lock:
+            await self.send_frame_data(ct_)
 
         if self._settings_async_drain is None and random.random() < 0.1:
             self._settings_async_drain = False
@@ -499,8 +500,8 @@ class HxsConnection:
                                              self.proxy.name,
                                              self.count())
                             self._last_ping_log = time.monotonic()
-                            if resp_time < 0.5:
-                                self.proxy.log('', resp_time)
+                        if resp_time < 1:
+                            self.proxy.log('', resp_time)
                         self._ping_test = False
                         self._ping_time = 0
                     else:
@@ -670,6 +671,8 @@ class HxsConnection:
             await self._client_writer[stream_id].drain()
 
     async def async_drain(self, stream_id):
+        if stream_id not in self._client_writer:
+            return
         if isinstance(self._client_writer[stream_id], UDPRelayHxs2):
             return
         wbuffer_size = self._client_writer[stream_id].transport.get_write_buffer_size()
