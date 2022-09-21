@@ -20,7 +20,6 @@
 
 import base64
 import logging
-import traceback
 
 from repoze.lru import lru_cache
 
@@ -113,16 +112,14 @@ class get_proxy:
                 for line in data.splitlines():
                     self.gfwlist.add(line)
         except Exception as err:
-            self.logger.warning('gfw_list is corrupted! %r', err)
-            self.logger.warning(traceback.format_exc())
+            self.logger.warning('gfw_list is corrupted! %r', err, exc_info=True)
 
         try:
             with open(self.conf.chinalist_path) as chinalist:
                 for line in chinalist:
                     self.chinalist.add(line)
         except Exception as err:
-            self.logger.warning('china_list is corrupted! %r', err)
-            self.logger.warning(traceback.format_exc())
+            self.logger.warning('china_list is corrupted! %r', err, exc_info=True)
 
         for dns_server in DNS_SERVER_LIST:
             self.gfwlist.add('||' + dns_server)
@@ -135,6 +132,7 @@ class get_proxy:
             for line in f:
                 if line.strip() and '#' not in line:
                     self.china_ip_filter.add(line.strip())
+        self.logger.info('loading china_ip_list_v6.txt...')
         with open(self.conf.china_ipv6_path) as f:
             for line in f:
                 if line.strip() and '#' not in line:

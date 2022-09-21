@@ -24,7 +24,6 @@ import json
 import base64
 import logging
 import logging.handlers
-import traceback
 import asyncio
 import urllib.request
 import urllib.parse
@@ -247,8 +246,7 @@ class Config:
             else:
                 self.HOSTS[host].append((10, ip))
         except Exception:
-            self.logger.error('unsupported host: %s', ip)
-            self.logger.error(traceback.format_exc())
+            self.logger.error('unsupported host: %s', ip, exc_info=True)
 
     def reload(self, plugin_dir=None):  # pylint: disable=W0201
         self.init()
@@ -382,8 +380,7 @@ class Config:
                 port = int(port)
                 self.port_forward.add(target, proxy, port)
             except Exception as err:
-                self.logger.error(repr(err))
-                self.logger.error(traceback.format_exc())
+                self.logger.error(repr(err), exc_info=True)
 
     def load_subscription(self, subscription):
         proxy = self.parentlist.get('_D1R3CT_')
@@ -619,8 +616,7 @@ class Config:
                 if server_list:
                     self.server_list.extend(server_list)
             except Exception as err:
-                self.logger.error(repr(err))
-                self.logger.error(traceback.format_exc())
+                self.logger.error(repr(err), exc_info=True)
 
     def set_loop(self):
         try:

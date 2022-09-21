@@ -30,7 +30,6 @@ import hmac
 import io
 import hashlib
 import random
-import traceback
 import asyncio
 from asyncio import Event, Lock
 
@@ -529,8 +528,7 @@ class HxsConnection:
                         if self.udp_event:
                             self.udp_event.set()
             except Exception as err:
-                self.logger.error('CONNECTION BOOM! %r', err)
-                self.logger.error(traceback.format_exc())
+                self.logger.error('CONNECTION BOOM! %r', err, exc_info=True)
                 break
         # out of loop, destroy connection
         self.connection_lost = True

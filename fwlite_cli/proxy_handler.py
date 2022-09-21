@@ -22,7 +22,6 @@ import io
 import base64
 import json
 import time
-import traceback
 
 import urllib.parse as urlparse
 from ipaddress import ip_address
@@ -740,8 +739,7 @@ class http_handler(BaseProxyHandler):
                     if server_name:
                         self.shortpath = server_name
                 except Exception:
-                    self.logger.warning(traceback.format_exc())
-                    self.logger.info('date_len %d' % len(data))
+                    self.logger.info('date_len %d' % len(data), exc_info=True)
             elif data in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'OPTI', b'PATC', b'TRAC'):
                 data += await self.client_reader_read(8192)
                 for line in data.splitlines():
@@ -831,8 +829,7 @@ class http_handler(BaseProxyHandler):
         except Exception:
             self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
                                        False, self.failed_parents, self.ppname)
-            self.logger.error(traceback.format_exc())
-            await self._do_CONNECT(True)
+            self.logger.error('CONNECT create connection failed.', exc_info=True)
             return
         self.logger.debug('%s connected', self.path)
 
@@ -1031,7 +1028,7 @@ class http_handler(BaseProxyHandler):
                 self.write(200)
                 return
             except Exception as err:
-                self.logger.error(traceback.format_exc())
+                self.logger.error('api error /api/localrule/', exc_info=True)
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/isgfwed':
