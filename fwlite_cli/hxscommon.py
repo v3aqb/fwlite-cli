@@ -269,10 +269,7 @@ class HxsConnection:
                 data = await asyncio.wait_for(fut, timeout=6)
                 self._last_active[stream_id] = time.monotonic()
             except asyncio.TimeoutError:
-                if time.monotonic() - self._last_active[stream_id] < STREAM_TIMEOUT and\
-                        self._stream_status[stream_id] == OPEN:
-                    continue
-                data = b''
+                continue
             except ConnectionError:
                 await self.close_stream(stream_id)
                 return
@@ -284,7 +281,7 @@ class HxsConnection:
                 break
 
             if self._stream_status[stream_id] & EOF_SENT:
-                self.logger.error('data recv from client, while stream is closed!')
+                self.logger.error('data recv from client, while stream EOF_SENT!')
                 await self.close_stream(stream_id)
                 return
             await self.send_data_frame(stream_id, data)
@@ -614,10 +611,7 @@ class HxsConnection:
                 self.logger.warning('server ping no response %s in %ds',
                                     self.proxy.name, time.monotonic() - self._ping_time)
                 break
-            if time.monotonic() - self._last_active_c > CONN_TIMEOUT:
-                self.logger.info('time.monotonic() - last_active_c > %s', CONN_TIMEOUT)
-                break
-            if time.monotonic() - self._last_active_c > IDLE_TIMEOUT and not self.count():
+            if not self.count() and time.monotonic() - self._last_active_c > IDLE_TIMEOUT:
                 self.logger.info('connection idle %s', self.proxy.name)
                 break
             if time.monotonic() - self._last_active_c > PING_INTV:

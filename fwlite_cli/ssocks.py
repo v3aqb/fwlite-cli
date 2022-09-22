@@ -142,12 +142,10 @@ class SSConn:
                 data = await asyncio.wait_for(fut, timeout=6)
                 self.last_active = time.time()
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > self.tcp_timeout or self.remote_eof:
-                    data = b''
-                else:
-                    continue
+                continue
             except OSError:
-                data = b''
+                self.remote_writer.close()
+                break
 
             if not data:
                 break
@@ -209,12 +207,14 @@ class SSConn:
                 self.last_active = time.time()
                 self.data_recved = True
             except asyncio.TimeoutError:
-                if time.time() - self.last_active > self.tcp_timeout or self.client_eof:
-                    data = b''
-                else:
-                    continue
+                idle_time = time.time() - self.last_active
+                if self.client_eof and idle_time > 60:
+                    self.client_writer.close()
+                    break
+                continue
             except (BufEmptyError, asyncio.IncompleteReadError, InvalidTag, IncompleteChunk):
-                data = b''
+                self.client_writer.close()
+                break
 
             if not data:
                 break

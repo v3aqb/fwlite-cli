@@ -29,11 +29,11 @@ from ipaddress import ip_address
 import asyncio
 import asyncio.streams
 
-from .socks5udp import Socks5UDPServer
-from .connection import open_connection
-from .base_handler import BaseHandler, read_header_data, read_headers
-from .httputil import ConnectionPool
-from .util import extract_tls_extension, parse_hostport
+from fwlite_cli.socks5udp import Socks5UDPServer
+from fwlite_cli.connection import open_connection
+from fwlite_cli.base_handler import BaseHandler, read_header_data, read_headers
+from fwlite_cli.httputil import ConnectionPool
+from fwlite_cli.util import extract_tls_extension, parse_hostport
 from fwlite_cli.hxscommon import ConnectionDenied
 
 MAX_TIMEOUT = 16
@@ -879,14 +879,19 @@ class http_handler(BaseProxyHandler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, timeout=intv)
             except asyncio.TimeoutError:
-                if time.monotonic() - context.last_active > timeout or context.remote_eof:
+                idle_time = time.monotonic() - context.last_active
+                if idle_time > 60 and context.remote_eof:
+                    self.logger.info('forward_from_client timeout with eof recieved from remote')
+                    break
+                if idle_time > timeout:
+                    self.logger.info('forward_from_client idle timeout')
                     break
                 continue
-            except ConnectionError:
-                data = b''
+            except OSError as err:
+                self.logger.info('forward_from_client %r', err)
+                break
 
             if not data:
-                context.local_eof = True
                 break
             if context.retryable:
                 self.rbuffer.append(data)
@@ -898,6 +903,7 @@ class http_handler(BaseProxyHandler):
                 context.remote_eof = True
                 return
         # client closed, tell remote
+        context.local_eof = True
         try:
             write_to.write_eof()
         except OSError:
@@ -909,15 +915,18 @@ class http_handler(BaseProxyHandler):
             try:
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
-            except OSError:
-                data = b''
+            except OSError as err:
+                self.logger.info('forward_from_remote %r', err)
+                break
             except asyncio.TimeoutError:
-                if time.monotonic() - context.last_active > timeout or context.local_eof:
-                    data = b''
-                elif context.retryable and time.monotonic() - context.last_active > self.timeout:
-                    data = b''
-                else:
-                    continue
+                idle_time = time.monotonic() - context.last_active
+                if context.retryable and time.monotonic() - context.last_active > self.timeout:
+                    self.logger.info('forward_from_remote timeout, retryable')
+                    break
+                if context.local_eof and idle_time > 60:
+                    self.logger.info('forward_from_remote timeout with eof recieved from client')
+                    break
+                continue
 
             if not data:
                 break

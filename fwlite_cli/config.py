@@ -216,7 +216,7 @@ class Config:
         self.remoteapi = False
         self.remotepass = ''
         self.tcp_nodelay = False
-        self.tcp_timeout = 180
+        self.tcp_timeout = 600
         self.udp_enable = False
         self.udp_proxy = ''
         self.udp_timeout = 600

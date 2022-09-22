@@ -44,19 +44,24 @@ class ForwardContext:
         self.err = None
 
 
-async def forward_from_client(read_from, write_to, context, timeout=180):
+async def forward_from_client(read_from, write_to, context, timeout=600):
     while True:
         intv = 5
         try:
             fut = read_from.read(BUFSIZE)
             data = await asyncio.wait_for(fut, timeout=intv)
         except asyncio.TimeoutError:
-            if time.time() - context.last_active > timeout or context.remote_eof:
-                data = b''
-            else:
-                continue
-        except ConnectionError:
-            data = b''
+            idle_time = time.monotonic() - context.last_active
+            if context.remote_eof and idle_time > 60:
+                logger.info('forward_from_remote timeout, half close')
+                break
+            if idle_time > timeout:
+                logger.info('forward_from_remote timeout')
+                break
+            continue
+        except ConnectionError as err:
+            logger.info('forward_from_remote ConnectionError: %r', err)
+            break
 
         if not data:
             break
@@ -75,7 +80,7 @@ async def forward_from_client(read_from, write_to, context, timeout=180):
         pass
 
 
-async def forward_from_remote(read_from, write_to, context, timeout=180):
+async def forward_from_remote(read_from, write_to, context, timeout=600):
     count = 0
     while True:
         intv = 5
@@ -84,12 +89,17 @@ async def forward_from_remote(read_from, write_to, context, timeout=180):
             data = await asyncio.wait_for(fut, intv)
             count += 1
         except asyncio.TimeoutError:
-            if time.time() - context.last_active > timeout or context.local_eof:
-                data = b''
-            else:
-                continue
-        except OSError:
-            data = b''
+            idle_time = time.monotonic() - context.last_active
+            if context.local_eof and idle_time > 60:
+                logger.info('forward_from_remote timeout, half close')
+                break
+            if idle_time > timeout:
+                logger.info('forward_from_remote timeout')
+                break
+            continue
+        except OSError as err:
+            logger.info('forward_from_remote timeout: %r', err)
+            break
 
         if not data:
             break
@@ -113,7 +123,7 @@ async def forward_from_remote(read_from, write_to, context, timeout=180):
 
 
 class ForwardHandler:
-    def __init__(self, target, proxy, ctimeout=3, timeout=180, tcp_nodelay=False):
+    def __init__(self, target, proxy, ctimeout=3, timeout=60, tcp_nodelay=False):
         self.addr, self.port = target
         self.proxy = proxy
         self.timeout = timeout
