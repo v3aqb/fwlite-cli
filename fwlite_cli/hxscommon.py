@@ -392,11 +392,13 @@ class HxsConnection:
                 # read frame
                 try:
                     frame_data = await self.read_frame()
-                except (ReadFrameError, asyncio.TimeoutError) as err:
+                except ReadFrameError as err:
                     # destroy connection
                     self.logger.error('read frame error: %r', err.err)
                     break
-
+                except asyncio.TimeoutError:
+                    self.logger.error('read frame error: TimeoutError')
+                    break
                 # parse chunk_data
                 # +------+-------------------+----------+
                 # | type | flags | stream_id | payload  |

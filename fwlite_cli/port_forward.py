@@ -69,7 +69,7 @@ async def forward_from_client(read_from, write_to, context, timeout=600):
             context.last_active = time.time()
             write_to.write(data)
             await write_to.drain()
-        except ConnectionError:
+        except OSError:
             context.local_eof = True
             return
     context.local_eof = True

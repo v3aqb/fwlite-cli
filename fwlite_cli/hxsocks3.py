@@ -112,7 +112,7 @@ class ConnectionManager:
                 connection = Hxs3Connection(proxy, self)
                 try:
                     await connection.get_key(timeout, tcp_nodelay)
-                except (OSError, asyncio.TimeoutError, ConnectionClosed, InvalidMessage) as err:
+                except Exception as err:
                     asyncio.ensure_future(connection.close())
                     self._err = repr(err)
                     self._err_time = time.time()

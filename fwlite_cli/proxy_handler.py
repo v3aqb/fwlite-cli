@@ -881,14 +881,14 @@ class http_handler(BaseProxyHandler):
             except asyncio.TimeoutError:
                 idle_time = time.monotonic() - context.last_active
                 if idle_time > 60 and context.remote_eof:
-                    self.logger.info('forward_from_client timeout with eof recieved from remote')
+                    self.logger.debug('forward_from_client timeout with eof recieved from remote')
                     break
                 if idle_time > timeout:
-                    self.logger.info('forward_from_client idle timeout')
+                    self.logger.debug('forward_from_client idle timeout')
                     break
                 continue
             except OSError as err:
-                self.logger.info('forward_from_client %r', err)
+                self.logger.debug('forward_from_client %r', err)
                 break
 
             if not data:
@@ -916,15 +916,15 @@ class http_handler(BaseProxyHandler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
             except OSError as err:
-                self.logger.info('forward_from_remote %r', err)
+                self.logger.debug('forward_from_remote %r', err)
                 break
             except asyncio.TimeoutError:
                 idle_time = time.monotonic() - context.last_active
                 if context.retryable and time.monotonic() - context.last_active > self.timeout:
-                    self.logger.info('forward_from_remote timeout, retryable')
+                    self.logger.debug('forward_from_remote timeout, retryable')
                     break
                 if context.local_eof and idle_time > 60:
-                    self.logger.info('forward_from_remote timeout with eof recieved from client')
+                    self.logger.debug('forward_from_remote timeout with eof recieved from client')
                     break
                 continue
 
