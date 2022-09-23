@@ -52,7 +52,7 @@ CLIENT_WRITE_BUFFER = 524288
 PING_TIMEOUT = 12
 CONN_TIMEOUT = 600
 IDLE_TIMEOUT = 60
-PING_INTV = 10
+PING_INTV = 3
 STREAM_TIMEOUT = 600
 
 OPEN = 0
@@ -314,7 +314,7 @@ class HxsConnection:
         if self._settings_async_drain is None and random.random() < 0.1:
             self._settings_async_drain = False
             await self.send_frame(SETTINGS, 0, 1, bytes(random.randint(64, 256)))
-        if type_ == DATA and self._last_count > 5 and random.random() < 0.1:
+        if type_ == DATA and self._last_count > 5 and random.random() < 0.2:
             await self.send_ping(False)
 
     async def send_ping(self, test=True):
