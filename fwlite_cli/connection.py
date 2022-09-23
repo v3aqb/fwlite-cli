@@ -60,9 +60,12 @@ async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay
             except Exception as exc:
                 err = exc
         raise err
-
-    fut = asyncio.open_connection(addr, port, limit=limit, happy_eyeballs_delay=0.25)
-    remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
+    try:
+        fut = asyncio.open_connection(addr, port, limit=limit, happy_eyeballs_delay=0.25)
+        remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
+    except TypeError:
+        fut = asyncio.open_connection(addr, port, limit=limit)
+        remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
     remote_writer.transport.set_write_buffer_limits(262144)
     if tcp_nodelay:
         soc = remote_writer.transport.get_extra_info('socket')
