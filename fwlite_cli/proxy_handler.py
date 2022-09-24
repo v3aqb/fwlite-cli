@@ -676,6 +676,11 @@ class http_handler(BaseProxyHandler):
                                        (self.remote_reader, self.remote_writer),
                                        ppn)
             self.remote_writer = None
+        except ConnectionDenied as err:
+            self.logger.warning('%s %s via %s failed on connect! %r',
+                                self.command, self.shortpath or self.path, self.ppname, err)
+            self.close_connection = True
+            return
         except ClientError as err:
             self.logger.error(repr(err))
             self.close_connection = True
@@ -695,18 +700,15 @@ class http_handler(BaseProxyHandler):
                 except ConnectionError:
                     pass
                 self.remote_writer = None
-            await self.on_GET_Error(err)
-
-    async def on_GET_Error(self, err):
-        if self.ppname:
-            self.logger.warning('%s %s via %s failed: %r',
-                                self.command, self.shortpath, self.ppname, err)
-            self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
-            await self._do_GET(True)
-            return
-        self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
-                                   self.failed_parents, self.ppname)
-        return self.send_error(504)
+            if self.ppname:
+                self.logger.warning('%s %s via %s failed: %r',
+                                    self.command, self.shortpath, self.ppname, err)
+                self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
+                await self._do_GET(True)
+                return
+            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
+                                       self.failed_parents, self.ppname)
+            return self.send_error(504)
 
     do_HEAD = do_POST = do_PUT = do_DELETE = do_OPTIONS = do_PATCH = do_TRACE = do_GET
 
