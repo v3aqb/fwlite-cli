@@ -33,7 +33,8 @@ from asyncio import Lock
 from hxcrypto import InvalidTag, is_aead, Encryptor, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError, ConnectionDenied
+from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
+from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_SIZE
 
 READ_FRAME_TIMEOUT = 8
 
@@ -136,9 +137,9 @@ class Hxs2Connection(HxsConnection):
         except OSError:
             self.connection_lost = True
 
-    async def read_frame(self):
+    async def read_frame(self, timeout=30):
         try:
-            frame_len = await self._rfile_read(2)
+            frame_len = await self._rfile_read(2, timeout)
             frame_len, = struct.unpack('>H', frame_len)
         except (ConnectionError, asyncio.IncompleteReadError) as err:
             # destroy connection
@@ -179,7 +180,7 @@ class Hxs2Connection(HxsConnection):
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
-                         bytes(random.randint(64, 450))])
+                         bytes(random.randint(CLIENT_AUTH_SIZE // 16, CLIENT_AUTH_SIZE))])
         data = chr(20).encode() + struct.pack('>H', len(data)) + data
 
         ct_ = self._pskcipher.encrypt(data)
@@ -209,10 +210,13 @@ class Hxs2Connection(HxsConnection):
 
         self.key_exchange(data, usn, psw, pubk, ecc)
 
-    async def _rfile_read(self, size, timeout=3):
-        fut = self.remote_reader.readexactly(size)
-        data = await asyncio.wait_for(fut, timeout=timeout)
-        return data
+    async def _rfile_read(self, size, timeout=None):
+        if timeout:
+            fut = self.remote_reader.readexactly(size)
+            data = await asyncio.wait_for(fut, timeout=timeout)
+            return data
+        else:
+            return await self.remote_reader.readexactly(size)
 
     async def close(self):
         if self.remote_writer:

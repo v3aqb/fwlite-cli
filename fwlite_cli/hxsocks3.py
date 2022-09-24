@@ -32,12 +32,13 @@ import asyncio
 from ipaddress import ip_address
 
 import websockets.client
-from websockets.exceptions import ConnectionClosed, InvalidMessage
+from websockets.exceptions import ConnectionClosed
 
 from hxcrypto import InvalidTag, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError, ConnectionDenied
+from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
+from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_SIZE
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
@@ -153,9 +154,10 @@ class Hxs3Connection(HxsConnection):
         except ConnectionClosed:
             self.connection_lost = True
 
-    async def read_frame(self):
+    async def read_frame(self, timeout=30):
         try:
-            frame_data = await self.remote_writer.recv()
+            fut = self.remote_writer.recv()
+            frame_data = await asyncio.wait_for(fut, timeout=timeout)
             frame_data = self._cipher.decrypt(frame_data)
             self._stat_total_recv += len(frame_data)
             self._stat_recv_tp += len(frame_data)
@@ -194,7 +196,7 @@ class Hxs3Connection(HxsConnection):
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
-                         bytes(random.randint(64, 450))])
+                         bytes(random.randint(CLIENT_AUTH_SIZE // 16, CLIENT_AUTH_SIZE))])
         data = chr(0).encode() + data
 
         # send key exchange request

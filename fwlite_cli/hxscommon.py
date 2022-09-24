@@ -45,6 +45,7 @@ FAST_METHOD = 'aes-128-gcm' if cipher_test[2] < 1.2 else 'chacha20-ietf-poly1305
 DEFAULT_MODE = '0' if cipher_test[1] < 0.1 else '1'
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
+CLIENT_AUTH_SIZE = 180
 MAX_STREAM_ID = 65530
 MAX_CONNECTION = 2
 CLIENT_WRITE_BUFFER = 524288
@@ -257,6 +258,8 @@ class HxsConnection:
             self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
             return socketpair_a
         await self.send_ping()
+        if self.connection_lost:
+            raise ConnectionLostError(0, 'hxs connection lost')
         raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
 
     async def read_from_client(self, stream_id, client_reader):
@@ -398,7 +401,7 @@ class HxsConnection:
                     break
                 except asyncio.TimeoutError:
                     self.logger.error('read frame error: TimeoutError')
-                    break
+                    continue
                 # parse chunk_data
                 # +------+-------------------+----------+
                 # | type | flags | stream_id | payload  |
@@ -441,7 +444,7 @@ class HxsConnection:
                         self._client_writer[stream_id].write(data)
                         await self.client_writer_drain(stream_id)
                         self._stat_data_recv += data_len
-                    except OSError:
+                    except (OSError, KeyError):
                         # client error, reset stream
                         asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == HEADERS:  # 1
@@ -702,7 +705,7 @@ class HxsConnection:
     async def send_frame_data(self, ct_):
         raise NotImplementedError
 
-    async def read_frame(self):
+    async def read_frame(self, timeout=30):
         raise NotImplementedError
 
     async def close(self):
