@@ -108,7 +108,7 @@ class ReadFrameError(Exception):
         self.err = err
 
 
-class UDPRelayHxs2(UDPRelayInterface):
+class UDPRelayHxs(UDPRelayInterface):
     def __init__(self, udp_server, stream_id, hxs2conn, client_addr):
         super().__init__(udp_server, hxs2conn.proxy, client_addr)
         self.hxs2conn = hxs2conn
@@ -209,10 +209,10 @@ class HxsConnection:
             self._manager.remove(self)
             raise ConnectionResetError(0, 'hxs not connected.')
         # send connect request
-        payload = b''.join([chr(len(addr)).encode('latin1'),
+        payload = b''.join([bytes((len(addr), )),
                             addr.encode(),
                             struct.pack('>H', port),
-                            b'\x00' * random.randint(64, 255),
+                            bytes(random.randint(16, 255)),
                             ])
         stream_id = self._next_stream_id
         self._next_stream_id += 1
@@ -384,7 +384,7 @@ class HxsConnection:
         self._stream_status[stream_id] = OPEN
         self._client_resume_reading[stream_id] = asyncio.Event()
         self._client_resume_reading[stream_id].set()
-        relay = UDPRelayHxs2(udp_server, stream_id, self, client_addr)
+        relay = UDPRelayHxs(udp_server, stream_id, self, client_addr)
         self._client_writer[stream_id] = relay
         return relay
 
@@ -558,9 +558,7 @@ class HxsConnection:
         resp_code = data.read(1)[0]
         if resp_code == 0:
             self.logger.debug('hxsocks read key exchange respond')
-            pklen = data.read(1)[0]
-            scertlen = data.read(1)[0]
-            siglen = data.read(1)[0]
+            pklen, scertlen, siglen = struct.unpack(b'!BBB', data.read(3))
 
             server_key = data.read(pklen)
             auth = data.read(32)
@@ -682,7 +680,7 @@ class HxsConnection:
     async def async_drain(self, stream_id):
         if stream_id not in self._client_writer:
             return
-        if isinstance(self._client_writer[stream_id], UDPRelayHxs2):
+        if isinstance(self._client_writer[stream_id], UDPRelayInterface):
             return
         wbuffer_size = self._client_writer[stream_id].transport.get_write_buffer_size()
         if wbuffer_size <= CLIENT_WRITE_BUFFER:

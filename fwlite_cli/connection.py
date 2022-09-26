@@ -116,14 +116,14 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel
         data = await remote_reader.readexactly(2)
         if data == b'\x05\x02':  # basic auth
             remote_writer.write(b''.join([b"\x01",
-                                          chr(len(proxy.username)).encode(),
+                                          bytes((len(proxy.username), )),
                                           proxy.username.encode(),
-                                          chr(len(proxy.password)).encode(),
+                                          bytes((len(proxy.password), )),
                                           proxy.password.encode()]))
             data = await remote_reader.readexactly.recv(2)
         assert data[1] == 0  # no auth needed or auth passed
         remote_writer.write(b''.join([b"\x05\x01\x00\x03",
-                                      chr(len(addr)).encode(),
+                                      bytes((len(addr), )),
                                       addr.encode(),
                                       struct.pack(b">H", port)]))
         data = await remote_reader.readexactly(4)

@@ -225,7 +225,7 @@ class UDPRelayInterface:
         # close this relay
         self._close = True
         if not self.last_recv:
-            self.proxy.log('udp', 20)
+            self.proxy.log('udp', 16)
         if close_server:
             self.udp_server.close(client_addr=self.client_addr)
 

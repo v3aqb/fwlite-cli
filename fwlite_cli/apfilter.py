@@ -37,11 +37,11 @@ except ImportError:
 
 logger = logging.getLogger('apfilter')
 logger.setLevel(logging.INFO)
-# hdr = logging.StreamHandler()
-# formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-#                               datefmt='%H:%M:%S')
-# hdr.setFormatter(formatter)
-# logger.addHandler(hdr)
+hdr = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
+                              datefmt='%H:%M:%S')
+hdr.setFormatter(formatter)
+logger.addHandler(hdr)
 
 
 class ExpiredError(Exception):

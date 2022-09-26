@@ -36,7 +36,7 @@ from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
 from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_SIZE
 
-READ_FRAME_TIMEOUT = 8
+READ_FRAME_TIMEOUT = 4
 
 
 def set_logger():
@@ -96,6 +96,7 @@ class ConnectionManager:
     async def get_connection(self, proxy, timeout, tcp_nodelay):
         # choose / create and return a connection
         async with self._lock:
+            # if no connection available, creat new connection
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 if self._err and time.time() - self._err_time < 6:
@@ -176,12 +177,12 @@ class Hxs2Connection(HxsConnection):
         ecc = ECC(self._pskcipher.key_len)
         pubk = ecc.get_pub_key()
         timestamp = struct.pack('>I', int(time.time()) // 30)
-        data = b''.join([chr(len(pubk)).encode('latin1'),
+        data = b''.join([bytes((len(pubk), )),
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
                          bytes(random.randint(CLIENT_AUTH_SIZE // 16, CLIENT_AUTH_SIZE))])
-        data = chr(20).encode() + struct.pack('>H', len(data)) + data
+        data = bytes((20, )) + struct.pack('>H', len(data)) + data
 
         ct_ = self._pskcipher.encrypt(data)
 
@@ -215,8 +216,7 @@ class Hxs2Connection(HxsConnection):
             fut = self.remote_reader.readexactly(size)
             data = await asyncio.wait_for(fut, timeout=timeout)
             return data
-        else:
-            return await self.remote_reader.readexactly(size)
+        return await self.remote_reader.readexactly(size)
 
     async def close(self):
         if self.remote_writer:
