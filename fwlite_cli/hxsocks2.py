@@ -18,9 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
-
-from builtins import chr
-
 import struct
 import time
 import hmac
