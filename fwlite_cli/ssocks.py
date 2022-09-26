@@ -25,12 +25,16 @@ import base64
 import struct
 import socket
 import time
+import random
 import logging
 import asyncio
 
 from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor
 
-from .parent_proxy import ParentProxy
+from fwlite_cli.parent_proxy import ParentProxy
+
+SS_SUBKEY = "ss-subkey"
+SS_SUBKEY_2022 = 'shadowsocks 2022 session subkey'
 
 
 def set_logger():
@@ -154,10 +158,14 @@ class SSConn:
                                    chr(len(self._address)).encode('latin1'),
                                    self._address.encode(),
                                    struct.pack(b">H", self._port)])
-                data = header + data
+                if self.crypto.ctx == SS_SUBKEY_2022:
+                    padding_len = random.randint(0, 255)
+                    header += struct.pack(b"!H", padding_len)
+                    header += bytes(padding_len)
                 self.connected = True
-
-            self.remote_writer.write(self.crypto.encrypt(data))
+                self.remote_writer.write(self.crypto.encrypt(header + data))
+            else:
+                self.remote_writer.write(self.crypto.encrypt(data))
             try:
                 await self.remote_writer.drain()
             except ConnectionError:
@@ -171,35 +179,49 @@ class SSConn:
     async def _read(self):
         if self.aead:
             fut = self.remote_reader.readexactly(18)
-            _len = await asyncio.wait_for(fut, timeout=6)
-            if not _len:
-                return b''
-            _len = self.crypto.decrypt(_len)
-            _len, = struct.unpack("!H", _len)
+            data = await asyncio.wait_for(fut, timeout=6)
+            data = self.crypto.decrypt(data)
+            _len, = struct.unpack("!H", data)
             fut = self.remote_reader.readexactly(_len + 16)
             try:
-                ct = await asyncio.wait_for(fut, timeout=2)
+                data = await asyncio.wait_for(fut, timeout=4)
             except asyncio.TimeoutError as err:
                 raise IncompleteChunk() from err
-            if not ct:
-                return b''
         else:
-            ct = await self.remote_reader.read(self.bufsize)
-        return self.crypto.decrypt(ct)
+            fut = self.remote_reader.read(self.bufsize)
+            data = await asyncio.wait_for(fut, timeout=6)
+        return self.crypto.decrypt(data)
 
     async def forward_from_remote(self):
         # read from remote, decrypt, sent to client
-        try:
-            fut = self.remote_reader.readexactly(self.crypto.iv_len)
-            iv_ = await asyncio.wait_for(fut, timeout=12)
-            self.crypto.decrypt(iv_)
-        except (asyncio.TimeoutError, asyncio.IncompleteReadError):
-            self.remote_eof = True
+
+        if self.aead:
+            # read first chunk
+            if self.crypto.ctx == SS_SUBKEY_2022:
+                fut = self.remote_reader.readexactly(self.crypto.iv_len * 2 + 27)
+            else:
+                fut = self.remote_reader.readexactly(self.crypto.iv_len + 18)
             try:
-                self.client_writer.write_eof()
-            except ConnectionError:
-                pass
-            return
+                data = await asyncio.wait_for(fut, timeout=12)
+                data = self.crypto.decrypt(data)
+                if self.crypto.ctx == SS_SUBKEY_2022:
+                    _, timestamp = struct.unpack(b'!BQ', data[:9])
+                    diff = time.time() - timestamp
+                    if abs(diff) > 30:
+                        raise ValueError('timestamp error, diff: %.3f' % diff)
+                data_len, = struct.unpack(b'!H', data[-2:])
+                fut = self.remote_reader.readexactly(data_len + 16)
+                data = await asyncio.wait_for(fut, timeout=4)
+                data = self.crypto.decrypt(data)
+                self.client_writer.write(data)
+            except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError) as err:
+                self.logger.error('read first chunk fail: %r', err, exc_info=False)
+                self.remote_eof = True
+                try:
+                    self.client_writer.write_eof()
+                except ConnectionError:
+                    pass
+                return
 
         while True:
             try:

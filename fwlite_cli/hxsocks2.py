@@ -36,6 +36,9 @@ from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
 from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_SIZE
 
+SS_SUBKEY = "ss-subkey"
+SS_SUBKEY_2022 = 'shadowsocks 2022 session subkey'
+
 READ_FRAME_TIMEOUT = 4
 
 
@@ -190,18 +193,17 @@ class Hxs2Connection(HxsConnection):
         self.remote_writer.write(ct_)
         await self.remote_writer.drain()
 
-        # read iv
-        iv_ = await self._rfile_read(self._pskcipher.iv_len, timeout)
-        self._pskcipher.decrypt(iv_)
-
         # read server response
         if is_aead(self.method):
-            ct_len = await self._rfile_read(18, timeout)
-            ct_len = self._pskcipher.decrypt(ct_len)
+            if self._pskcipher.ctx == SS_SUBKEY_2022:
+                ct_len = await self._rfile_read(self._pskcipher.iv_len * 2 + 27, timeout)
+            else:
+                ct_len = await self._rfile_read(self._pskcipher.iv_len + 18, timeout)
+            ct_len = self._pskcipher.decrypt(ct_len)[-2:]
             ct_len, = struct.unpack('!H', ct_len)
             ct_ = await self._rfile_read(ct_len + 16)
             ct_ = self._pskcipher.decrypt(ct_)
-            data = ct_[2:]
+            data = ct_[2:]  # first 2 bytes is data length
         else:
             resp_len = await self._rfile_read(2, timeout)
             resp_len = self._pskcipher.decrypt(resp_len)
