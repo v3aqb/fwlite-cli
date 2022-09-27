@@ -149,6 +149,7 @@ class Socks5UDPServer:
                     self.udp_relay_holder[client_addr] = await conn.udp_associate(self, client_addr)
             except OSError:
                 proxy.log('udp', 20)
+                raise
         if not self.udp_relay_holder[client_addr]:
             raise OSError(0, 'get_relay failed.')
         self.logger.debug('%r', self.udp_relay_holder[client_addr])
@@ -279,10 +280,8 @@ class UDPRelaySS(UDPRelayDirect):
         if sspassword is None:
             ssmethod, sspassword = base64.b64decode(ssmethod).decode().split(':', 1)
         self.ssmethod, self.sspassword = ssmethod, sspassword
-        try:
-            ipaddress.ip_address(self.proxy.hostname)
-        except ValueError:
-            pass
+        if self.ssmethod.startswith('2022'):
+            raise OSError(0, '2022-blake3 not supported yet')
 
     async def udp_associate(self):
         self.remote_stream = await asyncio_dgram.connect((self.proxy.hostname, self.proxy.port))
