@@ -19,8 +19,6 @@
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from builtins import chr
-
 import sys
 import os
 import struct
@@ -397,7 +395,8 @@ class HxsConnection:
                     frame_data = await self.read_frame()
                 except ReadFrameError as err:
                     # destroy connection
-                    self.logger.error('read frame error: %r', err.err)
+                    if not self.connection_lost:
+                        self.logger.error('read frame error: %r', err.err)
                     break
                 except asyncio.TimeoutError:
                     self.logger.error('read frame error: TimeoutError')
