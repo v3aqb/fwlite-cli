@@ -31,7 +31,7 @@ from hxcrypto import InvalidTag, is_aead, Encryptor, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
-from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_SIZE
+from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_PADDING
 
 SS_SUBKEY = "ss-subkey"
 SS_SUBKEY_2022 = 'shadowsocks 2022 session subkey'
@@ -181,7 +181,7 @@ class Hxs2Connection(HxsConnection):
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
-                         bytes(random.randint(CLIENT_AUTH_SIZE // 16, CLIENT_AUTH_SIZE))])
+                         bytes(random.randint(CLIENT_AUTH_PADDING // 16, CLIENT_AUTH_PADDING))])
         data = bytes((20, )) + struct.pack('>H', len(data)) + data
 
         ct_ = self._pskcipher.encrypt(data)

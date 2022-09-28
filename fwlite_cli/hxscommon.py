@@ -43,16 +43,15 @@ FAST_METHOD = 'aes-128-gcm' if cipher_test[2] < 1.2 else 'chacha20-ietf-poly1305
 DEFAULT_MODE = '0' if cipher_test[1] < 0.1 else '1'
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
-CLIENT_AUTH_SIZE = 180
+
+CLIENT_AUTH_PADDING = 180
 MAX_STREAM_ID = 65530
 MAX_CONNECTION = 2
 CLIENT_WRITE_BUFFER = 524288
 
-PING_TIMEOUT = 12
-CONN_TIMEOUT = 600
+PING_TIMEOUT = 4
 IDLE_TIMEOUT = 60
-PING_INTV = 3
-STREAM_TIMEOUT = 600
+PING_INTV = 10
 
 OPEN = 0
 EOF_SENT = 1  # SENT END_STREAM
@@ -148,7 +147,8 @@ class HxsConnection:
         self._stream_addr = {}
         self._stream_task = {}
         self._last_active = {}
-        self._last_active_c = time.monotonic()
+        self._last_recv = time.monotonic()
+        self._last_send = time.monotonic()
         self._last_ping = 0
         self._last_ping_log = 0
         self._connection_task = None
@@ -269,7 +269,7 @@ class HxsConnection:
             self.logger.error('send_frame: connection closed. %s', self.name)
             return
         if type_ != PING:
-            self._last_active_c = time.monotonic()
+            self._last_send = time.monotonic()
         elif flags == 0:
             self._ping_time = time.monotonic()
 
@@ -357,7 +357,7 @@ class HxsConnection:
                 self._last_count += 1
 
                 if frame_type in (DATA, HEADERS, RST_STREAM, UDP_DGRAM2):
-                    self._last_active_c = time.monotonic()
+                    self._last_recv = time.monotonic()
 
                 if self._last_count > 5 and random.random() < 0.2:
                     await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
@@ -543,15 +543,16 @@ class HxsConnection:
         while not self.connection_lost:
             await asyncio.sleep(1)
             self.update_stat()
-            if time.monotonic() - self._last_active_c > 1 and self._ping_test and \
+            if self._ping_test and time.monotonic() - self._last_recv > PING_TIMEOUT and \
                     time.monotonic() - self._ping_time > PING_TIMEOUT:
                 self.logger.warning('server ping no response %s in %ds',
                                     self.proxy.name, time.monotonic() - self._ping_time)
                 break
-            if not self.count() and time.monotonic() - self._last_active_c > IDLE_TIMEOUT:
+            idle_time = time.monotonic() - max(self._last_recv, self._last_send)
+            if not self.count() and idle_time > IDLE_TIMEOUT:
                 self.logger.info('connection idle %s', self.proxy.name)
                 break
-            if time.monotonic() - self._last_active_c > PING_INTV:
+            if idle_time > PING_INTV:
                 if not self._ping_test and time.monotonic() - self._last_ping > PING_INTV:
                     await self.send_ping()
             continue

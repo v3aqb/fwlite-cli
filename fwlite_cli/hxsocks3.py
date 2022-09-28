@@ -19,8 +19,6 @@
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from builtins import chr
-
 import struct
 import time
 import hmac
@@ -38,7 +36,7 @@ from hxcrypto import InvalidTag, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
-from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_SIZE
+from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_PADDING
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
@@ -192,12 +190,12 @@ class Hxs3Connection(HxsConnection):
         ecc = ECC(32)
         pubk = ecc.get_pub_key()
         timestamp = struct.pack('>I', int(time.time()) // 30)
-        data = b''.join([chr(len(pubk)).encode('latin1'),
+        data = b''.join([bytes((len(pubk), )),
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
-                         bytes(random.randint(CLIENT_AUTH_SIZE // 16, CLIENT_AUTH_SIZE))])
-        data = chr(0).encode() + data
+                         bytes(random.randint(CLIENT_AUTH_PADDING // 16, CLIENT_AUTH_PADDING))])
+        data = bytes((0, )) + data
 
         # send key exchange request
         await self.remote_writer.send(data)
