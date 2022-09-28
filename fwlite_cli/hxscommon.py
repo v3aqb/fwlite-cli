@@ -35,7 +35,6 @@ from hxcrypto import ECC, AEncryptor, InvalidSignature
 from hxcrypto.encrypt import EncryptorStream
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.socks5udp import UDPRelayInterface
 from fwlite_cli.util import cipher_test
 from fwlite_cli.hxs_udp2 import on_dgram_recv
 
@@ -74,7 +73,7 @@ PING = 6
 GOAWAY = 7
 WINDOW_UPDATE = 8
 # CONTINUATION = 9
-UDP_ASSOCIATE = 20
+# UDP_ASSOCIATE = 20
 UDP_DGRAM2 = 21
 
 PONG = 1
@@ -108,33 +107,6 @@ class ReadFrameError(Exception):
         self.err = err
 
 
-class UDPRelayHxs(UDPRelayInterface):
-    def __init__(self, udp_server, stream_id, hxs2conn, client_addr):
-        super().__init__(udp_server, hxs2conn.proxy, client_addr)
-        self.hxs2conn = hxs2conn
-        self.stream_id = stream_id
-
-    async def _send(self, addr, port, dgram, data):
-        # datagram recieved from client, relay to server
-        await self.hxs2conn.send_data_frame(self.stream_id, data)
-
-    def write(self, data):
-        asyncio.ensure_future(self.on_remote_recv(data))
-
-    async def drain(self):
-        return
-
-    def is_closing(self):
-        return self._close
-
-    def close(self, close_server=True):
-        super().close(close_server)
-        asyncio.ensure_future(self.hxs2conn.close_stream(self.stream_id))
-
-    async def wait_closed(self):
-        return
-
-
 class HxsConnection:
     bufsize = 65535 - 22
 
@@ -150,7 +122,6 @@ class HxsConnection:
         self._ping_time = 0
         self.connected = False
         self.connection_lost = False
-        self.udp_relay_support = None
         self.udp_event = None
 
         self._psk = self.proxy.query.get('PSK', [''])[0]
@@ -352,42 +323,6 @@ class HxsConnection:
         except AttributeError:
             pass
 
-    async def udp_associate(self, udp_server, client_addr):
-        if self.connection_lost:
-            self._manager.remove(self)
-            raise ConnectionLostError(0, 'hxs connection lost')
-        if not self.connected:
-            self._manager.remove(self)
-            raise ConnectionResetError(0, 'hxs not connected.')
-        if self.udp_relay_support is None:
-            # ask server for udp_support
-            await self.send_frame(UDP_ASSOCIATE, OPEN, 0, bytes(random.randint(64, 256)))
-            if not self.udp_event:
-                self.udp_event = Event()
-            fut = self.udp_event.wait()
-            try:
-                await asyncio.wait_for(fut, timeout=self.timeout)
-            except asyncio.TimeoutError:
-                if not self.udp_relay_support:
-                    self.udp_relay_support = False
-                    self.logger.error('%s does not seem to support UDP_ASSOCIATE, timeout: %d', self.name, self.timeout)
-        if not self.udp_relay_support:
-            raise ConnectionResetError(0, '%s does not seem to support UDP_ASSOCIATE' % self.name)
-        # send udp_assicoate request
-        stream_id = self._next_stream_id
-        self._next_stream_id += 1
-        if self._next_stream_id > MAX_STREAM_ID:
-            self.logger.error('MAX_STREAM_ID reached')
-            self._manager.remove(self)
-
-        await self.send_frame(UDP_ASSOCIATE, OPEN, stream_id, bytes(random.randint(64, 256)))
-        self._stream_status[stream_id] = OPEN
-        self._client_resume_reading[stream_id] = asyncio.Event()
-        self._client_resume_reading[stream_id].set()
-        relay = UDPRelayHxs(udp_server, stream_id, self, client_addr)
-        self._client_writer[stream_id] = relay
-        return relay
-
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
         while not self.connection_lost:
@@ -421,7 +356,7 @@ class HxsConnection:
                     self._last_count = 0
                 self._last_count += 1
 
-                if frame_type in (DATA, HEADERS, RST_STREAM, UDP_ASSOCIATE, UDP_DGRAM2):
+                if frame_type in (DATA, HEADERS, RST_STREAM, UDP_DGRAM2):
                     self._last_active_c = time.monotonic()
 
                 if self._last_count > 5 and random.random() < 0.2:
@@ -516,11 +451,6 @@ class HxsConnection:
                         self._client_resume_reading[stream_id].clear()
                     else:
                         self._client_resume_reading[stream_id].set()
-                elif frame_type == UDP_ASSOCIATE:  # 20
-                    if stream_id == 0:
-                        self.udp_relay_support = True
-                        if self.udp_event:
-                            self.udp_event.set()
                 elif frame_type == UDP_DGRAM2:  # 21
                     on_dgram_recv(payload)
             except Exception as err:
@@ -682,8 +612,6 @@ class HxsConnection:
 
     async def async_drain(self, stream_id):
         if stream_id not in self._client_writer:
-            return
-        if isinstance(self._client_writer[stream_id], UDPRelayInterface):
             return
         wbuffer_size = self._client_writer[stream_id].transport.get_write_buffer_size()
         if wbuffer_size <= CLIENT_WRITE_BUFFER:
