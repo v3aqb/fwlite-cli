@@ -139,14 +139,10 @@ class Socks5UDPServer:
                     udp_relay = UDPRelaySS(self, proxy, client_addr)
                     await udp_relay.udp_associate()
                     self.udp_relay_holder[client_addr] = udp_relay
-                if proxy.scheme == 'hxs2':
-                    from .hxsocks2 import hxs2_get_connection
-                    conn = await hxs2_get_connection(proxy, timeout=8, tcp_nodelay=True)
-                    self.udp_relay_holder[client_addr] = await conn.udp_associate(self, client_addr)
-                if proxy.scheme in ('hxs3', 'hxs3s'):
-                    from .hxsocks3 import hxs3_get_connection
-                    conn = await hxs3_get_connection(proxy, timeout=8, tcp_nodelay=True)
-                    self.udp_relay_holder[client_addr] = await conn.udp_associate(self, client_addr)
+                if proxy.scheme in ('hxs2', 'hxs3', 'hxs3s'):
+                    from fwlite_cli.hxs_udp2 import get_hxs_udp_relay
+                    relay = get_hxs_udp_relay(self, client_addr, [proxy, ])
+                    self.udp_relay_holder[client_addr] = relay
             except OSError:
                 proxy.log('udp', 20)
                 raise

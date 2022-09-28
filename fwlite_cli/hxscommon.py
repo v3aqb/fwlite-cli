@@ -37,6 +37,7 @@ from hxcrypto.encrypt import EncryptorStream
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.socks5udp import UDPRelayInterface
 from fwlite_cli.util import cipher_test
+from fwlite_cli.hxs_udp2 import on_dgram_recv
 
 DEFAULT_METHOD = 'chacha20-ietf-poly1305'  # for hxsocks2 handshake
 FAST_METHOD = 'aes-128-gcm' if cipher_test[2] < 1.2 else 'chacha20-ietf-poly1305'
@@ -74,6 +75,7 @@ GOAWAY = 7
 WINDOW_UPDATE = 8
 # CONTINUATION = 9
 UDP_ASSOCIATE = 20
+UDP_DGRAM2 = 21
 
 PONG = 1
 END_STREAM_FLAG = 1
@@ -419,11 +421,13 @@ class HxsConnection:
                     self._last_count = 0
                 self._last_count += 1
 
+                if frame_type in (DATA, HEADERS, RST_STREAM, UDP_ASSOCIATE, UDP_DGRAM2):
+                    self._last_active_c = time.monotonic()
+
                 if self._last_count > 5 and random.random() < 0.2:
                     await self.send_frame(PING, PONG, 0, bytes(random.randint(64, 256)))
 
                 if frame_type == DATA:  # 0
-                    self._last_active_c = time.monotonic()
                     if self._stream_status[stream_id] & EOF_RECV:
                         # from server send buffer
                         self.logger.debug('DATA recv Stream CLOSED, status: %s',
@@ -447,7 +451,6 @@ class HxsConnection:
                         # client error, reset stream
                         asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == HEADERS:  # 1
-                    self._last_active_c = time.monotonic()
                     if self._next_stream_id == stream_id:
                         # server is not supposed to open a new stream
                         # send connection error?
@@ -474,7 +477,6 @@ class HxsConnection:
                                 await self.send_frame(RST_STREAM, 0, stream_id,
                                                       bytes(random.randint(8, 256)))
                 elif frame_type == RST_STREAM:  # 3
-                    self._last_active_c = time.monotonic()
                     self._stream_status[stream_id] = CLOSED
                     if stream_id in self._client_status:
                         self._client_status[stream_id].set()
@@ -519,6 +521,8 @@ class HxsConnection:
                         self.udp_relay_support = True
                         if self.udp_event:
                             self.udp_event.set()
+                elif frame_type == UDP_DGRAM2:  # 21
+                    on_dgram_recv(payload)
             except Exception as err:
                 self.logger.error('CONNECTION BOOM! %r', err, exc_info=True)
                 break
@@ -707,3 +711,11 @@ class HxsConnection:
 
     async def close(self):
         raise NotImplementedError
+
+    async def send_dgram2(self, client_id, udp_sid, data):
+        # remote addr included in data, as shadowsocks format
+        payload = client_id
+        payload += struct.pack(b'!LH', udp_sid, len(data))
+        payload += data
+        payload += bytes(random.randint(8, 128))
+        await self.send_frame(UDP_DGRAM2, 0, 0, payload)
