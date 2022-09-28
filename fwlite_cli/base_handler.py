@@ -212,7 +212,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         soc = self.client_writer.transport.get_extra_info('socket')
         set_keepalive(soc)
 
-        udp_server = self.server.get_udp_server(self)
+        udp_server = await self.server.get_udp_server(self)
         addr = await udp_server.bind()
         buf = self.socks5_udp_response
         serverip = ipaddress.ip_address(addr[0])

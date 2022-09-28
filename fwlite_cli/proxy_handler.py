@@ -115,6 +115,7 @@ class Server:
         self.udp_enable = self.conf.udp_enable
         self.udp_server_holder = {}  # {client_ip: socks5_udp_server}
         self.server = None
+        self.lock = asyncio.Lock()
 
         self.logger = logging.getLogger('fwlite_%d' % port)
         self.logger.setLevel(logging.INFO)
@@ -140,11 +141,12 @@ class Server:
         self.server.close()
         await self.server.wait_closed()
 
-    def get_udp_server(self, handler):
-        client_ip = handler.client_address[0]
-        if client_ip not in self.udp_server_holder:
-            self.udp_server_holder[client_ip] = Socks5UDPServer(handler, self.conf.udp_timeout)
-        return self.udp_server_holder[client_ip]
+    async def get_udp_server(self, handler):
+        async with self.lock:
+            client_ip = handler.client_address[0]
+            if client_ip not in self.udp_server_holder:
+                self.udp_server_holder[client_ip] = Socks5UDPServer(handler, self.conf.udp_timeout)
+            return self.udp_server_holder[client_ip]
 
 
 class BaseProxyHandler(BaseHandler):
