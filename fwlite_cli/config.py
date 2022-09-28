@@ -216,7 +216,7 @@ class Config:
         self.remoteapi = False
         self.remotepass = ''
         self.tcp_nodelay = False
-        self.tcp_timeout = 600
+        self.tcp_timeout = 0
         self.udp_enable = False
         self.udp_proxy = ''
         self.udp_timeout = 600
@@ -276,6 +276,8 @@ class Config:
             self.logger.warning('Remote API Enabled WITHOUT password protection!')
         self.tcp_nodelay = self.userconf.dgetbool('FWLite', 'tcp_nodelay', self.tcp_nodelay)
         self.tcp_timeout = self.userconf.dgetint('FWLite', 'tcp_timeout', self.tcp_timeout)
+        if self.tcp_timeout == 0:
+            self.tcp_timeout = float('+inf')
 
         listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
