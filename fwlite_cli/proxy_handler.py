@@ -927,7 +927,7 @@ class http_handler(BaseProxyHandler):
                 if context.retryable and time.monotonic() - context.last_active > self.timeout:
                     self.logger.debug('forward_from_remote timeout, retryable')
                     break
-                if context.local_eof and idle_time > 60:
+                if context.local_eof and idle_time > timeout:
                     self.logger.debug('forward_from_remote timeout with eof recieved from client')
                     break
                 continue
