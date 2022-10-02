@@ -118,7 +118,7 @@ async def forward_from_remote(read_from, write_to, context, timeout=600):
 
     try:
         write_to.write_eof()
-    except OSError:
+    except (OSError, RuntimeError):
         pass
 
 

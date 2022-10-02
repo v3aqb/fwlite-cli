@@ -903,7 +903,7 @@ class http_handler(BaseProxyHandler):
             try:
                 write_to.write(data)
                 await write_to.drain()
-            except OSError:
+            except (OSError, RuntimeError):
                 context.remote_eof = True
                 return
         # client closed, tell remote
