@@ -131,10 +131,10 @@ class ForwardHandler:
         self.tcp_nodelay = tcp_nodelay
 
     async def connect_tls(self, mode):
-        # ssl_ctx = ssl.create_default_context()
-        ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
+        ssl_ctx = ssl.create_default_context()
+        # ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
         # ssl_ctx.set_alpn_protocols(["http/1.1"])
-        ssl_ctx.set_ciphers(CIPHERS)
+        # ssl_ctx.set_ciphers(CIPHERS)
         if mode in ('TLS_SELF_SIGNED', 'TLS_INSECURE'):
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE

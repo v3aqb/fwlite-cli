@@ -171,10 +171,10 @@ class Hxs3Connection(HxsConnection):
         scheme = 'ws'
         if self.proxy.scheme == 'hxs3s':
             scheme = 'wss'
-            # ssl_ctx = ssl.create_default_context()
-            ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
-            ssl_ctx.set_alpn_protocols(["http/1.1"])
-            ssl_ctx.set_ciphers(CIPHERS)
+            ssl_ctx = ssl.create_default_context()
+            # ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
+            # ssl_ctx.set_alpn_protocols(["http/1.1"])
+            # ssl_ctx.set_ciphers(CIPHERS)
             if is_ipaddr(self.proxy.hostname):
                 ssl_ctx.check_hostname = False
                 ssl_ctx.verify_mode = ssl.CERT_NONE
