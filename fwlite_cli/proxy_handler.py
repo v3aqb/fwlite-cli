@@ -73,6 +73,7 @@ class ForwardContext:
         self.last_active = time.monotonic()
         self.first_send = 0
         self.target = target
+        self.forward_break = False
         # eof recieved
         self.remote_eof = False
         self.local_eof = False
@@ -844,7 +845,7 @@ class http_handler(BaseProxyHandler):
         context = ForwardContext(self.path)
         await self.forward(context)
         if context.retryable:
-            self.logger.info(repr(context))
+            self.logger.warning('%r, timeout: %.2fs', context, self.timeout)
             self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
                                        False, self.failed_parents, self.ppname)
             if not context.local_eof:
@@ -883,6 +884,8 @@ class http_handler(BaseProxyHandler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, timeout=intv)
             except asyncio.TimeoutError:
+                if context.forward_break:
+                    return
                 idle_time = time.monotonic() - context.last_active
                 if idle_time > 60 and context.remote_eof:
                     self.logger.debug('forward_from_client timeout with eof recieved from remote')
@@ -926,6 +929,7 @@ class http_handler(BaseProxyHandler):
                 idle_time = time.monotonic() - context.last_active
                 if context.retryable and time.monotonic() - context.last_active > self.timeout:
                     self.logger.debug('forward_from_remote timeout, retryable')
+                    context.forward_break = True
                     break
                 if context.local_eof and idle_time > timeout:
                     self.logger.debug('forward_from_remote timeout with eof recieved from client')
