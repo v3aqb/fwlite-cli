@@ -110,6 +110,9 @@ class Socks5UDPServer:
         dgram = data_io.read()
 
         remote_ip = ipaddress.ip_address(addr)
+        if remote_ip.is_private:
+            self.logger.debug('remote_ip %s is private, drop', remote_ip)
+            return
         # send recieved dgram to relay
         async with self.lock:
             if client_addr not in self.udp_relay_holder:
