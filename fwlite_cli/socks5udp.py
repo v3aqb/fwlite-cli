@@ -46,7 +46,7 @@ class Socks5UDPServer:
     async def bind(self):
         # can be called multiple times
         if self.running:
-            self.logger.info('reuse udp server, %s', self.client_stream.sockname)
+            self.logger.debug('reuse udp server, %s', self.client_stream.sockname)
         else:
             client_ip = self.socks5_handler.client_address[0]
             stream = await asyncio_dgram.connect((client_ip, 53))

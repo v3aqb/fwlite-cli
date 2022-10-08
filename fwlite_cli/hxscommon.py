@@ -230,7 +230,7 @@ class HxsConnection:
             return socketpair_a
         await self.send_ping()
         if self.connection_lost:
-            raise ConnectionLostError(0, 'hxs connection lost')
+            raise ConnectionLostError(0, 'hxs connection lost after request sent')
         raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
 
     async def read_from_client(self, stream_id, client_reader):
@@ -266,7 +266,7 @@ class HxsConnection:
     async def send_frame(self, type_, flags, stream_id, payload):
         self.logger.debug('send_frame type: %d, stream_id: %d', type_, stream_id)
         if self.connection_lost:
-            self.logger.error('send_frame: connection closed. %s', self.name)
+            self.logger.debug('send_frame: connection closed. %s', self.name)
             return
         if type_ != PING:
             self._last_send = time.monotonic()
@@ -383,7 +383,7 @@ class HxsConnection:
                         await self.client_writer_drain(stream_id)
                         self._stat_data_recv += data_len
                     except (OSError, KeyError) as err:
-                        self.logger.error('send data to stream fail.', err)
+                        self.logger.error('send data to stream fail. %r', err)
                         # client error, reset stream
                         asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == HEADERS:  # 1

@@ -685,7 +685,7 @@ class http_handler(BaseProxyHandler):
             self.close_connection = True
             return
         except ClientError as err:
-            self.logger.error(repr(err))
+            self.logger.error('ClientError: %r', err)
             self.close_connection = True
             self.remote_writer.close()
             try:
