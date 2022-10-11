@@ -117,20 +117,20 @@ class Socks5UDPServer:
         async with self.lock:
             if client_addr not in self.udp_relay_holder:
                 try:
-                    await self.get_relay(client_addr, remote_ip)
+                    await self.get_relay(client_addr, (addr, port), remote_ip)
                 except OSError as err:
                     self.logger.error('get_relay fail: %r', err)
                     return
         relay = self.udp_relay_holder[client_addr]
         await relay.send(addr, port, dgram, data)
 
-    async def get_relay(self, client_addr, remote_ip):
+    async def get_relay(self, client_addr, remote_addr, remote_ip):
         proxy = self.socks5_handler.conf.parentlist.get(self.socks5_handler.conf.udp_proxy)
         if proxy:
             proxy_list = [proxy, ]
         else:
             proxy_list = self.socks5_handler.conf.GET_PROXY.get_proxy(
-                'udp', (str(remote_ip), 0), 'UDP_ASSOCIATE',
+                'udp', remote_addr, 'UDP_ASSOCIATE',
                 remote_ip, self.socks5_handler.mode)
         for proxy in proxy_list:
             try:
