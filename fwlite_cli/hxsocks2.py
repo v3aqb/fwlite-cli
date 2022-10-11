@@ -73,7 +73,7 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
             return reader, writer, conn.name
         except ConnectionLostError as err:
             logger = logging.getLogger('hxs2')
-            logger.error('%r', err)
+            logger.info('connect %s:%d fail: %r %s', addr, port, err, proxy.name)
             continue
     raise ConnectionResetError(0, 'get hxs2 connection failed.')
 

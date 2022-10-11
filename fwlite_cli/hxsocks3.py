@@ -70,7 +70,7 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme in ('hxs3', 'hxs3s')
 
-    # get hxs2 connection
+    # get hxs3 connection
     for _ in range(MAX_CONNECTION + 1):
         try:
             conn = await hxs3_get_connection(proxy, timeout, tcp_nodelay)
@@ -81,7 +81,7 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
             return reader, writer, conn.name
         except ConnectionLostError as err:
             logger = logging.getLogger('hxs3')
-            logger.error('%r', err)
+            logger.info('connect %s:%d fail: %r %s', addr, port, err, proxy.name)
             continue
     raise ConnectionResetError(0, 'get hxs3 connection failed.')
 
