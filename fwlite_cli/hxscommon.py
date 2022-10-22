@@ -626,7 +626,7 @@ class HxsConnection:
                 await self._client_writer[stream_id].drain()
                 # tell client to resume reading
                 await self.send_frame(WINDOW_UPDATE, 0, stream_id, bytes(random.randint(64, 256)))
-            except OSError:
+            except (OSError, KeyError):
                 await self.close_stream(stream_id)
                 return
 
