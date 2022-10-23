@@ -1,6 +1,5 @@
 
 
-import os
 import struct
 import asyncio
 import logging
@@ -8,7 +7,6 @@ from fwlite_cli.socks5udp import UDPRelayInterface
 
 UDP_RELAY2_STORE = {}  # udp_sid, udp_relay
 UDP_RELAY2_ADDR = {}   # client_addr, udp_sid
-UDP_CLIENT_ID = os.urandom(8)
 
 logger = logging.getLogger('hxs_udp2')
 logger.setLevel(logging.INFO)
@@ -47,7 +45,7 @@ class UDPRelayHxs2(UDPRelayInterface):
     async def _send(self, addr, port, dgram, data):
         # find a hxs_connection, send dgram
         conn = await self.get_connection()
-        await conn.send_dgram2(UDP_CLIENT_ID, self.sid, data)
+        await conn.send_dgram2(self.sid, data)
 
     async def get_connection(self):
         for proxy in self.hxs_list:

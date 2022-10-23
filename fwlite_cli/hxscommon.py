@@ -85,6 +85,8 @@ for fname in os.listdir('./.hxs_known_hosts'):
     if fname.endswith('.cert') and os.path.isfile(os.path.join('./.hxs_known_hosts', fname)):
         KNOWN_HOSTS[fname[:-5]] = open('./.hxs_known_hosts/' + fname, 'rb').read()
 
+CLIENT_ID = os.urandom(8)
+
 
 class ConnectionLostError(Exception):
     pass
@@ -642,9 +644,9 @@ class HxsConnection:
     async def close(self):
         raise NotImplementedError
 
-    async def send_dgram2(self, client_id, udp_sid, data):
+    async def send_dgram2(self, udp_sid, data):
         # remote addr included in data, as shadowsocks format
-        payload = client_id
+        payload = CLIENT_ID
         payload += struct.pack(b'!LH', udp_sid, len(data))
         payload += data
         payload += bytes(random.randint(8, 128))
