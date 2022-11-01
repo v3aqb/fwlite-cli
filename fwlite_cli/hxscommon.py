@@ -45,7 +45,7 @@ DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
 
 CLIENT_AUTH_PADDING = 180
-MAX_STREAM_ID = 65530
+MAX_STREAM_ID = 32767
 MAX_CONNECTION = 2
 CLIENT_WRITE_BUFFER = 524288
 
@@ -72,7 +72,6 @@ PING = 6
 GOAWAY = 7
 WINDOW_UPDATE = 8
 # CONTINUATION = 9
-# UDP_ASSOCIATE = 20
 UDP_DGRAM2 = 21
 
 PONG = 1
@@ -426,7 +425,7 @@ class HxsConnection:
                     if frame_flags == PONG:
                         resp_time = time.monotonic() - self._ping_time
                         if time.monotonic() - self._last_ping_log > 30:
-                            self.logger.info('server response time: %.3f %s, stream %s',
+                            self.logger.info('server response time: %.3f %s, stream_count %s',
                                              resp_time,
                                              self.proxy.name,
                                              self.count())
@@ -587,7 +586,7 @@ class HxsConnection:
     def print_status(self):
         if not self.connected:
             return
-        self.logger.info('%s:%s status:', self.name, self._socport)
+        self.logger.info('%s:%s next_id: %s, status:', self.name, self._socport, self._next_stream_id)
         self.logger.info('recv_tp_max: %8d, ewma: %8d', self._recv_tp_max, self._recv_tp_ewma)
         self.logger.info('sent_tp_max: %8d, ewma: %8d', self._sent_tp_max, self._sent_tp_ewma)
         self.logger.info('buffer_ewma: %8d, stream: %6d', self._buffer_size_ewma, self.count())
