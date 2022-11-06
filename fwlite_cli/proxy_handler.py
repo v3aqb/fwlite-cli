@@ -913,7 +913,7 @@ class http_handler(BaseProxyHandler):
         context.local_eof = True
         try:
             write_to.write_eof()
-        except OSError:
+        except (OSError, RuntimeError):
             pass
 
     async def forward_from_remote(self, read_from, write_to, context, timeout):
