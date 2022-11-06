@@ -392,7 +392,7 @@ class HxsConnection:
                         # server is not supposed to open a new stream
                         # send connection error?
                         break
-                    if stream_id < self._next_stream_id:
+                    if stream_id in self._client_writer:
                         if frame_flags == END_STREAM_FLAG:
                             self._stream_status[stream_id] |= EOF_RECV
                             if stream_id in self._client_writer:
@@ -424,12 +424,12 @@ class HxsConnection:
                 elif frame_type == PING:  # 6
                     if frame_flags == PONG:
                         resp_time = time.monotonic() - self._ping_time
-                        if time.monotonic() - self._last_ping_log > 30:
-                            self.logger.info('server response time: %.3f %s, stream_count %s',
-                                             resp_time,
-                                             self.proxy.name,
-                                             self.count())
-                            self._last_ping_log = time.monotonic()
+                        # if time.monotonic() - self._last_ping_log > 60 and self.count():
+                        #     self.logger.info('server response time: %.3f %s, stream_count %s',
+                        #                      resp_time,
+                        #                      self.proxy.name,
+                        #                      self.count())
+                        #     self._last_ping_log = time.monotonic()
                         if resp_time < 1:
                             self.proxy.log('', resp_time)
                         self._ping_test = False
