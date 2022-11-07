@@ -37,14 +37,14 @@ try:
 except ImportError:
     pass
 
-from .parent_proxy import ParentProxyList, ParentProxy
-from .get_proxy import get_proxy
-from .redirector import redirector
-from .util import SConfigParser, parse_hostport
-from .resolver import Resolver
-from .plugin_manager import plugin_register
-from .port_forward import ForwardManager
-from .plugin_manager import PluginManager
+from fwlite_cli.parent_proxy import ParentProxyList, ParentProxy
+from fwlite_cli.get_proxy import get_proxy
+from fwlite_cli.redirector import redirector
+from fwlite_cli.util import SConfigParser, parse_hostport
+from fwlite_cli.resolver import Resolver
+from fwlite_cli.plugin_manager import plugin_register
+from fwlite_cli.port_forward import ForwardManager
+from fwlite_cli.plugin_manager import PluginManager
 
 
 PAC = r'''
@@ -637,7 +637,7 @@ class Config:
         self.logger.info('start() ended')
 
     def hello(self):
-        from . import __version__
+        from fwlite_cli import __version__
         hello = 'FWLite %s with asyncio, ' % __version__
         import platform
         hello += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
