@@ -388,31 +388,25 @@ class HxsConnection:
                         # client error, reset stream
                         asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == HEADERS:  # 1
-                    if self._next_stream_id == stream_id:
-                        # server is not supposed to open a new stream
-                        # send connection error?
-                        break
-                    if stream_id in self._client_writer:
-                        if frame_flags == END_STREAM_FLAG:
-                            self._stream_status[stream_id] |= EOF_RECV
-                            if stream_id in self._client_writer:
-                                try:
-                                    self._client_writer[stream_id].write_eof()
-                                except OSError:
-                                    self._stream_status[stream_id] = CLOSED
-                            if self._stream_status[stream_id] == CLOSED:
-                                asyncio.ensure_future(self.close_stream(stream_id))
-                        else:
-                            # confirm a stream is opened
-                            if stream_id in self._client_connect_event:
-                                self._stream_status[stream_id] = OPEN
-                                self._client_connect_event[stream_id].set()
-                            else:
-                                addr = '%s:%s' % self._stream_addr[stream_id]
-                                self.logger.info('%s stream open, client closed, %s', self.name, addr)
+                    if frame_flags == END_STREAM_FLAG:
+                        self._stream_status[stream_id] |= EOF_RECV
+                        if stream_id in self._client_writer:
+                            try:
+                                self._client_writer[stream_id].write_eof()
+                            except OSError:
                                 self._stream_status[stream_id] = CLOSED
-                                await self.send_frame(RST_STREAM, 0, stream_id,
-                                                      bytes(random.randint(8, 256)))
+                        if self._stream_status[stream_id] == CLOSED:
+                            asyncio.ensure_future(self.close_stream(stream_id))
+                    else:
+                        if stream_id in self._client_connect_event:
+                            self._stream_status[stream_id] = OPEN
+                            self._client_connect_event[stream_id].set()
+                        else:
+                            addr = '%s:%s' % self._stream_addr[stream_id]
+                            self.logger.info('%s stream open, client closed, %s', self.name, addr)
+                            self._stream_status[stream_id] = CLOSED
+                            await self.send_frame(RST_STREAM, 0, stream_id,
+                                                  bytes(random.randint(8, 256)))
                 elif frame_type == RST_STREAM:  # 3
                     self._stream_status[stream_id] = CLOSED
                     if stream_id in self._client_connect_event:
