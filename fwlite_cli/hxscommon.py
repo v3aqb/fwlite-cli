@@ -151,7 +151,6 @@ class HxsConnection:
         self._last_recv = time.monotonic()
         self._last_send = time.monotonic()
         self._last_ping = 0
-        self._last_ping_log = 0
         self._connection_task = None
         self._connection_stat = None
 
@@ -418,12 +417,6 @@ class HxsConnection:
                 elif frame_type == PING:  # 6
                     if frame_flags == PONG:
                         resp_time = time.monotonic() - self._ping_time
-                        # if time.monotonic() - self._last_ping_log > 60 and self.count():
-                        #     self.logger.info('server response time: %.3f %s, stream_count %s',
-                        #                      resp_time,
-                        #                      self.proxy.name,
-                        #                      self.count())
-                        #     self._last_ping_log = time.monotonic()
                         if resp_time < 1:
                             self.proxy.log('', resp_time)
                         self._ping_test = False
