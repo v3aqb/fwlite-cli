@@ -141,7 +141,7 @@ class HxsConnection:
         self._settings_async_drain = None
 
         self._client_writer = {}
-        self._client_connect_event = {}
+        self._remote_connected_event = {}
         self._client_resume_reading = {}
         self._client_drain_lock = {}
         self._stream_status = {}
@@ -197,7 +197,7 @@ class HxsConnection:
 
         # wait for server response
         event = Event()
-        self._client_connect_event[stream_id] = event
+        self._remote_connected_event[stream_id] = event
         self._client_resume_reading[stream_id] = asyncio.Event()
         self._client_resume_reading[stream_id].set()
 
@@ -208,12 +208,12 @@ class HxsConnection:
         except asyncio.TimeoutError:
             self.logger.error('%s connect %s no response, timeout=%d',
                               self.name, '%s:%d' % (addr, port), timeout)
-            del self._client_connect_event[stream_id]
+            del self._remote_connected_event[stream_id]
             self.print_status()
             await self.send_ping()
             raise
 
-        del self._client_connect_event[stream_id]
+        del self._remote_connected_event[stream_id]
 
         if self._stream_status[stream_id] == OPEN:
             socketpair_a, socketpair_b = socket.socketpair()
@@ -398,9 +398,9 @@ class HxsConnection:
                         if self._stream_status[stream_id] == CLOSED:
                             asyncio.ensure_future(self.close_stream(stream_id))
                     else:
-                        if stream_id in self._client_connect_event:
+                        if stream_id in self._remote_connected_event:
                             self._stream_status[stream_id] = OPEN
-                            self._client_connect_event[stream_id].set()
+                            self._remote_connected_event[stream_id].set()
                         else:
                             addr = '%s:%s' % self._stream_addr[stream_id]
                             self.logger.info('%s stream open, client closed, %s', self.name, addr)
@@ -409,8 +409,8 @@ class HxsConnection:
                                                   bytes(random.randint(8, 256)))
                 elif frame_type == RST_STREAM:  # 3
                     self._stream_status[stream_id] = CLOSED
-                    if stream_id in self._client_connect_event:
-                        self._client_connect_event[stream_id].set()
+                    if stream_id in self._remote_connected_event:
+                        self._remote_connected_event[stream_id].set()
                     asyncio.ensure_future(self.close_stream(stream_id))
                 elif frame_type == SETTINGS:
                     if stream_id == 1:
@@ -464,7 +464,7 @@ class HxsConnection:
                          self._stat_data_sent / self._stat_total_sent)
         self.print_status()
 
-        for sid, event in self._client_connect_event.items():
+        for sid, event in self._remote_connected_event.items():
             if isinstance(event, Event):
                 self._stream_status[sid] = CLOSED
                 event.set()
