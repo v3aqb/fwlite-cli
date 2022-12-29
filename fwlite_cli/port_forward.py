@@ -8,9 +8,28 @@ import logging
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
-CIPHERS_A = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
-CIPHERS_C = "TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES256-GCM-SHA384"
-CIPHERS = CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C
+# see "openssl ciphers" command for cipher names
+CIPHERS_A = [
+'TLS_AES_256_GCM_SHA384',
+'TLS_CHACHA20_POLY1305_SHA256',
+'TLS_AES_128_GCM_SHA256',
+'ECDHE-ECDSA-AES256-GCM-SHA384',
+'ECDHE-ECDSA-AES128-GCM-SHA256',
+'ECDHE-ECDSA-CHACHA20-POLY1305',
+'ECDHE-ECDSA-AES256-SHA384',
+'ECDHE-ECDSA-AES128-SHA256',
+]
+CIPHERS_C = [
+'TLS_CHACHA20_POLY1305_SHA256',
+'TLS_AES_256_GCM_SHA384',
+'TLS_AES_128_GCM_SHA256',
+'ECDHE-ECDSA-CHACHA20-POLY1305',
+'ECDHE-ECDSA-AES128-GCM-SHA256',
+'ECDHE-ECDSA-AES256-GCM-SHA384',
+'ECDHE-ECDSA-AES128-SHA256',
+'ECDHE-ECDSA-AES256-SHA384',
+]
+CIPHERS = ':'.join(CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C)
 
 logger = logging.getLogger('tunnel')
 
@@ -131,16 +150,16 @@ class ForwardHandler:
         self.tcp_nodelay = tcp_nodelay
 
     async def connect_tls(self, mode):
-        ssl_ctx = ssl.create_default_context()
-        # ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
-        # ssl_ctx.set_alpn_protocols(["http/1.1"])
-        # ssl_ctx.set_ciphers(CIPHERS)
+        # ctx = ssl.create_default_context()
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        # ctx.set_alpn_protocols(["http/1.1"])
+        ctx.set_ciphers(CIPHERS)
         if mode in ('TLS_SELF_SIGNED', 'TLS_INSECURE'):
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
         reader, writer = await asyncio.open_connection(self.addr,
                                                        self.port,
-                                                       ssl=ssl_ctx,
+                                                       ssl=ctx,
                                                        ssl_handshake_timeout=self.ctimeout)
         return reader, writer
 

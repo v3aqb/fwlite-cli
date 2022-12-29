@@ -40,9 +40,27 @@ from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_PADDING
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
-CIPHERS_A = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
-CIPHERS_C = "TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES256-GCM-SHA384"
-CIPHERS = CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C
+CIPHERS_A = [
+'TLS_AES_256_GCM_SHA384',
+'TLS_CHACHA20_POLY1305_SHA256',
+'TLS_AES_128_GCM_SHA256',
+'ECDHE-ECDSA-AES256-GCM-SHA384',
+'ECDHE-ECDSA-AES128-GCM-SHA256',
+'ECDHE-ECDSA-CHACHA20-POLY1305',
+'ECDHE-ECDSA-AES256-SHA384',
+'ECDHE-ECDSA-AES128-SHA256',
+]
+CIPHERS_C = [
+'TLS_CHACHA20_POLY1305_SHA256',
+'TLS_AES_256_GCM_SHA384',
+'TLS_AES_128_GCM_SHA256',
+'ECDHE-ECDSA-CHACHA20-POLY1305',
+'ECDHE-ECDSA-AES128-GCM-SHA256',
+'ECDHE-ECDSA-AES256-GCM-SHA384',
+'ECDHE-ECDSA-AES128-SHA256',
+'ECDHE-ECDSA-AES256-SHA384',
+]
+CIPHERS = ':'.join(CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C)
 
 
 def set_logger():
@@ -167,20 +185,20 @@ class Hxs3Connection(HxsConnection):
         self.logger.debug('hxsocks3 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
         self.logger.info('%s connect to server', self.name)
-        ssl_ctx = None
+        ctx = None
         scheme = 'ws'
         if self.proxy.scheme == 'hxs3s':
             scheme = 'wss'
-            ssl_ctx = ssl.create_default_context()
-            # ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)  # prefer TLS 1.2
-            # ssl_ctx.set_alpn_protocols(["http/1.1"])
-            # ssl_ctx.set_ciphers(CIPHERS)
-            if is_ipaddr(self.proxy.hostname):
-                ssl_ctx.check_hostname = False
-                ssl_ctx.verify_mode = ssl.CERT_NONE
+            # ctx = ssl.create_default_context()
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.set_alpn_protocols(["http/1.1"])
+            ctx.set_ciphers(CIPHERS)
+            if 'insecure' in self.proxy.query or is_ipaddr(self.proxy.hostname):
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
 
         uri = '%s://%s:%d/%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
-        self.remote_writer = await websockets.client.connect(uri, ssl=ssl_ctx, compression=None,
+        self.remote_writer = await websockets.client.connect(uri, ssl=ctx, compression=None,
                                                              ping_interval=None,
                                                              ping_timeout=None,
                                                              max_size=2 ** 17,
