@@ -197,7 +197,10 @@ class Hxs3Connection(HxsConnection):
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
 
-        uri = '%s://%s:%d/%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
+        if ":" in self.proxy.hostname:
+            uri = '%s://[%s]:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
+        else:
+            uri = '%s://%s:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
         self.remote_writer = await websockets.client.connect(uri, ssl=ctx, compression=None,
                                                              ping_interval=None,
                                                              ping_timeout=None,

@@ -495,6 +495,7 @@ class HxsConnection:
 
             # TODO: ask user if a certificate should be accepted or not.
             host, port = self.proxy._host_port
+            host = host.replace(':', '_')
             server_id = '%s_%d' % (host, port)
             if server_id not in KNOWN_HOSTS:
                 self.logger.info('hxs: server %s new cert %s saved.',
