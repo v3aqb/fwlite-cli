@@ -823,6 +823,7 @@ class http_handler(BaseProxyHandler):
         except ConnectionDenied as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
+            await self._do_CONNECT(True)
             return
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
@@ -927,7 +928,8 @@ class http_handler(BaseProxyHandler):
                 break
             except asyncio.TimeoutError:
                 idle_time = time.monotonic() - context.last_active
-                if context.retryable and time.monotonic() - context.last_active > self.timeout:
+                if self.request_host[1] < 1024 and context.retryable and\
+                        time.monotonic() - context.last_active > self.timeout:
                     self.logger.debug('forward_from_remote timeout, retryable')
                     context.forward_break = True
                     break
