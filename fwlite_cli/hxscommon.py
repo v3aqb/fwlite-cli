@@ -548,6 +548,7 @@ class HxsConnection:
                 break
             if idle_time > PING_INTV:
                 if not self._ping_test and time.monotonic() - self._last_ping > PING_INTV:
+                    await asyncio.sleep(random.random())
                     await self.send_ping()
             continue
         self.connection_lost = True

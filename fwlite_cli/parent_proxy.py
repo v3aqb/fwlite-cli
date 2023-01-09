@@ -105,7 +105,10 @@ class ParentProxy:
         self._host_port = (self.hostname, self.port)  # for plugin only
         if self.proxy:
             if self.scheme:
-                self.short = '%s://%s:%s' % (self.scheme, self._host_port[0], self._host_port[1])
+                if ':' in self.hostname:
+                    self.short = '%s://[%s]:%s' % (self.scheme, self._host_port[0], self._host_port[1])
+                else:
+                    self.short = '%s://%s:%s' % (self.scheme, self._host_port[0], self._host_port[1])
             else:
                 self.short = self.proxy
         else:

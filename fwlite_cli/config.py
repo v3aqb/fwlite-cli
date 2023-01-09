@@ -531,7 +531,7 @@ class Config:
         self.stdout('redir')
 
     def list_proxy(self):
-        data = [(p.name, p.short, p.priority, p.get_avg_resp_time())
+        data = [(p.name, p.short, p.priority, '%.2f' % p.get_avg_resp_time())
                 for _, p in self.parentlist.dict.items()]
         data = sorted(data, key=lambda item: item[0])
         data = sorted(data, key=lambda item: item[2])
