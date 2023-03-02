@@ -66,7 +66,6 @@ class Socks5UDPServer:
                 fut = self.client_stream.recv()
                 data, client_addr = await asyncio.wait_for(fut, timeout=6)
             except asyncio.TimeoutError:
-                self.close_inactive_relay()
                 inactive_time = time.monotonic() - max(self.last_recv, self.last_send, self.init_time)
                 if inactive_time > self.timeout * 2:
                     if not self.last_send:
@@ -91,6 +90,7 @@ class Socks5UDPServer:
                 await self.on_client_recv(data[3:], client_addr)
             except OSError:
                 self.logger.warning('udp_server send OSError')
+        self.close_inactive_relay()
         self.logger.info('udp server finish, %ds, running: %s',
                          time.monotonic() - self.init_time, self.running)
         self.close()
