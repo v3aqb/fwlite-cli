@@ -129,7 +129,7 @@ class Socks5UDPServer:
         if proxy:
             proxy_list = [proxy, ]
         else:
-            proxy_list = self.socks5_handler.conf.GET_PROXY.get_proxy(
+            proxy_list = self.socks5_handler.conf.cic.get_proxy(
                 'udp', remote_addr, 'UDP_ASSOCIATE',
                 remote_ip, self.socks5_handler.mode)
         for proxy in proxy_list:

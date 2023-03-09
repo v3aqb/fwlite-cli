@@ -105,13 +105,13 @@ async def resolve(host, port=None):
 
 
 class Resolver:
-    def __init__(self, get_proxy, bad_ip):
-        self.get_proxy = get_proxy
-        self.bad_ip = bad_ip
+    def __init__(self, cic):
+        self.cic = cic
+        self.bad_ip = set(cic.conf.userconf.dget('dns', 'bad_ip', '').split('|'))
         self.zero = ip_address(u'0.0.0.0')
 
     def is_poisoned(self, domain, mode):
-        if self.get_proxy and self.get_proxy.isgfwed_resolver(domain, mode):
+        if self.cic.get_proxy_o and self.cic.get_proxy_o.isgfwed_resolver(domain, mode):
             return True
         return False
 

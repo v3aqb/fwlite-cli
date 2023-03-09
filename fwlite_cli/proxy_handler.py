@@ -334,7 +334,7 @@ class http_handler(BaseProxyHandler):
         #     self.headers['Host'] = '%s:%d' % (self.request_host)
 
         # redirector
-        new_url = self.conf.GET_PROXY.redirect(self)
+        new_url = self.conf.cic.redirect(self)
         if new_url:
             self.logger.debug('redirect %s, %s %s', new_url, self.command, self.shortpath)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
@@ -366,7 +366,7 @@ class http_handler(BaseProxyHandler):
                                           parse.path.split(':')[0],
                                           '?' if parse.query else '')
 
-        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.mode)
+        self.request_ip = await self.conf.cic.resolver.get_ip_address(self.request_host, self.mode)
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
@@ -419,16 +419,16 @@ class http_handler(BaseProxyHandler):
                     self.retryable = False
             if not self.retryable:
                 self.close_connection = True
-                self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
-                                           self.failed_parents, self.ppname)
+                self.conf.cic.notify(self.command, self.shortpath, self.request_host, False,
+                                     self.failed_parents, self.ppname)
                 return
 
             self.set_timeout()
 
             if self.getparent():
                 # if no more proxy available
-                self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
-                                           self.failed_parents, self.ppname)
+                self.conf.cic.notify(self.command, self.shortpath, self.request_host, False,
+                                     self.failed_parents, self.ppname)
                 return self.send_error(504, explain='no more proxy available')
 
             # try get from connection pool
@@ -662,8 +662,8 @@ class http_handler(BaseProxyHandler):
                 self.logger.error('forward response body error.')
 
             await self.client_writer_write()
-            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, True,
-                                       self.failed_parents, self.ppname)
+            self.conf.cic.notify(self.command, self.shortpath, self.request_host, True,
+                                 self.failed_parents, self.ppname)
             self.conf.proxy_log(self.pproxy, self.request_host[0], rtime)
             if remote_close or self.close_connection:
                 self.remote_writer.close()
@@ -709,8 +709,8 @@ class http_handler(BaseProxyHandler):
                 self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
                 await self._do_GET(True)
                 return
-            self.conf.GET_PROXY.notify(self.command, self.shortpath, self.request_host, False,
-                                       self.failed_parents, self.ppname)
+            self.conf.cic.notify(self.command, self.shortpath, self.request_host, False,
+                                 self.failed_parents, self.ppname)
             return self.send_error(504)
 
     do_HEAD = do_POST = do_PUT = do_DELETE = do_OPTIONS = do_PATCH = do_TRACE = do_GET
@@ -763,7 +763,7 @@ class http_handler(BaseProxyHandler):
             self.shortpath = '%s:%d' % self.request_host
 
         # redirector
-        new_url = self.conf.GET_PROXY.redirect(self)
+        new_url = self.conf.cic.redirect(self)
         if new_url:
             self.logger.debug('redirect %s, %s %s', new_url, self.command, self.path)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
@@ -779,7 +779,7 @@ class http_handler(BaseProxyHandler):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # random.shuffle(self._proxylist)
 
-        self.request_ip = await self.conf.resolver.get_ip_address(self.request_host, self.mode)
+        self.request_ip = await self.conf.cic.resolver.get_ip_address(self.request_host, self.mode)
 
         if self.request_ip.is_loopback:
             if ip_address(self.client_address[0]).is_loopback:
@@ -801,8 +801,8 @@ class http_handler(BaseProxyHandler):
                 return
 
         if self.getparent(gfwed=gfwed):
-            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
-                                       False, self.failed_parents, self.ppname)
+            self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
+                                 False, self.failed_parents, self.ppname)
             return
 
         iplist = None
@@ -828,13 +828,13 @@ class http_handler(BaseProxyHandler):
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
-            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
-                                       False, self.failed_parents, self.ppname)
+            self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
+                                 False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
         except Exception:
-            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
-                                       False, self.failed_parents, self.ppname)
+            self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
+                                 False, self.failed_parents, self.ppname)
             self.logger.error('CONNECT create connection failed.', exc_info=True)
             return
         self.logger.debug('%s connected', self.path)
@@ -847,8 +847,8 @@ class http_handler(BaseProxyHandler):
         await self.forward(context)
         if context.retryable:
             self.logger.warning('%r, timeout: %.2fs', context, self.timeout)
-            self.conf.GET_PROXY.notify(self.command, self.shortpath or self.path, self.request_host,
-                                       False, self.failed_parents, self.ppname)
+            self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
+                                 False, self.failed_parents, self.ppname)
             if not context.local_eof:
                 await self._do_CONNECT(retry=True)
 
@@ -947,12 +947,12 @@ class http_handler(BaseProxyHandler):
                 if self.command == 'CONNECT':
                     # log server response time
                     self.conf.proxy_log(self.pproxy, self.request_host[0], rtime)
-                    self.conf.GET_PROXY.notify(self.command,
-                                               self.shortpath or self.path,
-                                               self.request_host,
-                                               True,
-                                               self.failed_parents,
-                                               self.ppname)
+                    self.conf.cic.notify(self.command,
+                                         self.shortpath or self.path,
+                                         self.request_host,
+                                         True,
+                                         self.failed_parents,
+                                         self.ppname)
             context.from_remote()
             try:
                 write_to.write(data)
@@ -972,7 +972,7 @@ class http_handler(BaseProxyHandler):
     def getparent(self, gfwed=False):
         if self._proxylist is None:
             mode = max(3, self.mode) if gfwed else self.mode
-            self._proxylist = self.conf.GET_PROXY.get_proxy(
+            self._proxylist = self.conf.cic.get_proxy(
                 self.shortpath or self.path, self.request_host, self.command,
                 self.request_ip, mode)
         if not self._proxylist:
@@ -1031,19 +1031,19 @@ class http_handler(BaseProxyHandler):
                 return
 
         if parse.path == '/api/localrule' and self.command == 'GET':
-            data = json.dumps(self.conf.list_localrule(), indent=4)
+            data = json.dumps(self.conf.cic.list_localrule(), indent=4)
             self.write(code=200, data=data, ctype='application/json')
             return
         if parse.path == '/api/localrule' and self.command == 'POST':
             # accept a json encoded tuple: (str rule, int exp)
             rule, exp = json.loads(body)
-            self.conf.add_localrule(rule, exp)
+            self.conf.cic.add_localrule(rule, exp)
             self.write(200)
             return
         if parse.path.startswith('/api/localrule/') and self.command == 'DELETE':
             try:
                 rule = base64.urlsafe_b64decode(parse.path[15:].encode('latin1')).decode()
-                self.conf.del_localrule(rule)
+                self.conf.cic.del_localrule(rule)
                 self.write(200)
                 return
             except Exception as err:
@@ -1058,24 +1058,24 @@ class http_handler(BaseProxyHandler):
             else:
                 host = uri
                 uri = None
-            result = self.conf.GET_PROXY.isgfwed_resolver(host, uri)
+            result = self.conf.cic.get_proxy_o.isgfwed_resolver(host, uri)
             self.write(200, data=repr(result), ctype='text/plain')
             return
         if parse.path == '/api/redirector' and self.command == 'GET':
-            data = json.dumps(self.conf.list_redir(), indent=4)
+            data = json.dumps(self.conf.cic.list_redir(), indent=4)
             self.write(200, data=data, ctype='application/json')
             return
         if parse.path == '/api/redirector' and self.command == 'POST':
             # accept a json encoded tuple: (str rule, str dest)
             rule, dest = json.loads(body)
-            self.conf.add_redir(rule, dest)
+            self.conf.cic.add_redir(rule, dest)
             self.write(200)
             return
         if parse.path.startswith('/api/redirector/') and self.command == 'DELETE':
             try:
                 rule = urlparse.parse_qs(parse.query).get('rule', [''])[0]
                 rule = base64.urlsafe_b64decode(rule).decode()
-                self.conf.del_redir(rule)
+                self.conf.cic.del_redir(rule)
                 self.write(200)
                 return
             except Exception as err:

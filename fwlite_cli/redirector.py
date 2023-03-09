@@ -69,8 +69,8 @@ class redirector:
         from .apfilter import ap_rule
         logger.info('add redir: %s %s', rule, dest)
         if getp is None:
-            # in case GET_PROXY is initializing
-            getp = self.conf.GET_PROXY
+            # in case "get_proxy" is initializing
+            getp = self.conf.cic.get_proxy
         try:
             if rule in [a.rule for a, b in self.redirlst]:
                 logger.warning('multiple redirector rule! %s', rule)

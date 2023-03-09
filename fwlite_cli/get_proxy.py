@@ -67,8 +67,8 @@ class get_proxy:
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
 
-    def __init__(self, conf, load_local=None):
-        self.conf = conf
+    def __init__(self, cic, load_local=None):
+        self.cic = cic
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
         self.chinalist = ap_filter()
@@ -80,7 +80,7 @@ class get_proxy:
         if load_local is not None:
             iter_ = load_local
         else:
-            iter_ = open(self.conf.local_path)
+            iter_ = open(self.cic.conf.local_path)
         for line in iter_:
             if line.startswith('!'):
                 continue
@@ -91,7 +91,7 @@ class get_proxy:
                 self.add_temp(line)
 
     def load(self):
-        if self.conf.rproxy:
+        if self.cic.conf.rproxy:
             return
 
         self.load_gfwlist()
@@ -104,7 +104,7 @@ class get_proxy:
         self.chinalist = ap_filter()
 
         try:
-            with open(self.conf.gfwlist_path) as gfwlist:
+            with open(self.cic.conf.gfwlist_path) as gfwlist:
                 data = gfwlist.read()
                 if '!' not in data:
                     data = ''.join(data.split())
@@ -115,7 +115,7 @@ class get_proxy:
             self.logger.warning('gfw_list is corrupted! %r', err, exc_info=True)
 
         try:
-            with open(self.conf.chinalist_path) as chinalist:
+            with open(self.cic.conf.chinalist_path) as chinalist:
                 for line in chinalist:
                     self.chinalist.add(line)
         except Exception as err:
@@ -128,26 +128,23 @@ class get_proxy:
         self.logger.info('loading china_ip_list.txt...')
         self.china_ip_filter = NetFilter()
 
-        with open(self.conf.china_ip_path) as f:
+        with open(self.cic.conf.china_ip_path) as f:
             for line in f:
                 if line.strip() and '#' not in line:
                     self.china_ip_filter.add(line.strip())
         self.logger.info('loading china_ip_list_v6.txt...')
-        with open(self.conf.china_ipv6_path) as f:
+        with open(self.cic.conf.china_ipv6_path) as f:
             for line in f:
                 if line.strip() and '#' not in line:
                     self.china_ip_filter.add(line.strip())
         for network in CHINA_IP:
             self.china_ip_filter.add(network)
 
-    def redirect(self, hdlr):
-        return self.conf.REDIRECTOR.redirect(hdlr)
-
     def add_redirect(self, rule, dest):
-        return self.conf.REDIRECTOR.add_redirect(rule, dest, self)
+        return self.cic.redir_o.add_redirect(rule, dest, self)
 
     def bad302(self, uri):
-        return self.conf.REDIRECTOR.bad302(uri)
+        return self.cic.redir_o.bad302(uri)
 
     def add_ignore(self, rule):
         '''called by redirector'''
@@ -165,7 +162,7 @@ class get_proxy:
         return False
 
     def isgfwed_resolver(self, host, mode):
-        if self.conf.rproxy:
+        if self.cic.conf.rproxy:
             return None
         uri = 'http://%s/' % host
         result = self.local.match(uri, host)
@@ -178,7 +175,7 @@ class get_proxy:
         if self.chinalist.match(uri, host):
             return False
 
-        if self.conf.gfwlist_enable:
+        if self.cic.conf.gfwlist_enable:
             result = self.gfwlist.match(uri, host)
             if result is not None:
                 return result
@@ -216,7 +213,7 @@ class get_proxy:
         if self.ignore.match(uri, host):
             return None
 
-        if self.conf.gfwlist_enable:
+        if self.cic.conf.gfwlist_enable:
             result = self.gfwlist.match(uri, host)
             if result is not None:
                 return result
@@ -230,10 +227,10 @@ class get_proxy:
         if mode == 3:
             return True
 
-        if self.conf.HOSTS.get(host):
+        if self.cic.conf.HOSTS.get(host):
             return None
 
-        if self.conf.gfwlist_enable and self.gfwlist.match(uri, host):
+        if self.cic.conf.gfwlist_enable and self.gfwlist.match(uri, host):
             return True
         return None
 
@@ -260,20 +257,20 @@ class get_proxy:
 
         if gfwed is False:
             if ip and ip.is_private:
-                return [self.conf.parentlist.local or self.conf.parentlist.direct]
-            return [self.conf.parentlist.direct]
+                return [self.cic.conf.parentlist.local or self.cic.conf.parentlist.direct]
+            return [self.cic.conf.parentlist.direct]
 
-        parentlist = self.conf.parentlist.get_proxy_list(host)
+        parentlist = self.cic.conf.parentlist.get_proxy_list(host)
 
         if gfwed:
             if not parentlist:
                 self.logger.warning('No parent proxy available.')
                 return []
         else:
-            parentlist.insert(0, self.conf.parentlist.direct)
+            parentlist.insert(0, self.cic.conf.parentlist.direct)
 
-        if len(parentlist) > self.conf.maxretry + 1:
-            parentlist = parentlist[:self.conf.maxretry + 1]
+        if len(parentlist) > self.cic.conf.maxretry + 1:
+            parentlist = parentlist[:self.cic.conf.maxretry + 1]
         return parentlist
 
     def notify(self, command, url, requesthost, success, failed_parents, current_parent):
@@ -283,8 +280,8 @@ class get_proxy:
             if '_D1R3CT_' in failed_parents:
                 rule = '||%s' % requesthost[0]
                 if rule not in self.local.rules:
-                    resp_time = self.conf.parentlist.direct.get_avg_resp_time(requesthost[0])
-                    resp_time = resp_time - self.conf.gate
+                    resp_time = self.cic.conf.parentlist.direct.get_avg_resp_time(requesthost[0])
+                    resp_time = resp_time - self.cic.conf.gate
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
                     self.add_temp(rule, min(exp, 60))
 
@@ -294,4 +291,4 @@ class get_proxy:
         if rule not in self.local.rules:
             self.local.add(rule, (exp * 60) if exp else None)
             self.logger.info('add autoproxy rule: %s%s', rule, (' expire in %.1f min' % exp) if exp else '')
-            self.conf.stdout('local')
+            self.cic.conf.stdout('local')

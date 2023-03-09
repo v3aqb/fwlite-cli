@@ -38,10 +38,8 @@ except ImportError:
     pass
 
 from fwlite_cli.parent_proxy import ParentProxyList, ParentProxy
-from fwlite_cli.get_proxy import get_proxy
-from fwlite_cli.redirector import redirector
+from fwlite_cli.cic import CIC
 from fwlite_cli.util import SConfigParser, parse_hostport
-from fwlite_cli.resolver import Resolver
 from fwlite_cli.plugin_manager import plugin_register
 from fwlite_cli.port_forward import ForwardManager
 from fwlite_cli.plugin_manager import PluginManager
@@ -234,9 +232,7 @@ class Config:
 
         self.PAC = b''
 
-        self.REDIRECTOR = None  # redirector(self)
-        self.GET_PROXY = None  # get_proxy(self)
-        self.resolver = None  # Resolver(self.GET_PROXY, bad_ip)
+        self.cic = None  # CIC(self)
 
     def addhost(self, host, ip):
         try:
@@ -337,11 +333,7 @@ class Config:
 
         self.PAC = self.PAC.encode()
 
-        self.REDIRECTOR = redirector(self)
-        self.GET_PROXY = get_proxy(self)
-        bad_ip = set(self.userconf.dget('dns', 'bad_ip', '').split('|'))
-        apf = None if self.rproxy else self.GET_PROXY
-        self.resolver = Resolver(apf, bad_ip)
+        self.cic = CIC(self)
 
     def confsave(self):
         with open(self.conf_path, 'w') as conf_file:
@@ -474,8 +466,7 @@ class Config:
         await asyncio.gather(*task_list)
 
     def load(self):
-        self.GET_PROXY.load()
-        self.REDIRECTOR.load()
+        self.cic.load()
 
     async def post_start(self):
         await self.download()
@@ -508,27 +499,6 @@ class Config:
 
     def get_log(self):
         return self.stderr.getvalue()
-
-    def list_localrule(self):
-        return [(rule, self.GET_PROXY.local.expire[rule]) for rule in self.GET_PROXY.local.rules]
-
-    def add_localrule(self, rule, expire):
-        self.GET_PROXY.add_temp(rule, expire)
-
-    def del_localrule(self, rule):
-        self.GET_PROXY.local.remove(rule)
-        self.stdout('local')
-
-    def list_redir(self):
-        return self.REDIRECTOR.list()
-
-    def add_redir(self, rule, dest):
-        self.GET_PROXY.add_redirect(rule, dest)
-        self.stdout('redir')
-
-    def del_redir(self, rule):
-        self.REDIRECTOR.remove(rule)
-        self.stdout('redir')
 
     def list_proxy(self):
         data = [(p.name, p.short, p.priority, '%.2f' % p.get_avg_resp_time())
