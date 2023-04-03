@@ -222,6 +222,7 @@ class Config:
         self.listen = ('127.0.0.1', 8118)
 
         self.gate = 5
+        self.probation = 10
 
         self.plugin_manager = None  # PluginManager(self)
         self.port_forward = None  # ForwardManager(self)
@@ -281,13 +282,14 @@ class Config:
         else:
             self.listen = (listen.rsplit(':', 1)[0], int(listen.rsplit(':', 1)[1]))
 
-        ParentProxy.DEFAULT_TIMEOUT = self.timeout
-
         self.gate = self.userconf.dgetint('FWLite', 'gate', self.gate)
         if self.gate < 0:
             self.logger.warning('gate < 0, set to 0')
             self.gate = 0
+        self.probation = self.userconf.dgetint('FWLite', 'probation', self.probation)
+        ParentProxy.DEFAULT_TIMEOUT = self.timeout
         ParentProxy.GATE = self.gate
+        ParentProxy.PROBATION = self.probation
 
         self.udp_enable = self.userconf.dgetbool('udp', 'enable', self.udp_enable)
         self.udp_proxy = self.userconf.dget('udp', 'proxy', self.udp_proxy)
