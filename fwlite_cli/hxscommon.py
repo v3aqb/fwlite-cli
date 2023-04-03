@@ -47,6 +47,7 @@ CTX = b'hxsocks2'
 MAX_STREAM_ID = 32767
 MAX_CONNECTION = 2
 CLIENT_WRITE_BUFFER = 524288
+CONNECTING_LIMIT = 3
 
 PING_TIMEOUT = 4
 IDLE_TIMEOUT = 300
@@ -143,6 +144,7 @@ class HxsConnection:
         self._cipher = None
         self._next_stream_id = 1
         self._settings_async_drain = None
+        self._connecting = 0
 
         self._client_writer = {}
         self._remote_connected_event = {}
@@ -184,6 +186,7 @@ class HxsConnection:
             self._manager.remove(self)
             raise ConnectionResetError(0, 'hxs not connected.')
         # send connect request
+        self._connecting += 1
         payload = b''.join([bytes((len(addr), )),
                             addr.encode(),
                             struct.pack('>H', port),
@@ -213,6 +216,7 @@ class HxsConnection:
                               self.name, '%s:%d' % (addr, port), timeout)
             del self._remote_connected_event[stream_id]
             self.print_status()
+            self._connecting -= 1
             await self.send_ping()
             raise
 
@@ -231,7 +235,9 @@ class HxsConnection:
             self._client_drain_lock[stream_id] = asyncio.Lock()
             # start forwarding
             self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
+            self._connecting -= 1
             return socketpair_a
+        self._connecting -= 1
         await self.send_ping()
         if self.connection_lost:
             raise ConnectionLostError(0, 'hxs connection lost after request sent')
@@ -573,6 +579,8 @@ class HxsConnection:
         return self._recv_tp_ewma + self._sent_tp_ewma
 
     def is_busy(self):
+        if self._connecting > CONNECTING_LIMIT:
+            return True
         return self._buffer_size_ewma > 2048 or \
             (self._recv_tp_max > 524288 and self._recv_tp_ewma > self._recv_tp_max * 0.3) or \
             (self._sent_tp_max > 262144 and self._sent_tp_ewma > self._sent_tp_max * 0.3)
