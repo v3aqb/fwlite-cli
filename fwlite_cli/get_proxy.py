@@ -80,7 +80,8 @@ class get_proxy:
         if load_local is not None:
             iter_ = load_local
         else:
-            iter_ = open(self.cic.conf.local_path)
+            with open(self.cic.conf.local_path) as f:
+                iter_ = f.readlines()
         for line in iter_:
             if line.startswith('!'):
                 continue

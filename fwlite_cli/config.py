@@ -331,7 +331,8 @@ class Config:
         self.PAC = PAC.replace('__PROXY__', 'PROXY %s:%s' % (self.local_ip, self.listen[1]))
         if self.userconf.dget('FWLite', 'pac', ''):
             if os.path.isfile(self.userconf.dget('FWLite', 'pac', '')):
-                self.PAC = open(self.userconf.dget('FWLite', 'pac', '')).read()
+                with open(self.userconf.dget('FWLite', 'pac', '')) as f:
+                    self.PAC = f.read()
 
         self.PAC = self.PAC.encode()
 
@@ -460,8 +461,16 @@ class Config:
         task_list = []
         loop = asyncio.get_event_loop()
 
+        def file_exist(path):
+            if not os.path.exists(path):
+                return False
+            with open(path) as f:
+                if not f.read().strip():
+                    return False
+            return True
+
         for path, url in file_list.items():
-            if not os.path.exists(path) or not open(path).read():
+            if not file_exist(path):
                 task = loop.run_in_executor(None, _dl, path, url, proxy)
                 task_list.append(task)
 

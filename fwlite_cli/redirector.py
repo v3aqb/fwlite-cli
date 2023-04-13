@@ -96,7 +96,8 @@ class redirector:
         if adblock is not None:
             iter_ = adblock
         else:
-            iter_ = open(self.conf.adblock_path)
+            with open(self.conf.adblock_path) as f:
+                iter_ = f.readlines()
         for line in iter_:
             if not line.strip():
                 continue

@@ -87,7 +87,8 @@ if not os.path.exists('./.hxs_known_hosts'):
     os.mkdir('./.hxs_known_hosts')
 for fname in os.listdir('./.hxs_known_hosts'):
     if fname.endswith('.cert') and os.path.isfile(os.path.join('./.hxs_known_hosts', fname)):
-        KNOWN_HOSTS[fname[:-5]] = open('./.hxs_known_hosts/' + fname, 'rb').read()
+        with open('./.hxs_known_hosts/' + fname, 'rb') as f:
+            KNOWN_HOSTS[fname[:-5]] = f.read()
 
 CLIENT_ID = os.urandom(8)
 
