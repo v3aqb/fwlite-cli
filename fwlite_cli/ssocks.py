@@ -86,7 +86,7 @@ class SSConn:
         self.task = None
 
         self.aead = is_aead(ssmethod)
-        self.crypto = Encryptor(sspassword, ssmethod)
+        self.crypto = Encryptor(sspassword, ssmethod, role=0)
         self.connected = False
         self.last_active = time.time()
         # if eof recieved

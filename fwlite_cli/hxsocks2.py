@@ -173,7 +173,7 @@ class Hxs2Connection(HxsConnection):
         self._socport = self.remote_writer.get_extra_info('sockname')[1]
 
         # prep key exchange request
-        self._pskcipher = Encryptor(self._psk, self.method)
+        self._pskcipher = Encryptor(self._psk, self.method, role=0)
         ecc = ECC(self._pskcipher.key_len)
         pubk = ecc.get_pub_key()
         timestamp = struct.pack('>I', int(time.time()) // 30)

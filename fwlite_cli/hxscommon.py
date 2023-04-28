@@ -520,10 +520,10 @@ class HxsConnection:
                     shared_secret = ecc.get_dh_key(server_key)
                     self.logger.debug('hxs key exchange success')
                     if mode == 1:
-                        self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False)
+                        self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False, role=2)
                         self.bufsize += 16
                     else:
-                        self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False)
+                        self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False, role=2)
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.monitor())
