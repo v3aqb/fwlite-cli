@@ -19,7 +19,7 @@ setup(
             'fwlite-cli = fwlite_cli.__main__:main'
         ]
     },
-    dependency_links=['https://github.com/v3aqb/hxcrypto/archive/master.zip#egg=hxcrypto-0.0.4'],
+    dependency_links=['https://github.com/v3aqb/hxcrypto/archive/master.zip#egg=hxcrypto-0.0.5'],
     install_requires=["hxcrypto", "repoze.lru", "asyncio-dgram", "websockets"],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
@@ -27,6 +27,7 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
         'Topic :: Internet :: Proxy Servers',
     ],
 )
