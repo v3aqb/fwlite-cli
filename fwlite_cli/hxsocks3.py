@@ -35,8 +35,9 @@ from websockets.exceptions import ConnectionClosed
 from hxcrypto import InvalidTag, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
-from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_PADDING
+from fwlite_cli.hxscommon import HxsConnection
+from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from fwlite_cli.hxscommon import CLIENT_AUTH_PADDING, MAX_CONNECTION
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
@@ -76,8 +77,6 @@ def set_logger():
 
 set_logger()
 
-
-MAX_CONNECTION = 2
 
 CONN_MANAGER = {}  # (server, parentproxy): manager
 

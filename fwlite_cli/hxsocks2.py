@@ -30,13 +30,10 @@ from asyncio import Lock
 from hxcrypto import InvalidTag, is_aead, Encryptor, ECC
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import ConnectionLostError, HxsConnection, ReadFrameError
-from fwlite_cli.hxscommon import ConnectionDenied, CLIENT_AUTH_PADDING
-
-SS_SUBKEY = "ss-subkey"
-SS_SUBKEY_2022 = 'shadowsocks 2022 session subkey'
-
-READ_FRAME_TIMEOUT = 4
+from fwlite_cli.hxscommon import HxsConnection
+from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from fwlite_cli.hxscommon import CLIENT_AUTH_PADDING, READ_FRAME_TIMEOUT, MAX_CONNECTION
+from fwlite_cli.ssocks import SS_SUBKEY, SS_SUBKEY_2022
 
 
 def set_logger():
@@ -50,8 +47,6 @@ def set_logger():
 
 
 set_logger()
-
-MAX_CONNECTION = 2
 
 CONN_MANAGER = {}  # (server, parentproxy): manager
 
