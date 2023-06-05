@@ -153,4 +153,9 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel
         remote_reader, remote_writer, name = await hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
         remote_writer.transport.set_write_buffer_limits(262144)
         return remote_reader, remote_writer, name
-    raise ValueError(0, 'parentproxy %s not supported!' % proxy.name)
+    if proxy.scheme == 'hxs4':
+        from .hxsocks4 import hxs4_connect
+        remote_reader, remote_writer, name = await hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
+        remote_writer.transport.set_write_buffer_limits(262144)
+        return remote_reader, remote_writer, name
+    raise ValueError(0, f'parentproxy {proxy.name} not supported!')

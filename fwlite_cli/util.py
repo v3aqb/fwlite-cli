@@ -24,6 +24,7 @@ import re
 import io
 import struct
 import socket
+import random
 import configparser
 
 
@@ -136,6 +137,24 @@ def set_keepalive(soc):
     elif sys.platform.startswith('darwin'):
         tcp_keepintvl = 0x10
         soc.setsockopt(socket.IPPROTO_TCP, tcp_keepintvl, 5)
+
+
+def count_one(num):
+    num = (num & 0x55555555) + ((num >> 1)  & 0x55555555)
+    num = (num & 0x33333333) + ((num >> 2)  & 0x33333333)
+    num = (num & 0x0f0f0f0f) + ((num >> 4)  & 0x0f0f0f0f)
+    num = (num & 0x00ff00ff) + ((num >> 8)  & 0x00ff00ff)
+    num = (num & 0x0000ffff) + ((num >> 16) & 0x0000ffff)
+    return num
+
+
+table = {}
+for i in range(128):
+    table[i] = i | 0b10000000 if random.random() < 0.2 else i
+
+table2 = {}
+for i in range(256):
+    table2[i] = i & 0b01111111
 
 
 import time

@@ -39,6 +39,7 @@ features
   - shadowsocks
   - hxsocks2
   - hxsocks3
+  - hxsocks4
 - Support SIP003 plugin (`fwlite-cli#1`_)
 - Prioritize parent proxies by response time
 - Redirector
