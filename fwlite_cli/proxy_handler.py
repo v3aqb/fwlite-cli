@@ -924,12 +924,12 @@ class http_handler(BaseProxyHandler):
                 fut = read_from.read(self.bufsize)
                 data = await asyncio.wait_for(fut, intv)
             except OSError as err:
-                self.logger.debug('forward_from_remote %r', err)
+                self.logger.info('forward_from_remote %s %r', context.target, err)
+                context.forward_break = True
                 break
             except asyncio.TimeoutError:
                 idle_time = time.monotonic() - context.last_active
-                if self.request_host[1] < 1024 and context.retryable and\
-                        time.monotonic() - context.last_active > self.timeout:
+                if self.request_host[1] < 1024 and context.retryable and idle_time > self.timeout:
                     self.logger.debug('forward_from_remote timeout, retryable')
                     context.forward_break = True
                     break
