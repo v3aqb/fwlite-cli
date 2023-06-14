@@ -1,7 +1,7 @@
 fwlite-cli
 ===============
 
-A anti-censorship HTTP/Socks5 proxy with builtin shadowsocks support, CLI part only.
+A intelligent HTTP/Socks5 proxy, FWLite(reads *flight*) across the GreatFireWall, reach every corner of the world. (CLI part)
 
 Support Python 3.8 and above.
 
@@ -28,8 +28,8 @@ features
   - 0: direct
   - 1: auto (gfwlist)
   - 3: bypass ip in china
-  - 4: bypass ip in LAN
-  - 5: bypass localhost
+  - 4: bypass ip in china and LAN
+  - 5: bypass localhost only
 - Randomize listening port (when listening port is 0)
 - Support Network requires a Proxy (`fwlite#39`_)
 - Supported parent proxy
@@ -41,22 +41,23 @@ features
   - hxsocks3
   - hxsocks4
 - Support SIP003 plugin (`fwlite-cli#1`_)
-- Prioritize parent proxies by response time
-- Redirector
-- Adblock (Hosts based)
-- Proxy chain
-- Port Forward
+- Support Shadowsocks Subscription (test pending)
+- Supprot proxy chain
+- Hosts based AdBlock
+- Port Forwarding
+- Prioritize proxy by response time
+- User-defined redirector
 - Simple PAC for WPAD
 
 install
 -------
 
-You may want to install ``python3-uvloop`` to increase performance.
+You may want to install ``python3-uvloop`` for better performance.
 
 ::
 
     pip3 install https://github.com/v3aqb/hxcrypto/archive/master.zip
-    pip3 install https://github.com/v3aqb/fwlite-cli/archive/stable.zip
+    pip3 install https://github.com/v3aqb/fwlite-cli/archive/master.zip
 
 update
 ------
@@ -68,7 +69,7 @@ using ``pip -U`` may cause problems, better uninstall and install.
     pip3 uninstall fwlite-cli
     pip3 uninstall hxcrypto
     pip3 install https://github.com/v3aqb/hxcrypto/archive/master.zip
-    pip3 install https://github.com/v3aqb/fwlite-cli/archive/stable.zip
+    pip3 install https://github.com/v3aqb/fwlite-cli/archive/master.zip
 
 
 Set parent proxy
@@ -91,7 +92,7 @@ It looks like this:
 Set browser
 -----------
 
-Set proxy setting to ``http|socks5://127.0.0.1:8118`` (default, or as configured in ``config.ini``).
+Set system proxy setting to ``127.0.0.1:8118`` (default port, or as configured in ``config.ini``).
 
 Run
 ---
