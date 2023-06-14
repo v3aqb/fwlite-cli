@@ -102,7 +102,8 @@ class ForwardContext:
         return self.frc == 0
 
     def __repr__(self):
-        return '%s fc: %s fr: %s leof: %s' % (self.target, self.fcc, self.frc, self.local_eof)
+        lasting = time.monotonic() - self.first_send if self.first_send else 0
+        return f'{self.target} fc: {self.fcc} fr: {self.frc} leof: {self.local_eof}, {lasting:.2f}'
 
 
 class Server:
