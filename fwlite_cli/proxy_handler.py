@@ -1059,7 +1059,7 @@ class http_handler(BaseProxyHandler):
             else:
                 host = uri
                 uri = None
-            result = self.conf.cic.get_proxy_o.isgfwed_resolver(host, uri)
+            result = self.conf.cic.get_proxy_o.isgfwed_resolver(host)
             self.write(200, data=repr(result), ctype='text/plain')
             return
         if parse.path == '/api/redirector' and self.command == 'GET':

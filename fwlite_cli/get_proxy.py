@@ -162,7 +162,7 @@ class get_proxy:
             self.host_not_in_china.add(host)
         return False
 
-    def isgfwed_resolver(self, host, mode):
+    def isgfwed_resolver(self, host, mode=1):
         if self.cic.conf.rproxy:
             return None
         uri = 'http://%s/' % host
