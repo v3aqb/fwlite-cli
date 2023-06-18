@@ -422,6 +422,7 @@ class http_handler(BaseProxyHandler):
                 self.close_connection = True
                 self.conf.cic.notify(self.command, self.shortpath, self.request_host, False,
                                      self.failed_parents, self.ppname)
+                self.logger.warning(f'{self.command} {self.shortpath} not retryable.')
                 return
 
             self.set_timeout()
@@ -430,6 +431,7 @@ class http_handler(BaseProxyHandler):
                 # if no more proxy available
                 self.conf.cic.notify(self.command, self.shortpath, self.request_host, False,
                                      self.failed_parents, self.ppname)
+                self.logger.warning(f'{self.command} {self.shortpath} no more proxy available.')
                 return self.send_error(504, explain='no more proxy available')
 
             # try get from connection pool
@@ -439,7 +441,7 @@ class http_handler(BaseProxyHandler):
                     self._proxylist.insert(0, self.conf.parentlist.get(self.ppname))
                     sock, self.ppname = result
                     self.remote_reader, self.remote_writer = sock
-                    self.logger.info('%s %s via %s.',
+                    self.logger.info('%s %s via %s (pooled)',
                                      self.command, self.shortpath, self.ppname)
 
             if not self.remote_writer:
@@ -675,10 +677,9 @@ class http_handler(BaseProxyHandler):
                 self.close_connection = True
             else:
                 # keep for next request
-                ppn = self.ppname if '(pooled)' in self.ppname else (self.ppname + '(pooled)')
                 self.HTTPCONN_POOL.put((self.client_address[0], self.request_host),
                                        (self.remote_reader, self.remote_writer),
-                                       ppn)
+                                       self.ppname)
             self.remote_writer = None
         except ConnectionDenied as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
