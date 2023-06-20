@@ -1,7 +1,9 @@
 fwlite-cli
 ===============
 
-A intelligent HTTP/Socks5 proxy, FWLite(reads *flight*) across the GreatFireWall, reach every corner of the world. (CLI part)
+FWLite across the GreatFireWall, we can reach every corner of the world.
+
+A intelligent HTTP/Socks5 proxy, detect and circumvent censorship automatically. (CLI part)
 
 Support Python 3.8 and above.
 
