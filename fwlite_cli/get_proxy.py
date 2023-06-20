@@ -118,7 +118,8 @@ class get_proxy:
         try:
             with open(self.cic.conf.chinalist_path) as chinalist:
                 for line in chinalist:
-                    self.chinalist.add(line)
+                    if line.strip():
+                        self.chinalist.add(f'||{line.strip()}')
         except Exception as err:
             self.logger.warning('china_list is corrupted! %r', err, exc_info=True)
 

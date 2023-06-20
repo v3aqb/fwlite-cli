@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-# Copyright (C) 2014-2018 v3aqb
+# Copyright (C) 2014-2023 v3aqb
 
 # This file is part of fwlite-cli.
 
@@ -37,11 +37,6 @@ except ImportError:
 
 logger = logging.getLogger('apfilter')
 logger.setLevel(logging.INFO)
-hdr = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                              datefmt='%H:%M:%S')
-hdr.setFormatter(formatter)
-logger.addHandler(hdr)
 
 
 class ExpiredError(Exception):
@@ -95,7 +90,7 @@ class ap_rule:
 
 
 class ap_filter:
-    KEYLEN = 10
+    KEYLEN = 9
 
     def __init__(self, lst=None):
         self.excludes = []
@@ -128,26 +123,24 @@ class ap_filter:
             return self.add(rule)
         elif rule.startswith('|https://'):
             if '*' in rule:
-                logger.warning('%s ignored', rule)
+                logger.info('%s ignored, 126', rule)
                 return
             # strip and treat as domain rule
             rule = '||' + urllib.parse.urlparse(rule[1:]).hostname
             return self.add(rule)
         elif rule.startswith(('@', '/')):
             self._add_slow(rule)
-        elif rule.startswith('|http://') and any(len(s) > (self.KEYLEN) for s in rule[1:].split('*')):
+        elif rule.startswith('|http://') and any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
             hostname = urllib.parse.urlparse(rule[1:]).hostname.strip('.*')
             if '*' not in hostname:
                 return self.add('||' + hostname)
             self._add_fast(rule)
-        elif '*' in rule and '.' in rule and any(len(s) > (self.KEYLEN) for s in rule.split('*')):
-            self._add_fast(rule)
         else:
             # some small key word, treat as domain rule
-            if '*' in rule:
-                logger.warning('%s ignored', rule)
-                return
-            return self.add('||' + rule.strip('./'))
+            if '.' in rule and '*' not in rule and len(rule) < self.KEYLEN:
+                return self.add('||' + rule.strip('.'))
+            self._add_fast(rule)
+
         self.rules.add(rule)
         self.expire[rule] = expire
         if expire:
@@ -155,7 +148,10 @@ class ap_filter:
 
     def _add_fast(self, rule):
         rule_t = rule[1:] if rule.startswith('|') else rule
-        lst = [s for s in rule_t.split('*') if len(s) > self.KEYLEN]
+        lst = [s for s in rule_t.split('*') if len(s) >= self.KEYLEN]
+        if not lst:
+            logger.info('%s ignored, short', rule)
+            return
         rule_o = ap_rule(rule)
         key = lst[-1][self.KEYLEN * -1:]
         self.fast[key].append(rule_o)
@@ -256,6 +252,20 @@ class ap_filter:
             pass
         self.domains_exclude.discard(domain)
 
+    def remove_fast(self, rule):
+        rule_t = rule[1:] if rule.startswith('|') else rule
+        lst = [s for s in rule_t.split('*') if len(s) >= self.KEYLEN]
+        if not lst:
+            logger.info('%s ignored, short', rule)
+            return
+        key = lst[-1][self.KEYLEN * -1:]
+        for rule_o in self.fast[key][:]:
+            if rule_o.rule == rule:
+                self.fast[key].remove(rule_o)
+                if not self.fast[key]:
+                    del self.fast[key]
+                break
+
     def remove(self, rule, delay=None):
         if delay:
             time.sleep(delay)
@@ -279,28 +289,10 @@ class ap_filter:
                 if rule_o.rule == rule:
                     lst.remove(rule_o)
                     break
-        elif rule.startswith('|http://') and any(len(s) > (self.KEYLEN) for s in rule[1:].split('*')):
-            rule_t = rule[1:]
-            lst = [s for s in rule_t.split('*') if len(s) > self.KEYLEN]
-            key = lst[-1][self.KEYLEN * -1:]
-            for rule_o in self.fast[key][:]:
-                if rule_o.rule == rule:
-                    self.fast[key].remove(rule_o)
-                    if not self.fast[key]:
-                        del self.fast[key]
-                    break
-        elif '*' in rule and '.' in rule and any(len(s) > (self.KEYLEN) for s in rule.split('*')):
-            lst = [s for s in rule.split('*') if len(s) > self.KEYLEN]
-            key = lst[-1][self.KEYLEN * -1:]
-            for rule_o in self.fast[key][:]:
-                if rule_o.rule == rule:
-                    self.fast[key].remove(rule_o)
-                    if not self.fast[key]:
-                        del self.fast[key]
-                    break
+        elif rule.startswith('|http://') and any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
+            self.remove_fast(rule)
         else:
-            # some small key word, treat as domain rule
-            self.remove_domain('||' + rule.strip('./'))
+            self.remove_fast(rule)
         self.rules.discard(rule)
         del self.expire[rule]
         if '-GUI' in sys.argv:
@@ -324,7 +316,6 @@ def test():
             except Exception:
                 pass
         del data
-    gfwlist.add('||127.0.0.0/24')
     print('loading: %fs' % (time.perf_counter() - t))
     print('result for inxian: %r' % gfwlist.match('http://www.inxian.com', 'www.inxian.com'))
     print('result for twitter: %r' % gfwlist.match('twitter.com:443', 'twitter.com'))
