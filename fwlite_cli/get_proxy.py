@@ -266,7 +266,7 @@ class get_proxy:
 
         if gfwed:
             if not parentlist:
-                self.logger.warning('No parent proxy available.')
+                self.logger.warning('%s %s:%s No parent proxy available.', command, host, port)
                 return []
         else:
             parentlist.insert(0, self.cic.conf.parentlist.direct)

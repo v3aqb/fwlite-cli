@@ -744,6 +744,8 @@ class http_handler(BaseProxyHandler):
                     esni = esni1 or esni7
                     gfwed = esni1
                     if server_name:
+                        if not self.path.startswith(server_name):
+                            self.logger.info('path: %s, sni: %s', self.path, server_name)
                         self.shortpath = server_name
                 except Exception:
                     self.logger.info('date_len %d' % len(data), exc_info=True)
