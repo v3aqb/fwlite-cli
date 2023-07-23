@@ -193,6 +193,9 @@ class get_proxy:
         if ip is None:
             return True
 
+        if self.chinalist.match(url, host):
+            return False
+
         if int(ip) == 0:
             return True
 
@@ -219,9 +222,6 @@ class get_proxy:
             result = self.gfwlist.match(url, host)
             if result is not None:
                 return result
-
-        if self.chinalist.match(url, host):
-            return False
 
         if self.ip_in_china(host, ip):
             return False
