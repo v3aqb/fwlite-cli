@@ -86,7 +86,7 @@ class get_proxy:
             if line.startswith('!'):
                 continue
             rule, _, dest = line.strip().partition(' ')
-            if dest:  # |http://www.google.com/url forcehttps
+            if dest:  # |http://www.google.com/path forcehttps
                 self.add_redirect(rule, dest)
             else:
                 self.add_temp(line)
@@ -145,8 +145,8 @@ class get_proxy:
     def add_redirect(self, rule, dest):
         return self.cic.redir_o.add_redirect(rule, dest, self)
 
-    def bad302(self, uri):
-        return self.cic.redir_o.bad302(uri)
+    def bad302(self, url):
+        return self.cic.redir_o.bad302(url)
 
     def add_ignore(self, rule):
         '''called by redirector'''
@@ -166,19 +166,19 @@ class get_proxy:
     def isgfwed_resolver(self, host, mode=1):
         if self.cic.conf.rproxy:
             return None
-        uri = 'http://%s/' % host
-        result = self.local.match(uri, host)
+        url = 'http://%s/' % host
+        result = self.local.match(url, host)
         if result is not None:
             return result
 
-        if self.ignore.match(uri, host):
+        if self.ignore.match(url, host):
             return None
 
-        if self.chinalist.match(uri, host):
+        if self.chinalist.match(url, host):
             return False
 
         if self.cic.conf.gfwlist_enable:
-            result = self.gfwlist.match(uri, host)
+            result = self.gfwlist.match(url, host)
             if result is not None:
                 return result
 
@@ -186,7 +186,7 @@ class get_proxy:
             return True
         return None
 
-    def isgfwed(self, uri, host, port, ip, mode=1):
+    def isgfwed(self, url, host, port, ip, mode=1):
         if mode == 0:
             return False
 
@@ -208,19 +208,19 @@ class get_proxy:
         if mode == 4:
             return True
 
-        result = self.local.match(uri, host)
+        result = self.local.match(url, host)
         if result is not None:
             return result
 
-        if self.ignore.match(uri, host):
+        if self.ignore.match(url, host):
             return None
 
         if self.cic.conf.gfwlist_enable:
-            result = self.gfwlist.match(uri, host)
+            result = self.gfwlist.match(url, host)
             if result is not None:
                 return result
 
-        if self.chinalist.match(uri, host):
+        if self.chinalist.match(url, host):
             return False
 
         if self.ip_in_china(host, ip):
@@ -232,11 +232,11 @@ class get_proxy:
         if self.cic.conf.HOSTS.get(host):
             return None
 
-        if self.cic.conf.gfwlist_enable and self.gfwlist.match(uri, host):
+        if self.cic.conf.gfwlist_enable and self.gfwlist.match(url, host):
             return True
         return None
 
-    def get_proxy(self, uri, host, command, ip, mode=1):
+    def get_proxy(self, url, host, command, ip, mode=1):
         '''
             decide which parentproxy to use.
             url:  'www.google.com:443'
@@ -255,7 +255,7 @@ class get_proxy:
         if mode == 2:
             mode = 1
 
-        gfwed = self.isgfwed(uri, host, port, ip, mode)
+        gfwed = self.isgfwed(url, host, port, ip, mode)
 
         if gfwed is False:
             if ip and ip.is_private:

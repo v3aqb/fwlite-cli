@@ -62,8 +62,8 @@ class redirector:
                 return result
         return None
 
-    def bad302(self, uri):
-        return self._bad302.match(uri)
+    def bad302(self, url):
+        return self._bad302.match(url)
 
     def add_redirect(self, rule, dest, getp=None):
         from .apfilter import ap_rule

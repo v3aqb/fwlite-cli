@@ -1055,13 +1055,13 @@ class http_handler(BaseProxyHandler):
                 self.send_error(404, repr(err))
                 return
         if parse.path == '/api/isgfwed':
-            uri = body.decode('utf8')
-            if '//' in uri:
-                host = urlparse.urlparse(uri).netloc
+            url = body.decode('utf8')
+            if '//' in url:
+                host = urlparse.urlparse(url).netloc
                 host = parse_hostport(host, 80)[0]
             else:
-                host = uri
-                uri = None
+                host = url
+                url = None
             result = self.conf.cic.get_proxy_o.isgfwed_resolver(host)
             self.write(200, data=repr(result), ctype='text/plain')
             return

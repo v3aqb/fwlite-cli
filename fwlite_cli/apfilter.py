@@ -78,10 +78,10 @@ class ap_rule:
 
         return parse(self.rule[2:]) if self.override else parse(self.rule)
 
-    def match(self, uri):
+    def match(self, url):
         if self.expire and self.expire < time.time():
             raise ExpiredError(self)
-        return self._regex.search(uri)
+        return self._regex.search(url)
 
     def __repr__(self):
         if self.expire:
