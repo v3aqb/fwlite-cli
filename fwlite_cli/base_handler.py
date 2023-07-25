@@ -193,7 +193,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         if request[1] == 3:
             self.command = 'UDP_ASSOCIATE'
             self.path = 'udp'
-            if sys.platform == 'win32' and sys.version < '3.8':
+            if sys.platform == 'win32' and sys.version_info < (3, 8):
                 self.logger.error('socks5 UDP ASSOCIATE not supported')
                 # self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
                 return
