@@ -744,8 +744,6 @@ class http_handler(BaseProxyHandler):
                     esni = esni1 or esni7
                     gfwed = esni1
                     if server_name:
-                        if not self.path.startswith(server_name):
-                            self.logger.info('path: %s, sni: %s', self.path, server_name)
                         self.shortpath = server_name
                 except Exception:
                     self.logger.info('date_len %d' % len(data), exc_info=True)
@@ -763,8 +761,12 @@ class http_handler(BaseProxyHandler):
 
         self.request_host = parse_hostport(self.path, 443)
         if self.shortpath:
-            self.request_host = (self.shortpath, self.request_host[1])
-            self.shortpath = '%s:%d' % self.request_host
+            if self.path.startswith(self.shortpath):
+                self.shortpath = None
+            else:
+                self.logger.info('path: %s, sni: %s', self.path, self.shortpath)
+                self.request_host = (self.shortpath, self.request_host[1])
+                self.shortpath = '%s:%d' % self.request_host
 
         # redirector
         new_url = self.conf.cic.redirect(self)
