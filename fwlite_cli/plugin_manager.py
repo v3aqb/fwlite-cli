@@ -59,7 +59,7 @@ def find_path(path):
                 return path
         if os.path.exists(path):
             return path
-        new_path = '../' + path
+        new_path = '../plugin/' + path
         if os.path.exists(new_path):
             return new_path
     if not os.path.exists(path):
