@@ -6,6 +6,7 @@
 from fwlite_cli.get_proxy import get_proxy
 from fwlite_cli.redirector import redirector
 from fwlite_cli.resolver import Resolver
+import urllib.parse as urlparse
 
 
 class CIC:
@@ -48,3 +49,17 @@ class CIC:
     def del_redir(self, rule):
         self.redir_o.remove(rule)
         self.conf.stdout('redir')
+
+    def inspect(self, url):
+        ''' url: either url or host
+            return: string
+        '''
+        result = f'url: {url}\n'
+        if '//' in url:
+            host = urlparse.urlparse(url).netloc
+            host = parse_hostport(host, 80)[0]
+        else:
+            host = url
+            url = f'https://{url}/'
+        result += self.get_proxy_o.inspect(url, host)
+        return result

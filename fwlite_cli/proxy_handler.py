@@ -1056,16 +1056,10 @@ class http_handler(BaseProxyHandler):
                 self.logger.error('api error /api/localrule/', exc_info=True)
                 self.send_error(404, repr(err))
                 return
-        if parse.path == '/api/isgfwed':
+        if parse.path == '/api/inspect':
             url = body.decode('utf8')
-            if '//' in url:
-                host = urlparse.urlparse(url).netloc
-                host = parse_hostport(host, 80)[0]
-            else:
-                host = url
-                url = None
-            result = self.conf.cic.get_proxy_o.isgfwed_resolver(host)
-            self.write(200, data=repr(result), ctype='text/plain')
+            result = self.conf.cic.inspect(url)
+            self.write(200, data=result, ctype='text/plain')
             return
         if parse.path == '/api/redirector' and self.command == 'GET':
             data = json.dumps(self.conf.cic.list_redir(), indent=4)

@@ -294,3 +294,15 @@ class get_proxy:
             self.local.add(rule, (exp * 60) if exp else None)
             self.logger.info('add autoproxy rule: %s%s', rule, (' expire in %.1f min' % exp) if exp else '')
             self.cic.conf.stdout('local')
+
+    def inspect(self, url, host):
+        result = f'get_proxy_inspect: {url}\n'
+
+        result += f'chinalist match: {repr(self.chinalist.match(url, host))}\n'
+        result += f'local match: {repr(self.local.match(url, host))}\n'
+        result += f'ignore match: {repr(self.ignore.match(url, host))}\n'
+        result += f'gfwlist match: {repr(self.gfwlist.match(url, host))}\n'
+        result += f'host not in china(dynamic): {repr(host in self.host_not_in_china)}\n'
+        result += f'Hosts: {repr(self.cic.conf.HOSTS.get(host))}\n\n'
+
+        return result
