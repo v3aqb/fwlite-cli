@@ -17,6 +17,7 @@
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import sys
 import time
 import socket
 import subprocess
@@ -59,7 +60,8 @@ def find_path(path):
                 return path
         if os.path.exists(path):
             return path
-        new_path = '../plugin/' + path
+        basepath = '../plugin64/' if sys.maxsize > 2**32 else '../plugin/'
+        new_path = basepath + path
         if os.path.exists(new_path):
             return new_path
     if not os.path.exists(path):
@@ -73,8 +75,6 @@ def plugin_register(plugin, path):
         return
     if not os.path.exists(path):
         path = find_path(path)
-    if not os.path.isabs(path):
-        path = './' + path
     logger.info('register plugin: %s %s', plugin, path)
     PLUGIN_PATH[plugin] = path
 
