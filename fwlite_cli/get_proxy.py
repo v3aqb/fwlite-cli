@@ -80,10 +80,16 @@ class get_proxy:
         if load_local is not None:
             iter_ = load_local
         else:
-            with open(self.cic.conf.local_path) as f:
-                iter_ = f.readlines()
+            try:
+                with open(self.cic.conf.local_path) as f:
+                    iter_ = f.readlines()
+            except UnicodeDecodeError:
+                with open(self.cic.conf.local_path, encoding='utf8') as f:
+                    iter_ = f.readlines()
         for line in iter_:
-            if line.startswith('!'):
+            if line.startswith(('!', '[', '#')):
+                continue
+            if not line.strip():
                 continue
             rule, _, dest = line.strip().partition(' ')
             if dest:  # |http://www.google.com/path forcehttps
@@ -105,7 +111,7 @@ class get_proxy:
         self.chinalist = ap_filter()
 
         try:
-            with open(self.cic.conf.gfwlist_path) as gfwlist:
+            with open(self.cic.conf.gfwlist_path, encoding='utf8') as gfwlist:
                 data = gfwlist.read()
                 if '!' not in data:
                     data = ''.join(data.split())
@@ -116,7 +122,7 @@ class get_proxy:
             self.logger.warning('gfw_list is corrupted! %r', err, exc_info=True)
 
         try:
-            with open(self.cic.conf.chinalist_path) as chinalist:
+            with open(self.cic.conf.chinalist_path, encoding='utf8') as chinalist:
                 for line in chinalist:
                     if line.strip():
                         self.chinalist.add(f'||{line.strip()}')
@@ -130,12 +136,12 @@ class get_proxy:
         self.logger.info('loading china_ip_list.txt...')
         self.china_ip_filter = NetFilter()
 
-        with open(self.cic.conf.china_ip_path) as f:
+        with open(self.cic.conf.china_ip_path, encoding='utf8') as f:
             for line in f:
                 if line.strip() and '#' not in line:
                     self.china_ip_filter.add(line.strip())
         self.logger.info('loading china_ip_list_v6.txt...')
-        with open(self.cic.conf.china_ipv6_path) as f:
+        with open(self.cic.conf.china_ipv6_path, encoding='utf8') as f:
             for line in f:
                 if line.strip() and '#' not in line:
                     self.china_ip_filter.add(line.strip())
