@@ -8,6 +8,8 @@ from fwlite_cli.redirector import redirector
 from fwlite_cli.resolver import Resolver
 import urllib.parse as urlparse
 
+from fwlite_cli.util import parse_hostport
+
 
 class CIC:
     def __init__(self, conf):
