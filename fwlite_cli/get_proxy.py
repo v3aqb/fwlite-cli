@@ -197,12 +197,7 @@ class get_proxy:
             return False
 
         if ip is None:
-            return True
-
-        if self.chinalist.match(url, host):
-            return False
-
-        if int(ip) == 0:
+            self.logger.error('%s:%s ip is None.', host, port)
             return True
 
         if ip.is_loopback:
@@ -220,6 +215,12 @@ class get_proxy:
         result = self.local.match(url, host)
         if result is not None:
             return result
+
+        if self.chinalist.match(url, host):
+            return False
+
+        if int(ip) == 0:
+            return True
 
         if self.ignore.match(url, host):
             return None
@@ -248,7 +249,7 @@ class get_proxy:
             url:  'www.google.com:443'
                   'http://www.inxian.com'
             host: ('www.google.com', 443)
-            mode: 0 -- direct
+            mode:  0 -- direct
                    1 -- auto:        proxy if local_rule, direct if ip in china or override, proxy if gfwlist
                    3 -- chnroute:    proxy if local_rule, direct if ip in china or override, proxy for all
                    4 -- global:      proxy if not local
