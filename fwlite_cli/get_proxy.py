@@ -20,6 +20,7 @@
 
 import base64
 import logging
+from ipaddress import ip_address
 
 from repoze.lru import lru_cache
 
@@ -304,6 +305,12 @@ class get_proxy:
 
     def inspect(self, url, host):
         result = f'get_proxy_inspect: {url}\n'
+
+        try:
+            ip_ = ip_address(host)
+            result += f'ip in china: {repr(self.ip_in_china(None, ip_))}\n'
+        except ValueError:
+            pass
 
         result += f'chinalist match: {repr(self.chinalist.match(url, host))}\n'
         result += f'local match: {repr(self.local.match(url, host))}\n'
