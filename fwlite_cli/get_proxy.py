@@ -26,35 +26,77 @@ from repoze.lru import lru_cache
 
 from .ipfilter import NetFilter
 
-CHINA_IP = [
+CHINA_IP_LIST = [
     # Tencent Hong Kong
     '124.156.188.0/22',
     '129.226.96.0/20',
-    '182.254.0.0/16',
-    '203.205.128.0/17',
+    # '182.254.0.0/16',
+    # '203.205.128.0/17',
 ]
 
-DNS_SERVER_LIST = [
+BLOCKED_IP_LIST = [
     # google
     '8.8.8.8',
     '8.8.4.4',
+    # Control D
+    '76.76.2.0',
+    '76.76.10.0',
+    # Quad9
+    '9.9.9.9',
+    '149.112.112.112',
     # OpenDNS
     '208.67.222.222',
     '208.67.220.220',
     '208.67.222.123',
     '208.67.220.123',
+    # Cloudflare
+    '1.1.1.1',
+    '1.0.0.1',
+    # CleanBrowsing
+    '185.228.168.9',
+    '185.228.169.9',
+    # Alternate DNS
+    '76.76.19.19',
+    '76.223.122.150',
+    # AdGuard DNS
+    '94.140.14.14',
+    '76.223.122.150',
+    # AdGuard DNS
+    '94.140.14.14',
+    '94.140.15.15',
+    # Comodo
+    '8.26.56.26',
+    '8.20.247.20',
+    # CenturyLink (Level3)
+    '205.171.3.66',
+    '205.171.202.166',
+    '4.2.2.1',
+    '4.2.2.2',
+    '4.2.2.3',
+    '4.2.2.4',
+    '4.2.2.5',
     # Norton DNS
     '198.153.192.1',
     '198.153.194.1',
     # Verisign
     '64.6.64.6',
     '64.6.65.6',
-    # Comodo
-    '8.26.56.26',
-    '8.20.247.20',
-    # Cloudflare
-    '1.1.1.1',
-    '1.0.0.1',
+
+    # telegram https://core.telegram.org/resources/cidr.txt
+    '91.108.56.0/22',
+    '91.108.4.0/22',
+    '91.108.8.0/22',
+    '91.108.16.0/22',
+    '91.108.12.0/22',
+    '149.154.160.0/20',
+    '91.105.192.0/23',
+    '91.108.20.0/22',
+    '185.76.151.0/24',
+    '2001:b28:f23d::/48',
+    '2001:b28:f23f::/48',
+    '2001:67c:4e8::/48',
+    '2001:b28:f23c::/48',
+    '2a0a:f280::/32',
 ]
 
 
@@ -130,8 +172,8 @@ class get_proxy:
         except Exception as err:
             self.logger.warning('china_list is corrupted! %r', err, exc_info=True)
 
-        for dns_server in DNS_SERVER_LIST:
-            self.gfwlist.add('||' + dns_server)
+        for addr in BLOCKED_IP_LIST:
+            self.gfwlist.add(addr)
 
     def load_china_ip_list(self):
         self.logger.info('loading china_ip_list.txt...')
@@ -146,7 +188,7 @@ class get_proxy:
             for line in f:
                 if line.strip() and '#' not in line:
                     self.china_ip_filter.add(line.strip())
-        for network in CHINA_IP:
+        for network in CHINA_IP_LIST:
             self.china_ip_filter.add(network)
 
     def add_redirect(self, rule, dest):
