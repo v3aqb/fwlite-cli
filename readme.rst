@@ -54,6 +54,20 @@ features
 install
 -------
 
+You may want to turn on *tcp timestamps*.
+
+For Linux(should be on by default):
+
+::
+
+    sysctl -w net.ipv4.tcp_timestamps=1
+
+For Windows, start PowerShell with Administrator Privilege, run this command:
+
+::
+
+    netsh interface tcp set global timestamps=enabled
+
 You may want to install ``python3-uvloop`` for better performance.
 
 ::
