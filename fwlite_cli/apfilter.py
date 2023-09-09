@@ -137,9 +137,12 @@ class ap_filter:
             self._add_fast(rule)
         else:
             # some small key word, treat as domain rule
-            if '.' in rule and '*' not in rule and len(rule) < self.KEYLEN:
-                return self.add('||' + rule.strip('.'))
-            self._add_fast(rule)
+            try:
+                self.net_filter.add(rule)
+            except ValueError:
+                if '.' in rule and '*' not in rule and len(rule) < self.KEYLEN:
+                    return self.add('||' + rule.strip('.'))
+                self._add_fast(rule)
 
         self.rules.add(rule)
         self.expire[rule] = expire
@@ -292,7 +295,10 @@ class ap_filter:
         elif rule.startswith('|http://') and any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
             self.remove_fast(rule)
         else:
-            self.remove_fast(rule)
+            try:
+                self.net_filter.remove(rule)
+            except ValueError:
+                self.remove_fast(rule)
         self.rules.discard(rule)
         del self.expire[rule]
         if '-GUI' in sys.argv:
