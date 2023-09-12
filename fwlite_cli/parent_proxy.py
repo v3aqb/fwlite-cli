@@ -55,7 +55,7 @@ class ParentProxy:
     DIRECT = None
     DEFAULT_TIMEOUT = 8
     GATE = 5
-    PROBATION = 6
+    PROBATION = 16
     via = None
     conf = None
 
