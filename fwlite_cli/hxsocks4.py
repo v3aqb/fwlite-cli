@@ -127,9 +127,6 @@ class Hxs4Connection(HxsConnection):
         try:
             self.remote_writer.write(struct.pack('>H', len(ct_)) + ct_)
             await self.remote_writer.drain()
-            self._stat_total_sent += len(ct_)
-            self._stat_sent_tp += len(ct_)
-            self._last_count += 1
         except OSError:
             self.connection_lost = True
 

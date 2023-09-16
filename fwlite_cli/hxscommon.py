@@ -57,7 +57,7 @@ PING_INTV = 5
 CLIENT_AUTH_PADDING = 256
 HEADER_SIZE = 128
 PING_SIZE = 128
-PONG_RANDOM = 0.2
+PING_FREQ = 0.2
 
 OPEN = 0
 EOF_SENT = 1  # SENT END_STREAM
@@ -162,8 +162,6 @@ class HxsConnection:
         self._connection_task = None
         self._connection_stat = None
 
-        self._last_direction = SEND
-        self._last_count = 0
         self._buffer_size_ewma = 0
         self._recv_tp_max = 0
         self._recv_tp_ewma = 0
@@ -286,23 +284,18 @@ class HxsConnection:
         elif flags == 0:
             self._ping_time = time.monotonic()
 
-        if type_ == DATA and self._last_direction == RECV:
-            self._last_direction = SEND
-            self._last_count = 0
-        self._last_count += 1
-
         header = struct.pack('>BBH', type_, flags, stream_id)
         data = header + payload
         ct_ = self._cipher.encrypt(data)
 
         async with self._lock:
             await self.send_frame_data(ct_)
+            self._stat_total_sent += len(ct_)
+            self._stat_sent_tp += len(ct_)
 
         if self._settings_async_drain is None and random.random() < 0.1:
             self._settings_async_drain = False
             await self.send_frame(SETTINGS, 0, 1, bytes(random.randint(HEADER_SIZE // 16, HEADER_SIZE)))
-        if type_ == DATA and self._last_count > 5 and random.random() < 0.2:
-            await self.send_ping(False)
 
     async def send_ping(self, test=True):
         if self._ping_time == 0:
@@ -323,7 +316,7 @@ class HxsConnection:
             data_ = data.read(random.randint(256, 16386 - 22))
             while data_:
                 await self.send_one_data_frame(stream_id, data_)
-                if random.random() < 0.2:
+                if random.random() < PING_FREQ:
                     await self.send_frame(PING, 0, 0, bytes(random.randint(256, 1024)))
                 data_ = data.read(random.randint(256, 8192 - 22))
                 await asyncio.sleep(0)
@@ -364,16 +357,10 @@ class HxsConnection:
                 self.logger.debug('recv frame_type: %s, stream_id: %s, size: %s',
                                   frame_type, stream_id, len(frame_data))
 
-                if frame_type == DATA and self._last_direction == SEND:
-                    self._last_direction = RECV
-                    self._last_count = 0
-                self._last_count += 1
-
                 if frame_type in (DATA, HEADERS, RST_STREAM, UDP_DGRAM2):
                     self._last_recv = time.monotonic()
-
-                if random.random() < PONG_RANDOM:
-                    await self.send_frame(PING, PONG, 0, bytes(random.randint(PING_SIZE // 16, PING_SIZE)))
+                    if random.random() < PING_FREQ:
+                        await self.send_frame(PING, PONG, 0, bytes(random.randint(PING_SIZE // 16, PING_SIZE)))
 
                 if frame_type == DATA:  # 0
                     if self._stream_status[stream_id] & EOF_RECV:

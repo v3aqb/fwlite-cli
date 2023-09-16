@@ -163,9 +163,6 @@ class Hxs3Connection(HxsConnection):
     async def send_frame_data(self, ct_):
         try:
             await self.remote_writer.send(ct_)
-            self._stat_total_sent += len(ct_)
-            self._stat_sent_tp += len(ct_)
-            self._last_count += 1
         except ConnectionClosed:
             self.connection_lost = True
 
