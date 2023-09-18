@@ -57,6 +57,7 @@ PING_INTV = 5
 CLIENT_AUTH_PADDING = 256
 HEADER_SIZE = 128
 PING_SIZE = 128
+PONG_SIZE = 512
 PING_FREQ = 0.2
 
 OPEN = 0
@@ -125,7 +126,6 @@ class HxsConnection:
         self.name = self.proxy.name
         self.timeout = 6  # read frame_data timeout
         self._manager = manager
-        self._ping_test = False
         self._ping_time = 0
         self.connected = False
         self.connection_lost = False
@@ -283,6 +283,7 @@ class HxsConnection:
             self._last_send = time.monotonic()
         elif flags == 0:
             self._ping_time = time.monotonic()
+            self._last_ping = time.monotonic()
 
         header = struct.pack('>BBH', type_, flags, stream_id)
         data = header + payload
@@ -297,11 +298,13 @@ class HxsConnection:
             self._settings_async_drain = False
             await self.send_frame(SETTINGS, 0, 1, bytes(random.randint(HEADER_SIZE // 16, HEADER_SIZE)))
 
-    async def send_ping(self, test=True):
-        if self._ping_time == 0:
-            self._last_ping = time.monotonic()
-            self._ping_test = test
-            await self.send_frame(PING, 0, 0, bytes(random.randint(PING_SIZE // 16, PING_SIZE)))
+    async def send_ping(self, size=0):
+        if not size:
+            size = PONG_SIZE if self._ping_time else PING_SIZE
+        if self._ping_time:
+            await self.send_frame(PING, PONG, 0, bytes(random.randint(size // 8, size)))
+            return
+        await self.send_frame(PING, 0, 0, bytes(random.randint(size // 8, size)))
 
     async def send_one_data_frame(self, stream_id, data):
         payload = struct.pack('>H', len(data)) + data
@@ -317,7 +320,7 @@ class HxsConnection:
             while data_:
                 await self.send_one_data_frame(stream_id, data_)
                 if random.random() < PING_FREQ:
-                    await self.send_frame(PING, 0, 0, bytes(random.randint(256, 1024)))
+                    await self.send_ping(1024)
                 data_ = data.read(random.randint(256, 8192 - 22))
                 await asyncio.sleep(0)
         else:
@@ -415,14 +418,12 @@ class HxsConnection:
                     if stream_id == 1:
                         self._settings_async_drain = True
                 elif frame_type == PING:  # 6
-                    if frame_flags == PONG:
+                    if frame_flags == PONG and self._ping_time:
                         resp_time = time.monotonic() - self._ping_time
-                        if resp_time < 1:
-                            self.proxy.log('', resp_time)
-                        self._ping_test = False
                         self._ping_time = 0
+                        self.logger.debug('%s response time %.3fs', self.name, resp_time)
                     else:
-                        await self.send_frame(PING, PONG, 0, bytes(random.randint(PING_SIZE // 16, PING_SIZE)))
+                        await self.send_frame(PING, PONG, 0, bytes(random.randint(PING_SIZE // 8, PING_SIZE)))
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
                     max_stream_id = payload.read(2)
@@ -532,7 +533,7 @@ class HxsConnection:
         while not self.connection_lost:
             await asyncio.sleep(1)
             self.update_stat()
-            if self._ping_test and time.monotonic() - self._last_recv > PING_TIMEOUT and \
+            if self._ping_time and time.monotonic() - self._last_recv > PING_TIMEOUT and \
                     time.monotonic() - self._ping_time > PING_TIMEOUT:
                 self.logger.warning('server ping no response %s in %ds',
                                     self.proxy.name, time.monotonic() - self._ping_time)
@@ -542,7 +543,7 @@ class HxsConnection:
                 self.logger.info('connection idle %s', self.proxy.name)
                 break
             if idle_time > PING_INTV:
-                if not self._ping_test and time.monotonic() - self._last_ping > PING_INTV:
+                if time.monotonic() - self._last_ping > PING_INTV:
                     await asyncio.sleep(random.random())
                     await self.send_ping()
             continue
