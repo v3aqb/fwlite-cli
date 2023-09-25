@@ -182,6 +182,11 @@ class ForwardHandler:
             client_writer.close()
             await client_writer.wait_closed()
             return
+        except asyncio.TimeoutError:
+            logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy)
+            client_writer.close()
+            await client_writer.wait_closed()
+            return
 
         if self.tcp_nodelay:
             soc = remote_writer.transport.get_extra_info('socket')
