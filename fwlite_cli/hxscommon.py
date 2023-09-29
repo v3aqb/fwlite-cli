@@ -159,6 +159,8 @@ class HxsConnection:
         self._last_recv = time.monotonic()
         self._last_send = time.monotonic()
         self._last_ping = 0
+        self._ping_id = 0
+        self._pinging = 0
         self._connection_task = None
         self._connection_stat = None
 
@@ -212,12 +214,11 @@ class HxsConnection:
         try:
             await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
-            self.logger.error('%s connect %s no response, timeout=%d',
-                              self.name, '%s:%d' % (addr, port), timeout)
+            self.logger.error('%s connect %s timeout %ds',
+                              self.name, f'{addr}:{port}', timeout)
             del self._remote_connected_event[stream_id]
-            self.print_status()
             self._connecting -= 1
-            await self.send_ping()
+            asyncio.ensure_future(self.send_ping())
             raise
 
         del self._remote_connected_event[stream_id]
@@ -238,7 +239,6 @@ class HxsConnection:
             self._connecting -= 1
             return socketpair_a
         self._connecting -= 1
-        await self.send_ping()
         if self.connection_lost:
             raise ConnectionLostError(0, 'hxs connection lost after request sent')
         raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
@@ -301,12 +301,31 @@ class HxsConnection:
             await self.send_frame(SETTINGS, 0, 1)
 
     async def send_ping(self, size=0):
-        if not size:
-            size = PONG_SIZE if self._ping_time else PING_SIZE
         if self._ping_time:
-            await self.send_frame(PING, PONG, 0, bytes(random.randint(size // 8, size)))
+            await self.send_pong(0, size)
             return
-        await self.send_frame(PING, 0, 0, bytes(random.randint(size // 8, size)))
+        if not size:
+            size = PING_SIZE
+        self._ping_id = random.randint(1, 32767)
+        await self.send_frame(PING, 0, self._ping_id, bytes(random.randint(size // 8, size)))
+
+    async def send_ping_sequence(self):
+        count = random.randint(3, 8)
+        if self._pinging:
+            self._pinging = max(self._pinging, count)
+            return
+        self._pinging = count
+        while self._pinging:
+            await asyncio.sleep(random.random() * 0.1)
+            if self._ping_time:
+                continue
+            await self.send_ping()
+            self._pinging -= 1
+
+    async def send_pong(self, sid=0, size=0):
+        if not size:
+            size = PONG_SIZE
+        await self.send_frame(PING, PONG, sid, bytes(random.randint(size // 8, size)))
 
     async def send_one_data_frame(self, stream_id, data):
         payload = struct.pack('>H', len(data)) + data
@@ -321,8 +340,6 @@ class HxsConnection:
             data_ = data.read(random.randint(256, 16386 - 22))
             while data_:
                 await self.send_one_data_frame(stream_id, data_)
-                if random.random() < PING_FREQ:
-                    await self.send_ping(1024)
                 data_ = data.read(random.randint(256, 8192 - 22))
                 await asyncio.sleep(0)
         else:
@@ -339,8 +356,9 @@ class HxsConnection:
         while not self.connection_lost:
             try:
                 # read frame
+                timeout = PING_TIMEOUT if self._ping_time else 30
                 try:
-                    frame_data = await self.read_frame()
+                    frame_data = await self.read_frame(timeout)
                 except ReadFrameError as err:
                     # destroy connection
                     if not self.connection_lost:
@@ -419,12 +437,13 @@ class HxsConnection:
                     if stream_id == 1:
                         self._settings_async_drain = True
                 elif frame_type == PING:  # 6
-                    if frame_flags == PONG and self._ping_time:
+                    if frame_flags == 0:
+                        await self.send_pong(stream_id, PING_SIZE)
+                    elif self._ping_time and self._ping_id == stream_id:
                         resp_time = time.monotonic() - self._ping_time
                         self._ping_time = 0
                         self.logger.debug('%s response time %.3fs', self.name, resp_time)
-                    else:
-                        await self.send_frame(PING, PONG, 0, bytes(random.randint(PING_SIZE // 8, PING_SIZE)))
+                        self.proxy.log(None, resp_time)
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
                     max_stream_id = payload.read(2)
@@ -472,9 +491,9 @@ class HxsConnection:
                 task_list.append(self._client_writer[stream_id])
         self._client_writer = {}
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
-        task_list.append(asyncio.create_task(self.close()))
         if task_list:
             await asyncio.wait(task_list)
+        await self.close()
 
     def key_exchange(self, data, usn, psw, pubk, ecc):
         data = io.BytesIO(data)
@@ -493,7 +512,7 @@ class HxsConnection:
             # TODO: ask user if a certificate should be accepted or not.
             host, port = self.proxy._host_port
             host = host.replace(':', '_')
-            server_id = '%s_%d' % (host, port)
+            server_id = f'{host}_{port}'
             if server_id not in KNOWN_HOSTS:
                 self.logger.info('hxs: server %s new cert %s saved.',
                                  server_id, hashlib.sha256(server_cert).hexdigest()[:8])
@@ -549,7 +568,6 @@ class HxsConnection:
                     await self.send_ping()
             continue
         self.connection_lost = True
-        await self.close()
 
     def update_stat(self):
         self._recv_tp_ewma = self._recv_tp_ewma * 0.8 + self._stat_recv_tp * 0.2
@@ -573,8 +591,7 @@ class HxsConnection:
         if self._connecting > CONNECTING_LIMIT:
             return True
         return self._buffer_size_ewma > 2048 or \
-            (self._recv_tp_max > 524288 and self._recv_tp_ewma > self._recv_tp_max * 0.3) or \
-            (self._sent_tp_max > 262144 and self._sent_tp_ewma > self._sent_tp_max * 0.3)
+            self._recv_tp_max > 262144 or self._sent_tp_max > 131072
 
     def print_status(self):
         if not self.connected:
