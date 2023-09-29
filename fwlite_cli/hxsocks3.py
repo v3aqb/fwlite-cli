@@ -214,7 +214,7 @@ class Hxs3Connection(HxsConnection):
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
-                         bytes(random.randint(CLIENT_AUTH_PADDING // 16, CLIENT_AUTH_PADDING))])
+                         bytes(random.randint(CLIENT_AUTH_PADDING // 8, CLIENT_AUTH_PADDING))])
         data = bytes((0, )) + data
 
         # send key exchange request

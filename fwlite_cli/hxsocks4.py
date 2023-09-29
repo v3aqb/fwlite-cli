@@ -173,7 +173,7 @@ class Hxs4Connection(HxsConnection):
                          pubk,
                          hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                          bytes((self.mode, )),
-                         bytes(random.randint(CLIENT_AUTH_PADDING // 16, CLIENT_AUTH_PADDING))])
+                         bytes(random.randint(CLIENT_AUTH_PADDING // 8, CLIENT_AUTH_PADDING))])
 
         ct_ = self._pskcipher.encrypt(data)
         ct_ = base64.b64encode(ct_).decode()
