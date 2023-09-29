@@ -146,9 +146,9 @@ class ParentProxy:
 
     def log(self, host, rtime):
         if host != 'udp':
-            self.avg_resp_time = 0.08 * rtime + (1 - 0.08) * self.get_avg_resp_time()
+            self.avg_resp_time = 0.2 * rtime + (1 - 0.2) * self.get_avg_resp_time()
         if host:
-            self.avg_resp_time_by_host[host] = 0.08 * rtime + (1 - 0.08) * self.avg_resp_time_by_host[host]
+            self.avg_resp_time_by_host[host] = 0.2 * rtime + (1 - 0.2) * self.avg_resp_time_by_host[host]
             self.avg_resp_time_by_host_ts[host] = time.monotonic()
         self.avg_resp_time_ts = time.monotonic()
         if self.avg_resp_time > RESPONSE_LIMIT:

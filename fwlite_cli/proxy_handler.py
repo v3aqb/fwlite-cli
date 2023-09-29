@@ -103,7 +103,7 @@ class ForwardContext:
 
     def __repr__(self):
         lasting = time.monotonic() - self.first_send if self.first_send else 0
-        return f'{self.target} fc: {self.fcc} fr: {self.frc} leof: {self.local_eof}, {lasting:.2f}'
+        return f'{self.target} fc: {self.fcc} fr: {self.frc} leof: {self.local_eof}, exist {lasting:.2f}s'
 
 
 class Server:
@@ -800,7 +800,6 @@ class http_handler(BaseProxyHandler):
     async def _do_CONNECT(self, retry=False, gfwed=False):
         if retry:
             self.failed_parents.append(self.ppname)
-            self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             self.retry_count += 1
             if self.retry_count > 10:
                 self.logger.error('retry time exceeded 10, pls check!')
@@ -829,11 +828,14 @@ class http_handler(BaseProxyHandler):
         except ConnectionDenied as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
+            self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
+                                 False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
             return
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
+            self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
                                  False, self.failed_parents, self.ppname)
             await self._do_CONNECT(True)
@@ -852,7 +854,8 @@ class http_handler(BaseProxyHandler):
         context = ForwardContext(self.path)
         await self.forward(context)
         if context.retryable:
-            self.logger.warning('%r, timeout: %.2fs', context, self.timeout)
+            self.logger.info('%r', context)
+            self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
                                  False, self.failed_parents, self.ppname)
             if not context.local_eof:
@@ -886,19 +889,18 @@ class http_handler(BaseProxyHandler):
                 write_to.write(b''.join(self.rbuffer))
                 context.from_client()
         while not context.local_eof:
-            intv = 1 if context.retryable else 6
             try:
                 fut = read_from.read(self.bufsize)
-                data = await asyncio.wait_for(fut, timeout=intv)
+                data = await asyncio.wait_for(fut, timeout=1)
             except asyncio.TimeoutError:
                 if context.forward_break:
                     return
                 idle_time = time.monotonic() - context.last_active
-                if idle_time > 60 and context.remote_eof:
+                if idle_time > self.timeout and context.remote_eof:
                     self.logger.debug('forward_from_client timeout with eof recieved from remote')
                     break
                 if idle_time > timeout:
-                    self.logger.debug('forward_from_client idle timeout')
+                    self.logger.debug('forward_from_client idle timeout, %ss', timeout)
                     break
                 continue
             except OSError as err:
@@ -906,6 +908,7 @@ class http_handler(BaseProxyHandler):
                 break
 
             if not data:
+                self.logger.debug('forward_from_client no data')
                 break
             if context.retryable:
                 self.rbuffer.append(data)
@@ -925,18 +928,17 @@ class http_handler(BaseProxyHandler):
 
     async def forward_from_remote(self, read_from, write_to, context, timeout):
         while not context.remote_eof:
-            intv = 1 if context.retryable else 6
             try:
                 fut = read_from.read(self.bufsize)
-                data = await asyncio.wait_for(fut, intv)
+                data = await asyncio.wait_for(fut, 1)
             except OSError as err:
-                self.logger.info('forward_from_remote %s %r', context.target, err)
+                self.logger.debug('forward_from_remote %s %r', context.target, err)
                 context.forward_break = True
                 break
             except asyncio.TimeoutError:
                 idle_time = time.monotonic() - context.last_active
                 if self.request_host[1] < 1024 and context.retryable and idle_time > self.timeout:
-                    self.logger.debug('forward_from_remote timeout, retryable')
+                    self.logger.info('forward_from_remote timeout, retryable')
                     context.forward_break = True
                     break
                 if context.local_eof and idle_time > self.timeout:
@@ -945,6 +947,7 @@ class http_handler(BaseProxyHandler):
                 continue
 
             if not data:
+                self.logger.debug('forward_from_remote no data')
                 break
 
             if context.retryable:
@@ -965,6 +968,7 @@ class http_handler(BaseProxyHandler):
                 await write_to.drain()
             except ConnectionError:
                 # client closed
+                self.logger.debug('forward_from_remote client closed.')
                 context.remote_eof = True
                 context.local_eof = True
                 return

@@ -540,7 +540,7 @@ class Config:
 
     def proxy_log(self, proxy, host, rtime):
         proxy.log(host, rtime)
-        if proxy.name not in ('_D1R3CT_', '_L0C4L_'):
+        if proxy.name not in ('_D1R3CT_', '_L0C4L_') and rtime < 5:
             self.parentlist.get('_D1R3CT_').log('', rtime)
 
     def list_forward(self):
