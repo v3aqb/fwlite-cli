@@ -631,6 +631,12 @@ class HxsConnection:
         raise NotImplementedError
 
     async def read_frame(self, timeout=30):
+        frame_data = await self._read_frame(timeout)
+        self._stat_total_recv += len(frame_data)
+        self._stat_recv_tp += len(frame_data)
+        return frame_data
+
+    async def _read_frame(self, timeout=30):
         raise NotImplementedError
 
     async def close(self):

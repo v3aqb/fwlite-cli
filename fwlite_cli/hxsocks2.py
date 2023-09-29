@@ -130,7 +130,7 @@ class Hxs2Connection(HxsConnection):
         except OSError:
             self.connection_lost = True
 
-    async def read_frame(self, timeout=30):
+    async def _read_frame(self, timeout=30):
         try:
             frame_len = await self._rfile_read(2, timeout)
             frame_len, = struct.unpack('>H', frame_len)
@@ -142,8 +142,6 @@ class Hxs2Connection(HxsConnection):
         try:
             frame_data = await self._rfile_read(frame_len, timeout=READ_FRAME_TIMEOUT)
             frame_data = self._cipher.decrypt(frame_data)
-            self._stat_total_recv += frame_len + 2
-            self._stat_recv_tp += frame_len + 2
             return frame_data
         except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
             raise ReadFrameError(err) from err
