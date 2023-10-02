@@ -591,7 +591,8 @@ class HxsConnection:
         if self._connecting > CONNECTING_LIMIT:
             return True
         return self._buffer_size_ewma > 2048 or \
-            self._recv_tp_max > 262144 or self._sent_tp_max > 131072
+            self._recv_tp_ewma > self._recv_tp_max * 0.5 or \
+            self._sent_tp_ewma > self._sent_tp_max * 0.5
 
     def print_status(self):
         if not self.connected:
