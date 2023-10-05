@@ -134,7 +134,7 @@ class Hxs4Connection(HxsConnection):
         try:
             frame_len = await self._rfile_read(2, timeout)
             frame_len, = struct.unpack('>H', frame_len)
-        except (ConnectionError, asyncio.IncompleteReadError) as err:
+        except (OSError, asyncio.IncompleteReadError) as err:
             # destroy connection
             raise ReadFrameError(err) from err
 
@@ -163,7 +163,7 @@ class Hxs4Connection(HxsConnection):
         self._socport = self.remote_writer.get_extra_info('sockname')[1]
 
         # prep key exchange request
-        self._pskcipher = AEncryptor(self._psk.encode(), self.method, CTX, role=0)
+        self._pskcipher = AEncryptor(self._psk.encode(), self.method, CTX, role=1)
         ecc = ECC(self._pskcipher.key_len)
         pubk = ecc.get_pub_key()
         timestamp = struct.pack('>I', int(time.time()) // 30)
@@ -174,12 +174,12 @@ class Hxs4Connection(HxsConnection):
                          bytes(random.randint(CLIENT_AUTH_PADDING // 8, CLIENT_AUTH_PADDING))])
 
         ct_ = self._pskcipher.encrypt(data)
-        ct_ = base64.b64encode(ct_).decode()
-        table = {}
-        for i in range(128):
-            if random.random() < 0.2:
-                table[i] = i | 0b10000000
-        ct_ = ct_.translate(table).encode('latin1')
+        ct_ = base64.b64encode(ct_)
+        # table = {}
+        # for i in range(128):
+        #     if random.random() < 0.2:
+        #         table[i] = i | 0b10000000
+        # ct_ = ct_.decode().translate(table).encode('latin1')
 
         # send key exchange request
         self.remote_writer.write(struct.pack('>H', len(ct_)) + ct_)
@@ -192,6 +192,7 @@ class Hxs4Connection(HxsConnection):
         try:
             data = self._pskcipher.decrypt(data)
         except InvalidTag:
+            table = {}
             for i in range(256):
                 table[i] = i & 0b01111111
             data = data.decode('latin1').translate(table).encode('latin1')
