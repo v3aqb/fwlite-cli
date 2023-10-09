@@ -124,18 +124,21 @@ class ConnectionManager:
             if len(self.connection_list) < MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 if self._err and time.time() - self._err_time < 6:
-                    raise ConnectionDenied(self._err)
-                connection = Hxs3Connection(proxy, self)
-                try:
-                    await connection.get_key(timeout, tcp_nodelay)
-                except Exception as err:
-                    asyncio.ensure_future(connection.close())
-                    self._err = repr(err)
-                    self._err_time = time.time()
-                    raise ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err) from err
+                    if not self.connection_list:
+                        raise ConnectionDenied(self._err)
                 else:
-                    self._err = None
-                    self.connection_list.append(connection)
+                    connection = Hxs3Connection(proxy, self)
+                    try:
+                        await connection.get_key(timeout, tcp_nodelay)
+                    except Exception as err:
+                        asyncio.ensure_future(connection.close())
+                        self._err = repr(err)
+                        self._err_time = time.time()
+                        if not self.connection_list:
+                            raise ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err) from err
+                    else:
+                        self._err = None
+                        self.connection_list.append(connection)
         list_ = sorted(self.connection_list, key=lambda item: item.busy())
         return list_[0]
 
