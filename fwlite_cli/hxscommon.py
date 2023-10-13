@@ -127,7 +127,7 @@ class HxsConnection:
         self.timeout = 6  # read frame_data timeout
         self._manager = manager
         self._ping_time = 0
-        self.connected = False
+        self.connected = 0
         self.connection_lost = False
         self.udp_event = None
 
@@ -469,7 +469,7 @@ class HxsConnection:
         # out of loop, destroy connection
         self.connection_lost = True
         self._manager.remove(self)
-        self.logger.warning('out of loop %s', self.proxy.name)
+        self.logger.warning('out of loop %s, lasting %ds', self.proxy.name, time.monotonic() - self.connected)
         self.logger.info('total_recv: %d, data_recv: %d %.3f',
                          self._stat_total_recv, self._stat_data_recv,
                          self._stat_data_recv / self._stat_total_recv)
@@ -536,7 +536,7 @@ class HxsConnection:
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.monitor())
-                    self.connected = True
+                    self.connected = time.monotonic()
                     return
                 except InvalidSignature:
                     self.logger.error('hxs getKey Error: server auth failed, bad signature')
