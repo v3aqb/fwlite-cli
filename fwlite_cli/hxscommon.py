@@ -29,7 +29,7 @@ import io
 import hashlib
 import random
 import asyncio
-from asyncio import Event, Lock
+from asyncio import Event, Lock, Semaphore
 
 from hxcrypto import ECC, AEncryptor, InvalidSignature
 from hxcrypto.encrypt import EncryptorStream
@@ -124,7 +124,6 @@ class HxsConnection:
         self.logger = None
         self.proxy = proxy
         self.name = self.proxy.name
-        self.timeout = 6  # read frame_data timeout
         self._manager = manager
         self._ping_time = 0
         self.connected = 0
@@ -146,7 +145,6 @@ class HxsConnection:
         self._cipher = None
         self._next_stream_id = 1
         self._settings_async_drain = None
-        self._connecting = 0
 
         self._client_writer = {}
         self._remote_connected_event = {}
@@ -178,48 +176,50 @@ class HxsConnection:
         self._stat_sent_tp = 0
 
         self._lock = Lock()
+        self._connecting_lock = Semaphore(CONNECTING_LIMIT)
 
     async def connect(self, addr, port, timeout=3):
         self.logger.debug('hxsocks send connect request')
-        if self.connection_lost:
-            self._manager.remove(self)
-            raise ConnectionLostError(0, 'hxs connection lost')
-        if not self.connected:
-            self._manager.remove(self)
-            raise ConnectionResetError(0, 'hxs not connected.')
-        # send connect request
-        self._connecting += 1
-        payload = b''.join([bytes((len(addr), )),
-                            addr.encode(),
-                            struct.pack('>H', port),
-                            bytes(random.randint(HEADER_SIZE // 8, HEADER_SIZE)),
-                            ])
-        stream_id = self._next_stream_id
-        self._next_stream_id += 1
-        if self._next_stream_id > MAX_STREAM_ID:
-            self.logger.error('MAX_STREAM_ID reached')
-            self._manager.remove(self)
+        async with self._connecting_lock:
+            if self.connection_lost:
+                self._manager.remove(self)
+                raise ConnectionLostError(0, 'hxs connection lost')
+            if not self.connected:
+                self._manager.remove(self)
+                raise ConnectionResetError(0, 'hxs not connected.')
+            # send connect request
+            payload = b''.join([bytes((len(addr), )),
+                                addr.encode(),
+                                struct.pack('>H', port),
+                                bytes(random.randint(HEADER_SIZE // 4, HEADER_SIZE)),
+                                ])
+            stream_id = self._next_stream_id
+            self._next_stream_id += 1
+            if self._next_stream_id > MAX_STREAM_ID:
+                self.logger.error('MAX_STREAM_ID reached')
+                self._manager.remove(self)
 
-        await self.send_frame(HEADERS, OPEN, stream_id, payload)
-        self._stream_addr[stream_id] = (addr, port)
+            await self.send_frame(HEADERS, OPEN, stream_id, payload)
+            # asyncio.ensure_future(self.send_ping_sequence())
+            # self._ponging = max(self._ponging, 4)
+            self._stream_addr[stream_id] = (addr, port)
 
-        # wait for server response
-        event = Event()
-        self._remote_connected_event[stream_id] = event
-        self._client_resume_reading[stream_id] = asyncio.Event()
-        self._client_resume_reading[stream_id].set()
+            # wait for server response
+            event = Event()
+            self._remote_connected_event[stream_id] = event
+            self._client_resume_reading[stream_id] = asyncio.Event()
+            self._client_resume_reading[stream_id].set()
 
-        # await event.wait()
-        fut = event.wait()
-        try:
-            await asyncio.wait_for(fut, timeout=timeout)
-        except asyncio.TimeoutError:
-            self.logger.error('%s connect %s timeout %ds',
-                              self.name, f'{addr}:{port}', timeout)
-            del self._remote_connected_event[stream_id]
-            self._connecting -= 1
-            asyncio.ensure_future(self.send_ping())
-            raise
+            # await event.wait()
+            fut = event.wait()
+            try:
+                await asyncio.wait_for(fut, timeout=timeout)
+            except asyncio.TimeoutError:
+                self.logger.error('%s connect %s timeout %ds',
+                                  self.name, f'{addr}:{port}', timeout)
+                del self._remote_connected_event[stream_id]
+                asyncio.ensure_future(self.send_ping())
+                raise
 
         del self._remote_connected_event[stream_id]
 
@@ -236,9 +236,7 @@ class HxsConnection:
             self._client_drain_lock[stream_id] = asyncio.Lock()
             # start forwarding
             self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
-            self._connecting -= 1
             return socketpair_a
-        self._connecting -= 1
         if self.connection_lost:
             raise ConnectionLostError(0, 'hxs connection lost after request sent')
         raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
@@ -588,11 +586,14 @@ class HxsConnection:
         return self._recv_tp_ewma + self._sent_tp_ewma
 
     def is_busy(self):
-        if self._connecting > CONNECTING_LIMIT:
+        if self._connecting_lock.locked():
             return True
-        return self._buffer_size_ewma > 2048 or \
-            self._recv_tp_ewma > self._recv_tp_max * 0.5 or \
-            self._sent_tp_ewma > self._sent_tp_max * 0.5
+        if self._buffer_size_ewma > 2048:
+            return True
+        if self._recv_tp_max > 262144:
+            return self._recv_tp_ewma > self._recv_tp_max * 0.5 or \
+                self._sent_tp_ewma > self._sent_tp_max * 0.5
+        return False
 
     def print_status(self):
         if not self.connected:
