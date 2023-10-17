@@ -184,21 +184,27 @@ class Hxs3Connection(HxsConnection):
         self.logger.info('%s connect to server', self.name)
         ctx = None
         scheme = 'ws'
+        hostname = self.proxy.hostname
         if self.proxy.scheme == 'hxs3s':
             scheme = 'wss'
             # ctx = ssl.create_default_context()
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            ctx.set_alpn_protocols(["http/1.1"])
-            ctx.set_ciphers(CIPHERS)
+            # ctx.set_alpn_protocols(["http/1.1"])
+            # ctx.set_ciphers(CIPHERS)
             if 'insecure' in self.proxy.query or is_ipaddr(self.proxy.hostname):
+                hostname = self.proxy.query.get('host', [self.proxy.hostname, ])[0]
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
+        else:
+            hostname = None
 
         if ":" in self.proxy.hostname:
             url = '%s://[%s]:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
         else:
             url = '%s://%s:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
+
         self.remote_writer = await websockets.client.connect(url, ssl=ctx, compression=None,
+                                                             server_hostname=hostname,
                                                              ping_interval=None,
                                                              ping_timeout=None,
                                                              max_size=2 ** 17,
