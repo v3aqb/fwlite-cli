@@ -158,7 +158,7 @@ class Hxs2Connection(HxsConnection):
             tunnel=True,
             limit=262144,
             tcp_nodelay=tcp_nodelay)
-        self.remote_writer.transport.set_write_buffer_limits(262144)
+        self.remote_writer.transport.set_write_buffer_limits(131072)
         self._socport = self.remote_writer.get_extra_info('sockname')[1]
 
         # prep key exchange request

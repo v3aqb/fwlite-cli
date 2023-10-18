@@ -134,7 +134,7 @@ class Server:
         await _handler.handle(reader, writer)
 
     async def _start(self):
-        self.server = await asyncio.start_server(self.handle, self.addr, self.port, limit=131072)
+        self.server = await asyncio.start_server(self.handle, self.addr, self.port, limit=65536)
 
     def start(self):
         asyncio.ensure_future(self._start())

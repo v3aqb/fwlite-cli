@@ -52,7 +52,6 @@ async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay
             try:
                 fut = asyncio.open_connection(addr, port, limit=limit)
                 remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
-                remote_writer.transport.set_write_buffer_limits(262144)
                 if tcp_nodelay:
                     soc = remote_writer.transport.get_extra_info('socket')
                     soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -66,14 +65,13 @@ async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay
     except TypeError:
         fut = asyncio.open_connection(addr, port, limit=limit)
         remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
-    remote_writer.transport.set_write_buffer_limits(262144)
     if tcp_nodelay:
         soc = remote_writer.transport.get_extra_info('socket')
         soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     return remote_reader, remote_writer
 
 
-async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel=False, limit=131072, tcp_nodelay=False):
+async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel=False, limit=65536, tcp_nodelay=False):
     if not isinstance(proxy, ParentProxy):
         logger.warning('parentproxy is not a ParentProxy instance, please check. %s', proxy)
         proxy = ParentProxy(proxy or 'null', proxy or '')
@@ -141,21 +139,17 @@ async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel
     if proxy.scheme == 'ss':
         from .ssocks import ss_connect
         remote_reader, remote_writer = await ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        remote_writer.transport.set_write_buffer_limits(262144)
         return remote_reader, remote_writer, proxy.name
     if proxy.scheme == 'hxs2':
         from .hxsocks2 import hxs2_connect
         remote_reader, remote_writer, name = await hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        remote_writer.transport.set_write_buffer_limits(262144)
         return remote_reader, remote_writer, name
     if proxy.scheme in ('hxs3', 'hxs3s'):
         from .hxsocks3 import hxs3_connect
         remote_reader, remote_writer, name = await hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        remote_writer.transport.set_write_buffer_limits(262144)
         return remote_reader, remote_writer, name
     if proxy.scheme == 'hxs4':
         from .hxsocks4 import hxs4_connect
         remote_reader, remote_writer, name = await hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        remote_writer.transport.set_write_buffer_limits(262144)
         return remote_reader, remote_writer, name
     raise ValueError(0, f'parentproxy {proxy.name} not supported!')

@@ -204,9 +204,9 @@ class Hxs3Connection(HxsConnection):
                                                              ping_interval=None,
                                                              ping_timeout=None,
                                                              max_size=2 ** 17,
-                                                             max_queue=2 ** 4,
-                                                             read_limit=2 ** 16,
-                                                             write_limit=2 ** 16,)
+                                                             max_queue=2,
+                                                             read_limit=2 ** 17,
+                                                             write_limit=2 ** 17,)
         self._socport = self.remote_writer.local_address[1]
 
         # prep key exchange request
