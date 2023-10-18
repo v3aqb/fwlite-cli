@@ -115,6 +115,18 @@ class ReadFrameError(Exception):
         self.err = err
 
 
+def get_client_auth(key_len, usn, psw, mode):
+    ecc = ECC(key_len)
+    pubk = ecc.get_pub_key()
+    timestamp = struct.pack('>I', int(time.time()) // 30)
+    data = b''.join([bytes((len(pubk), )),
+                     pubk,
+                     hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
+                     bytes((mode, )),
+                     bytes(random.randint(CLIENT_AUTH_PADDING // 2, CLIENT_AUTH_PADDING))])
+    return data, pubk, ecc
+
+
 class HxsConnection:
     bufsize = 65535 - 22
 

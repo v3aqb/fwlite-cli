@@ -19,11 +19,7 @@
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import struct
 import time
-import hmac
-import hashlib
-import random
 import ssl
 import logging
 import asyncio
@@ -32,12 +28,12 @@ from ipaddress import ip_address
 import websockets.client
 from websockets.exceptions import ConnectionClosed
 
-from hxcrypto import InvalidTag, ECC
+from hxcrypto import InvalidTag
 
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import HxsConnection
 from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
-from fwlite_cli.hxscommon import CLIENT_AUTH_PADDING, MAX_CONNECTION
+from fwlite_cli.hxscommon import MAX_CONNECTION, get_client_auth
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
@@ -214,14 +210,8 @@ class Hxs3Connection(HxsConnection):
         self._socport = self.remote_writer.local_address[1]
 
         # prep key exchange request
-        ecc = ECC(32)
-        pubk = ecc.get_pub_key()
-        timestamp = struct.pack('>I', int(time.time()) // 30)
-        data = b''.join([bytes((len(pubk), )),
-                         pubk,
-                         hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
-                         bytes((self.mode, )),
-                         bytes(random.randint(CLIENT_AUTH_PADDING // 8, CLIENT_AUTH_PADDING))])
+        data, pubk, ecc = get_client_auth(32, usn, psw, self.mode)
+
         data = bytes((0, )) + data
 
         # send key exchange request

@@ -20,20 +20,17 @@
 
 import struct
 import time
-import hmac
-import hashlib
 import base64
-import random
 import logging
 import asyncio
 from asyncio import Lock
 
-from hxcrypto import InvalidTag, AEncryptor, ECC
+from hxcrypto import InvalidTag, AEncryptor
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import HxsConnection
+from fwlite_cli.hxscommon import HxsConnection, get_client_auth
 from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
-from fwlite_cli.hxscommon import CLIENT_AUTH_PADDING, CTX, READ_FRAME_TIMEOUT, MAX_CONNECTION
+from fwlite_cli.hxscommon import CTX, READ_FRAME_TIMEOUT, MAX_CONNECTION
 
 
 def set_logger():
@@ -166,14 +163,7 @@ class Hxs4Connection(HxsConnection):
 
         # prep key exchange request
         self._pskcipher = AEncryptor(self._psk.encode(), self.method, CTX, role=1)
-        ecc = ECC(self._pskcipher.key_len)
-        pubk = ecc.get_pub_key()
-        timestamp = struct.pack('>I', int(time.time()) // 30)
-        data = b''.join([bytes((len(pubk), )),
-                         pubk,
-                         hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
-                         bytes((self.mode, )),
-                         bytes(random.randint(CLIENT_AUTH_PADDING // 8, CLIENT_AUTH_PADDING))])
+        data, pubk, ecc = get_client_auth(self._pskcipher.key_len, usn, psw, self.mode)
 
         ct_ = self._pskcipher.encrypt(data)
         ct_ = base64.b64encode(ct_)
