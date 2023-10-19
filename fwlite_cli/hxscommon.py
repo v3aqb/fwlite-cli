@@ -171,6 +171,7 @@ class HxsConnection:
         self._last_recv = time.monotonic()
         self._last_send = time.monotonic()
         self._last_ping = 0
+        self._last_ping_log = 0
         self._ping_id = None
         self._pinging = 0
         self._ponging = 0
@@ -470,8 +471,11 @@ class HxsConnection:
                     elif self._ping_time and self._ping_id == stream_id:
                         resp_time = time.monotonic() - self._ping_time
                         self._ping_time = 0
-                        self.logger.debug('%s response time %.3fs', self.name, resp_time)
                         self.proxy.log(None, resp_time)
+                        if time.monotonic() - self._last_ping_log > 120 or resp_time > 1:
+                            self._last_ping_log = time.monotonic()
+                            self.logger.info('%s response time %.3fs', self.name, resp_time)
+                            self.print_status()
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
                     max_stream_id = payload.read(2)
@@ -498,12 +502,6 @@ class HxsConnection:
         self.connection_lost = True
         self._manager.remove(self)
         self.logger.warning('out of loop %s, lasting %ds', self.proxy.name, time.monotonic() - self.connected)
-        self.logger.info('total_recv: %d, data_recv: %d %.3f',
-                         self._stat_total_recv, self._stat_data_recv,
-                         self._stat_data_recv / self._stat_total_recv)
-        self.logger.info('total_sent: %d, data_sent: %d %.3f',
-                         self._stat_total_sent, self._stat_data_sent,
-                         self._stat_data_sent / self._stat_total_sent)
         self.print_status()
 
         for sid, event in self._remote_connected_event.items():
@@ -649,6 +647,12 @@ class HxsConnection:
         self.logger.info('recv_tp_max: %8d, ewma: %8d', self._recv_tp_max, self._recv_tp_ewma)
         self.logger.info('sent_tp_max: %8d, ewma: %8d', self._sent_tp_max, self._sent_tp_ewma)
         self.logger.info('buffer_ewma: %8d, stream: %6d', self._buffer_size_ewma, self.count())
+        self.logger.info('total_recv: %d, data_recv: %d %.3f',
+                         self._stat_total_recv, self._stat_data_recv,
+                         self._stat_data_recv / self._stat_total_recv)
+        self.logger.info('total_sent: %d, data_sent: %d %.3f',
+                         self._stat_total_sent, self._stat_data_sent,
+                         self._stat_data_sent / self._stat_total_sent)
 
     async def close_stream(self, stream_id):
         if not self._client_resume_reading[stream_id].is_set():
