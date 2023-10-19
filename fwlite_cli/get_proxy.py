@@ -239,6 +239,9 @@ class get_proxy:
         if mode == 0:
             return False
 
+        if host in self.cic.conf.HOSTS:
+            return None
+
         if ip is None:
             self.logger.error('%s:%s ip is None.', host, port)
             return True
