@@ -456,7 +456,7 @@ class http_handler(BaseProxyHandler):
                                  self.command, self.shortpath, self.pproxy.name)
 
                 addr, port = self.request_host
-                # addr, port, proxy=None, timeout=3, iplist=[], tunnel=False
+                # addr, port, proxy=None, timeout=3, iplist=None, tunnel=False
                 self.remote_reader, self.remote_writer, self.ppname = \
                     await open_connection(addr, port, self.pproxy, self.timeout, iplist, False)
 
