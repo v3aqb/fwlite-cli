@@ -165,32 +165,23 @@ class Hxs4Connection(HxsConnection):
         data, pubk, ecc = get_client_auth(self._pskcipher.key_len, usn, psw, self.mode)
 
         ct_ = self._pskcipher.encrypt(data)
-        ct_ = base64.b64encode(ct_)
-        # table = {}
-        # for i in range(128):
-        #     if random.random() < 0.2:
-        #         table[i] = i | 0b10000000
-        # ct_ = ct_.decode().translate(table).encode('latin1')
 
         # send key exchange request
-        self.remote_writer.write(struct.pack('>H', len(ct_)) + ct_)
+        self.remote_writer.write(ct_)
         await self.remote_writer.drain()
 
         # read server response
-        resp_len = await self._rfile_read(2, timeout)
-        resp_len, = struct.unpack('>H', resp_len)
-        data = await self._rfile_read(resp_len)
-        try:
-            data = self._pskcipher.decrypt(data)
-        except InvalidTag:
-            table = {}
-            for i in range(256):
-                table[i] = i & 0b01111111
-            data = data.decode('latin1').translate(table).encode('latin1')
-            data = base64.b64decode(data)
-            data = self._pskcipher.decrypt(data)
-
-        self.key_exchange(data, usn, psw, pubk, ecc)
+        data = b''
+        for _ in range(10):
+            try:
+                fut = self.remote_reader.read(self.bufsize)
+                data += await asyncio.wait_for(fut, timeout=4)
+                if len(data) > self._pskcipher.iv_len:
+                    auth = self._pskcipher.decrypt(data)
+                    break
+            except InvalidTag:
+                continue
+        self.key_exchange(auth, usn, psw, pubk, ecc)
 
     async def _rfile_read(self, size, timeout=None):
         if timeout:
