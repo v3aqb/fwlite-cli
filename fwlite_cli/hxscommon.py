@@ -440,6 +440,9 @@ class HxsConnection:
                         break
 
                     # sent data to stream
+                    for _ in range(5):
+                        if stream_id not in self._client_writer:
+                            await asyncio.sleep(0)
                     try:
                         self._last_active[stream_id] = time.monotonic()
                         self._client_writer[stream_id].write(data)
