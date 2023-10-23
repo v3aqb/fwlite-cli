@@ -31,9 +31,8 @@ from websockets.exceptions import ConnectionClosed
 from hxcrypto import InvalidTag
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import HxsConnection
+from fwlite_cli.hxscommon import HxsConnection, HC, get_client_auth
 from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
-from fwlite_cli.hxscommon import MAX_CONNECTION, get_client_auth
 from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
@@ -84,7 +83,7 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     assert proxy.scheme in ('hxs3', 'hxs3s')
 
     # get hxs3 connection
-    for _ in range(MAX_CONNECTION + 1):
+    for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs3_get_connection(proxy, timeout, tcp_nodelay)
 
@@ -117,7 +116,7 @@ class ConnectionManager:
     async def get_connection(self, proxy, timeout, tcp_nodelay):
         # choose / create and return a connection
         async with self._lock:
-            if len(self.connection_list) < MAX_CONNECTION and\
+            if len(self.connection_list) < HC.MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
                 if self._err and time.time() - self._err_time < 6:
                     if not self.connection_list:
