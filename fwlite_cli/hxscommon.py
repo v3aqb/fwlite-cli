@@ -31,7 +31,7 @@ import random
 import asyncio
 from asyncio import Event, Lock, Semaphore
 
-from hxcrypto import ECC, AEncryptor, InvalidSignature
+from hxcrypto import ECC, AEncryptor, InvalidSignature, method_supported
 from hxcrypto.encrypt import EncryptorStream
 
 from fwlite_cli.parent_proxy import ParentProxy
@@ -40,7 +40,7 @@ from fwlite_cli.hxs_udp2 import on_dgram_recv
 
 DEFAULT_METHOD = 'chacha20-ietf-poly1305'  # for hxsocks2 handshake
 FAST_METHOD = 'aes-128-gcm' if cipher_test[2] < 1.2 else 'chacha20-ietf-poly1305'
-DEFAULT_MODE = '0' if cipher_test[1] < 0.1 else '1'
+DEFAULT_MODE = 0
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
 
@@ -149,10 +149,18 @@ class HxsConnection:
 
         self._psk = self.proxy.query.get('PSK', [''])[0]
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()  # for handshake
-        self.mode = int(self.proxy.query.get('mode', [DEFAULT_MODE])[0])
+        default_mode = DEFAULT_MODE
+        if self.proxy.scheme == 'hxs4':
+            default_mode |= 2
+        self.mode = int(self.proxy.query.get('mode', [default_mode])[0])
+        if self.mode & 2 and 'rc4' not in method_supported:
+            self.mode &= 0b11111101
         if self.method == 'rc4-md5':
-            self.mode = 1
+            self.mode |= 1
+        self._mode = 0
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
+        self.encrypt_frame_len = False
+        self._flen_cipher = None
 
         self.remote_reader = None
         self.remote_writer = None
@@ -536,7 +544,7 @@ class HxsConnection:
             auth = data.read(32)
             server_cert = data.read(scertlen)
             signature = data.read(siglen)
-            mode = data.read(1)[0]
+            self._mode = data.read(1)[0]
 
             # TODO: ask user if a certificate should be accepted or not.
             host, port = self.proxy._host_port
@@ -557,11 +565,20 @@ class HxsConnection:
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
                     shared_secret = ecc.get_dh_key(server_key)
                     self.logger.debug('hxs key exchange success')
-                    if mode == 1:
+                    if self._mode & 1:
                         self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False, role=2)
                         self.bufsize += 16
                     else:
                         self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False, role=2)
+                    if self._mode & 2:
+                        self.encrypt_frame_len = True
+                        md5 = hashlib.md5()
+                        md5.update(shared_secret)
+                        md5.update(b'encrypt_flen')
+                        key = md5.digest()
+                        self._flen_cipher = EncryptorStream(key, 'rc4', check_iv=False)
+                        self._flen_cipher.encrypt(bytes(1024))
+                        self._flen_cipher.decrypt(bytes(1024))
                     # start reading from connection
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.monitor())
