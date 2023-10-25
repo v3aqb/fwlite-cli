@@ -114,14 +114,14 @@ def get_client_auth(key_len, usn, psw, mode):
 
 class HC:
     MAX_STREAM_ID = 32767
-    MAX_CONNECTION = 1
+    MAX_CONNECTION = 2
     CLIENT_WRITE_BUFFER = 131072
     CONNECTING_LIMIT = 3
 
     READ_FRAME_TIMEOUT = 8
     PING_TIMEOUT = 8
     IDLE_TIMEOUT = 300
-    PING_INTV = 5
+    PING_INTV = 10
 
     CLIENT_AUTH_PADDING = 256
     HEADER_SIZE = 128
@@ -194,6 +194,7 @@ class HxsConnection:
         self._recv_tp_ewma = 0
         self._sent_tp_max = 0
         self._sent_tp_ewma = 0
+        self._ping_ewma = 0
 
         self._stat_data_recv = 0
         self._stat_total_recv = 1
@@ -484,9 +485,9 @@ class HxsConnection:
                         await self.send_pong(stream_id, HC.PING_SIZE)
                     elif self._ping_time and self._ping_id == stream_id:
                         resp_time = time.monotonic() - self._ping_time
+                        self._ping_ewma = resp_time * 0.2 + self._ping_ewma * 0.8
                         self._ping_time = 0
-                        self.proxy.log(None, resp_time)
-                        if time.monotonic() - self._last_ping_log > 120 or resp_time > 1:
+                        if time.monotonic() - self._last_ping_log > 60 or resp_time > 1:
                             self._last_ping_log = time.monotonic()
                             self.logger.info('%s response time %.3fs', self.name, resp_time)
                             self.print_status()
@@ -612,9 +613,8 @@ class HxsConnection:
             if not self.count() and idle_time > HC.IDLE_TIMEOUT:
                 self.logger.info('connection idle %s', self.proxy.name)
                 break
-            if idle_time > HC.PING_INTV:
-                if time.monotonic() - self._last_ping > HC.PING_INTV:
-                    await self.send_ping()
+            if time.monotonic() - self._last_ping > HC.PING_INTV:
+                await self.send_ping()
             continue
         self.connection_lost = True
 
@@ -651,7 +651,7 @@ class HxsConnection:
             pass
 
     def busy(self):
-        return self._recv_tp_ewma + self._sent_tp_ewma
+        return self._ping_ewma
 
     def is_busy(self):
         if self._connecting_lock.locked():
@@ -666,7 +666,7 @@ class HxsConnection:
     def print_status(self):
         if not self.connected:
             return
-        self.logger.info('%s:%s next_id: %s, status:', self.name, self._socport, self._next_stream_id)
+        self.logger.info('%s:%s next_id: %s, ping ewma: %.3fs', self.name, self._socport, self._next_stream_id, self._ping_ewma)
         self.logger.info('recv_tp_max: %8d, ewma: %8d', self._recv_tp_max, self._recv_tp_ewma)
         self.logger.info('sent_tp_max: %8d, ewma: %8d', self._sent_tp_max, self._sent_tp_ewma)
         self.logger.info('buffer_ewma: %8d, stream: %6d', self._buffer_size_ewma, self.count())
