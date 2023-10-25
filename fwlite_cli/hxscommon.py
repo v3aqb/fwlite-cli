@@ -286,8 +286,12 @@ class HxsConnection:
 
             if not data:
                 # close stream(LOCAL)
-                self._stream_status[stream_id] |= EOF_SENT
-                await self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
+                if not self._stream_status[stream_id] & EOF_SENT:
+                    self._stream_status[stream_id] |= EOF_SENT
+                    await self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
+                if self._stream_status[stream_id] == CLOSED:
+                    await self.close_stream(stream_id)
+                    return
                 break
 
             if self._stream_status[stream_id] & EOF_SENT:
