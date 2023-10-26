@@ -55,6 +55,9 @@ class UDPRelayHxs2(UDPRelayInterface):
             elif proxy.scheme in ('hxs3', 'hxs3s'):
                 from fwlite_cli.hxsocks3 import hxs3_get_connection
                 get_connection = hxs3_get_connection
+            elif proxy.scheme == 'hxs4':
+                from fwlite_cli.hxsocks4 import hxs4_get_connection
+                get_connection = hxs4_get_connection
             conn = await get_connection(proxy, timeout=4, tcp_nodelay=True)
             self.proxy = conn.proxy
             return conn

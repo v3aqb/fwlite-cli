@@ -144,7 +144,7 @@ class Socks5UDPServer:
                     await udp_relay.udp_associate()
                     self.udp_relay_holder[client_addr] = udp_relay
                     break
-                if proxy.scheme in ('hxs2', 'hxs3', 'hxs3s'):
+                if proxy.scheme in ('hxs2', 'hxs3', 'hxs3s', 'hxs4'):
                     from fwlite_cli.hxs_udp2 import get_hxs_udp_relay
                     relay = get_hxs_udp_relay(self, client_addr, [proxy, ])
                     self.udp_relay_holder[client_addr] = relay
