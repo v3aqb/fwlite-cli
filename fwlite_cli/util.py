@@ -139,6 +139,22 @@ def set_keepalive(soc):
         soc.setsockopt(socket.IPPROTO_TCP, tcp_keepintvl, 5)
 
 
+def split_data(data, split):
+    data_len = len(data)
+    split = min(max(split, 0), data_len // 10)
+    indices = random.sample(range(1, data_len - 1), split)
+    indices.sort()
+
+    i_pre = 0
+    frag_list = []
+    for indice in indices:
+        data_frag = data[i_pre:indice]
+        i_pre = indice
+        frag_list.append(data_frag)
+    frag_list.append(data[i_pre:])
+    return frag_list
+
+
 def count_one(num):
     num = (num & 0x55555555) + ((num >> 1)  & 0x55555555)
     num = (num & 0x33333333) + ((num >> 2)  & 0x33333333)
