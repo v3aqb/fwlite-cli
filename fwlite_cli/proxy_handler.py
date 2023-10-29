@@ -905,7 +905,10 @@ class http_handler(BaseProxyHandler):
                 continue
             except OSError as err:
                 self.logger.debug('forward_from_client %r', err)
-                break
+                context.local_eof = True
+                context.remote_eof = True
+                write_to.close()
+                return
 
             if not data:
                 self.logger.debug('forward_from_client no data')
