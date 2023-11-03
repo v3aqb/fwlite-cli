@@ -431,7 +431,7 @@ class Config:
             sys.stdout.flush()
 
     async def download(self):
-        proxy = self.parentlist.get('FWLITE:' + self.profile[0])
+        proxy = self.parentlist.get('FWLITE:3')
 
         file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'),
                      self.chinalist_path: self.userconf.dget('FWLite', 'chinalist_url', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chinalist.txt'),
