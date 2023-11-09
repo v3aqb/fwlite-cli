@@ -377,7 +377,7 @@ class Config:
                 port = int(port)
                 self.port_forward.add(target, proxy, port)
             except Exception as err:
-                self.logger.error(repr(err), exc_info=True)
+                self.logger.error('Bad port_forward rule, %r', err, exc_info=True)
 
     def load_subscription(self, subscription):
         proxy = self.parentlist.get('_D1R3CT_')
