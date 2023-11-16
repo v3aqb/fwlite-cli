@@ -129,7 +129,8 @@ def get_port(addr, port=0):
 def set_keepalive(soc):
     soc.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     if sys.platform.startswith('win32'):
-        soc.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 15000, 5000))
+        if hasattr(soc, 'ioctl'):
+            soc.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 15000, 5000))
     elif sys.platform.startswith('linux'):
         soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
         soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 5)
