@@ -182,10 +182,10 @@ def test_one(method, block, repeat):
     data = b'\0' * block
     cipher = AEncryptor(b'123456', method, b"ctx", check_iv=False)
     cipher.encrypt(data)
-    time_log = time.time()
+    time_log = time.monotonic()
     for _ in range(repeat):
         cipher.encrypt(data)
-    return time.time() - time_log
+    return time.monotonic() - time_log
 
 
 def test_cipher():
@@ -199,7 +199,10 @@ def test_cipher():
     '''
     result_aes = test_one('aes-128-gcm', 10240, 512)
     result_chacha20 = test_one('chacha20-ietf-poly1305', 10240, 512)
-    result = result_aes / result_chacha20
+    try:
+        result = result_aes / result_chacha20
+    except ZeroDivisionError:
+        result = 1
     return (result_aes, result_chacha20, result)
 
 
