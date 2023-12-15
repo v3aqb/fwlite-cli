@@ -304,6 +304,7 @@ class HxsConnection(HC):
         self._client_writer = {}
         self._remote_connected_event = {}
         self._stream_ctx = {}
+        self._stream_ctx[0] = ForwardContext(self, 0, ('', 0), 0, 0)
         self._stream_task = {}
         self._last_recv = time.monotonic()
         self._last_send = time.monotonic()
@@ -513,7 +514,6 @@ class HxsConnection(HC):
 
     async def read_from_connection(self):
         self.logger.debug('start read from connection')
-        self._stream_ctx[0] = ForwardContext(self, 0, ('', 0), 0, 0)
         while not self.connection_lost:
             try:
                 # read frame
