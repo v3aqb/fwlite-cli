@@ -391,6 +391,7 @@ class HxsConnection(HC):
     async def read_from_client(self, stream_id, client_reader):
         self.logger.debug('start read from client')
 
+        count = 0
         while not self.connection_lost:
             await self._stream_ctx[stream_id].resume_reading.wait()
             fut = client_reader.read(self.bufsize)
@@ -417,7 +418,11 @@ class HxsConnection(HC):
                 self.logger.error('data recv from client, while stream EOF_SENT!')
                 await self.close_stream(stream_id)
                 return
-            await self.send_data_frame(stream_id, data)
+            if count < 5:
+                await self.send_data_frame(stream_id, data, more_padding=True)
+                count += 1
+            else:
+                await self.send_data_frame(stream_id, data)
         while time.monotonic() - self._stream_ctx[stream_id].last_active < 12:
             await asyncio.sleep(6)
         await self.close_stream(stream_id)
@@ -476,7 +481,7 @@ class HxsConnection(HC):
             size = self.PONG_SIZE
         await self.send_frame(PING, PONG, sid, bytes(random.randint(size // 4, size)))
 
-    async def send_one_data_frame(self, stream_id, data):
+    async def send_one_data_frame(self, stream_id, data, more_padding=False):
         if self._stream_ctx[stream_id].stream_status & EOF_SENT:
             return
         await self._stream_ctx[stream_id].acquire(len(data))
@@ -488,12 +493,16 @@ class HxsConnection(HC):
         elif self.bufsize - len(data) < 255:
             padding = bytes(self.bufsize - len(data))
         else:
-            padding_len = random.randint(8, 255)
+            diff = 1024 - len(data)
+            if diff > 0 and more_padding:
+                padding_len = random.randint(max(diff - 100, diff, 0), diff + 512)
+            else:
+                padding_len = random.randint(8, 64)
             padding = bytes(padding_len)
         payload += padding
         await self.send_frame(DATA, 0, stream_id, payload)
 
-    async def send_data_frame(self, stream_id, data):
+    async def send_data_frame(self, stream_id, data, more_padding=False):
         data_len = len(data)
         if data_len > self.FRAME_SIZE_LIMIT and random.random() < self.FRAME_SPLIT_FREQ:
             data = io.BytesIO(data)
@@ -505,7 +514,7 @@ class HxsConnection(HC):
                 data_ = data.read(random.randint(64, self.FRAME_SIZE_LIMIT))
                 await asyncio.sleep(0)
         else:
-            await self.send_one_data_frame(stream_id, data)
+            await self.send_one_data_frame(stream_id, data, more_padding)
         try:
             buffer_size = self.remote_writer.transport.get_write_buffer_size()
             self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
