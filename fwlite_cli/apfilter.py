@@ -95,8 +95,8 @@ class ap_filter:
     def __init__(self, lst=None):
         self.excludes = []
         self.slow = []
-        self.domains = set()
-        self.domains_exclude = set()
+        self.host_endswith = set()
+        self.host_endswith_exclude = set()
         self.fast = defaultdict(list)
         self.net_filter = NetFilter()
         self.net_filter_exclude = NetFilter()
@@ -172,10 +172,10 @@ class ap_filter:
             return
         except ValueError:
             pass
-        if domain in self.domains_exclude:
+        if domain in self.host_endswith_exclude:
             logger.error('%s already in domains_exclude', rule)
             return
-        self.domains_exclude.add(domain)
+        self.host_endswith_exclude.add(domain)
 
     def _add_domain(self, rule):
         rule = rule.rstrip('/^')
@@ -185,10 +185,10 @@ class ap_filter:
             return
         except ValueError:
             pass
-        if domain in self.domains:
+        if domain in self.host_endswith:
             logger.error('%s already in domains', rule)
             return
-        self.domains.add(domain)
+        self.host_endswith.add(domain)
 
     def match(self, url, host=None, domain_only=False):
         if host is None:
@@ -216,9 +216,9 @@ class ap_filter:
         if host in self.net_filter:
             return True
         lst = ['.'.join(host.split('.')[i:]) for i in range(len(host.split('.')))]
-        if any(host in self.domains_exclude for host in lst):
+        if any(host in self.host_endswith_exclude for host in lst):
             return False
-        if any(host in self.domains for host in lst):
+        if any(host in self.host_endswith for host in lst):
             return True
         return None
 
@@ -244,7 +244,7 @@ class ap_filter:
             return
         except ValueError:
             pass
-        self.domains.discard(domain)
+        self.host_endswith.discard(domain)
 
     def remove_domain_exclude(self, rule):
         domain = rule.rstrip('/')[4:]
@@ -253,7 +253,7 @@ class ap_filter:
             return
         except ValueError:
             pass
-        self.domains_exclude.discard(domain)
+        self.host_endswith_exclude.discard(domain)
 
     def remove_fast(self, rule):
         rule_t = rule[1:] if rule.startswith('|') else rule
