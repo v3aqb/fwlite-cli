@@ -636,7 +636,7 @@ class HxsConnection(HC):
                             self.logger.info('%s response time %.3fs',
                                              self.name, resp_time)
                             self.print_status()
-                        if max(self._rtt_ewma, resp_time) < self._rtt * 1.2:
+                        if max(self._rtt_ewma, resp_time) < self._rtt * 1.5:
                             self._stream_ctx[0].increase_window(self._rtt)
                         if resp_time > self._rtt * 2:
                             self._last_ping_log = time.monotonic()
