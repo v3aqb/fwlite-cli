@@ -71,7 +71,7 @@ async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay
     return remote_reader, remote_writer
 
 
-async def open_connection(addr, port, proxy=None, timeout=3, iplist=None, tunnel=False, limit=65536, tcp_nodelay=False):
+async def open_connection(addr, port, proxy=None, timeout=8, iplist=None, tunnel=False, limit=65536, tcp_nodelay=False):
     if not isinstance(proxy, ParentProxy):
         logger.warning('parentproxy is not a ParentProxy instance, please check. %s', proxy)
         proxy = ParentProxy(proxy or 'null', proxy or '')

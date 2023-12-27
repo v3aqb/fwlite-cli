@@ -180,7 +180,7 @@ class Hxs4Connection(HxsConnection):
         for _ in range(10):
             try:
                 fut = self.remote_reader.read(self.bufsize)
-                data += await asyncio.wait_for(fut, timeout=4)
+                data += await asyncio.wait_for(fut, timeout=timeout)
                 if len(data) > self._pskcipher.iv_len:
                     auth = self._pskcipher.decrypt(data)
                     self.key_exchange(auth, usn, psw, pubk, ecc)
