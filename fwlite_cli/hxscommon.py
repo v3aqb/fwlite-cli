@@ -741,9 +741,9 @@ class HxsConnection(HC):
                         self._flen_cipher.encrypt(bytes(1024))
                         self._flen_cipher.decrypt(bytes(1024))
                     # start reading from connection
+                    self.connected = time.monotonic()
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.monitor())
-                    self.connected = time.monotonic()
                     return
                 except InvalidSignature:
                     self.logger.error('hxs getKey Error: server auth failed, bad signature')
