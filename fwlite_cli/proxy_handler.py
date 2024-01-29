@@ -834,7 +834,7 @@ class http_handler(BaseProxyHandler):
             return
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
-                                self.command, self.shortpath or self.path, self.ppname, err)
+                                self.command, self.shortpath or self.path, self.ppname, err, exc_info=True)
             self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
                                  False, self.failed_parents, self.ppname)
