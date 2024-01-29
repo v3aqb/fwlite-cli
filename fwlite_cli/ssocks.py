@@ -29,12 +29,9 @@ import random
 import logging
 import asyncio
 
-from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor
+from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor, SS_SUBKEY, SS_SUBKEY_2022
 
 from fwlite_cli.parent_proxy import ParentProxy
-
-SS_SUBKEY = "ss-subkey"
-SS_SUBKEY_2022 = 'shadowsocks 2022 session subkey'
 
 
 def set_logger():
