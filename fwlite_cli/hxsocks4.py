@@ -28,7 +28,7 @@ from asyncio import Lock
 from hxcrypto import InvalidTag, AEncryptor
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import HxsConnection, HC, CTX, get_client_auth
+from fwlite_cli.hxscommon import HxsConnection, HC, CTX, get_client_auth_2
 from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
 
 
@@ -120,6 +120,7 @@ class Hxs4Connection(HxsConnection):
     def __init__(self, proxy, manager):
         super().__init__(proxy, manager)
         self.logger = logging.getLogger('hxs4')
+        self.b85encode = int(self.proxy.query.get('b85encode', ['0'])[0])
 
     async def send_frame_data(self, ct_):
         try:
@@ -167,9 +168,11 @@ class Hxs4Connection(HxsConnection):
 
         # prep key exchange request
         self._pskcipher = AEncryptor(self._psk.encode(), self.method, CTX, role=1)
-        data, pubk, ecc = get_client_auth(self._pskcipher.key_len, usn, psw, self.mode)
+        data, pubk, ecc = get_client_auth_2(self._pskcipher.key_len, usn, psw, self.mode, self.b85encode)
 
         ct_ = self._pskcipher.encrypt(data)
+        if self.b85encode:
+            ct_ = base64.b85encode(ct_)
 
         # send key exchange request
         self.remote_writer.write(ct_)
@@ -180,18 +183,18 @@ class Hxs4Connection(HxsConnection):
         for _ in range(10):
             try:
                 fut = self.remote_reader.read(self.bufsize)
-                buf = await asyncio.wait_for(fut, timeout=timeout)
+                buf = await asyncio.wait_for(fut, timeout=timeout / 10)
                 if not buf:
                     raise ConnectionResetError(0, 'hxs4 read server response Error, EOF')
                 data += buf
                 if len(data) > self._pskcipher.iv_len:
-                    auth = self._pskcipher.decrypt(data)
+                    data_ = base64.b85decode(data) if self.b85encode else data
+                    auth = self._pskcipher.decrypt(data_)
                     self.key_exchange(auth, usn, psw, pubk, ecc)
                     return
-            except InvalidTag:
+            except (InvalidTag, ValueError, asyncio.TimeoutError):
                 continue
-        else:
-            raise ConnectionResetError(0, 'hxs4 read server response Error, timeout: %s' % timeout)
+        raise ConnectionResetError(0, 'hxs4 read server response Error, timeout: %s' % timeout)
 
     async def _rfile_read(self, size, timeout=None):
         if timeout:

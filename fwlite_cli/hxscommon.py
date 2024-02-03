@@ -25,6 +25,7 @@ import struct
 import socket
 import time
 import hmac
+import math
 import io
 import hashlib
 import random
@@ -110,6 +111,28 @@ def get_client_auth(key_len, usn, psw, mode):
                      bytes((mode, )),
                      ])
     data += bytes(random.randint(HC.CLIENT_AUTH_PADDING // 2, HC.CLIENT_AUTH_PADDING))
+    return data, pubk, ecc
+
+
+def get_client_auth_2(key_len, usn, psw, mode, b85encode):
+    ecc = ECC(key_len)
+    pubk = ecc.get_pub_key()
+    timestamp = struct.pack('>I', int(time.time()) // 30)
+    data = b''.join([bytes((len(pubk), )),
+                     pubk,
+                     hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
+                     bytes((mode, )),
+                     ])
+    # keylen = 256, len(data) = 192
+    # keylen = 192, len(data) = 154
+    # keylen = 128, len(data) = 125
+    if b85encode:
+        padding_len_low = math.ceil((HC.CLIENT_AUTH_PADDING // 2 - len(data) * 0.25 - 8) * 0.8)
+        padding_len_high = math.ceil((HC.CLIENT_AUTH_PADDING - len(data) * 0.25 - 8) * 0.8)
+    else:
+        padding_len_low = HC.CLIENT_AUTH_PADDING // 2
+        padding_len_high = HC.CLIENT_AUTH_PADDING
+    data += bytes(random.randint(max(padding_len_low, 0), max(padding_len_high, 0)))
     return data, pubk, ecc
 
 
