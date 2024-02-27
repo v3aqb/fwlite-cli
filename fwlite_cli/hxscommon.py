@@ -36,11 +36,10 @@ from hxcrypto import ECC, AEncryptor, InvalidSignature, method_supported
 from hxcrypto.encrypt import EncryptorStream
 
 from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.util import cipher_test
 from fwlite_cli.hxs_udp2 import on_dgram_recv
 
 DEFAULT_METHOD = 'chacha20-ietf-poly1305'  # for hxsocks2 handshake
-FAST_METHOD = 'aes-128-gcm' if cipher_test[2] < 1.2 else 'chacha20-ietf-poly1305'
+FAST_METHOD = 'chacha20-ietf-poly1305'
 DEFAULT_MODE = 0
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'

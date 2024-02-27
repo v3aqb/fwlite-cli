@@ -5,31 +5,6 @@ import ssl
 import time
 import logging
 
-from fwlite_cli.util import cipher_test
-
-# see "openssl ciphers" command for cipher names
-# see "openssl ciphers" command for cipher names
-CIPHERS_A = [
-'TLS_AES_256_GCM_SHA384',
-'TLS_CHACHA20_POLY1305_SHA256',
-'TLS_AES_128_GCM_SHA256',
-'ECDHE-ECDSA-AES256-GCM-SHA384',
-'ECDHE-ECDSA-AES128-GCM-SHA256',
-'ECDHE-ECDSA-CHACHA20-POLY1305',
-'ECDHE-ECDSA-AES256-SHA384',
-'ECDHE-ECDSA-AES128-SHA256',
-]
-CIPHERS_C = [
-'TLS_CHACHA20_POLY1305_SHA256',
-'TLS_AES_256_GCM_SHA384',
-'TLS_AES_128_GCM_SHA256',
-'ECDHE-ECDSA-CHACHA20-POLY1305',
-'ECDHE-ECDSA-AES128-GCM-SHA256',
-'ECDHE-ECDSA-AES256-GCM-SHA384',
-'ECDHE-ECDSA-AES128-SHA256',
-'ECDHE-ECDSA-AES256-SHA384',
-]
-CIPHERS = ':'.join(CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C)
 
 logger = logging.getLogger('tunnel')
 

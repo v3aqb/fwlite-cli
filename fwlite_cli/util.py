@@ -206,4 +206,4 @@ def test_cipher():
     return (result_aes, result_chacha20, result)
 
 
-cipher_test = test_cipher()
+
