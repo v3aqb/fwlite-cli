@@ -194,9 +194,6 @@ class get_proxy:
     def add_redirect(self, rule, dest):
         return self.cic.redir_o.add_redirect(rule, dest, self)
 
-    def bad302(self, url):
-        return self.cic.redir_o.bad302(url)
-
     def add_ignore(self, rule):
         '''called by redirector'''
         from .apfilter import ap_rule

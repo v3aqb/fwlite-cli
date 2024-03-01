@@ -40,7 +40,6 @@ class redirector:
         from .apfilter import ap_filter
         self.conf = conf
 
-        self._bad302 = ap_filter()
         self.reset = ap_filter()
         self.adblock = set()
         self.redirlst = []
@@ -62,9 +61,6 @@ class redirector:
                 return result
         return None
 
-    def bad302(self, url):
-        return self._bad302.match(url)
-
     def add_redirect(self, rule, dest, getp=None):
         from .apfilter import ap_rule
         logger.info('add redir: %s %s', rule, dest)
@@ -77,9 +73,6 @@ class redirector:
                 return
             if dest.lower() == 'auto':
                 getp.add_ignore(rule)
-                return
-            if dest.lower() == 'bad302':
-                self._bad302.add(rule)
                 return
             if dest.lower() == 'reset':
                 self.reset.add(rule)
