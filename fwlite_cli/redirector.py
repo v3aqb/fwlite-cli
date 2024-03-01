@@ -48,7 +48,7 @@ class redirector:
         if self.reset.match(hdlr.path):
             return 'reset'
         if self.conf.adblock_enable and hdlr.request_host[0] in self.adblock:
-            return 'adblock'
+            return 'reset'
         for rule, result in self.redirlst:
             if rule.match(hdlr.path):
                 logger.debug('Match redirect rule %s, %s', rule.rule, result)
@@ -76,9 +76,6 @@ class redirector:
                 return
             if dest.lower() == 'reset':
                 self.reset.add(rule)
-                return
-            if dest.lower() == 'adblock':
-                self.adblock.add(rule)
                 return
             self.redirlst.append((ap_rule(rule), dest))
         except ValueError as err:

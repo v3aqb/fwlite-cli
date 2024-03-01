@@ -349,10 +349,6 @@ class http_handler(BaseProxyHandler):
                 self.close_connection = True
                 self.logger.info('%s %s reset', self.command, self.shortpath)
                 return
-            if new_url.lower() == 'adblock':
-                self.close_connection = True
-                self.logger.debug('%s %s adblock', self.command, self.shortpath)
-                return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # sort by priority?
@@ -777,9 +773,6 @@ class http_handler(BaseProxyHandler):
                 return
             if new_url.lower() in ('reset', 'return'):
                 self.logger.info('%s %s reset', self.command, self.path)
-                return
-            if new_url.lower() == 'adblock':
-                self.logger.debug('%s %s adblock', self.command, self.path)
                 return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
