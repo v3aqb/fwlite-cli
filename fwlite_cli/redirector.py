@@ -40,12 +40,9 @@ class redirector:
         from .apfilter import ap_filter
         self.conf = conf
 
-        self.reset = ap_filter()
         self.redirlst = []
 
     def redirect(self, hdlr):
-        if self.reset.match(hdlr.path):
-            return 'reset'
         for rule, result in self.redirlst:
             if rule.match(hdlr.path):
                 logger.debug('Match redirect rule %s, %s', rule.rule, result)
@@ -68,12 +65,6 @@ class redirector:
             if rule in [a.rule for a, b in self.redirlst]:
                 logger.warning('multiple redirector rule! %s', rule)
                 return
-            if dest.lower() == 'auto':
-                getp.add_ignore(rule)
-                return
-            if dest.lower() == 'reset':
-                self.reset.add(rule)
-                return
             self.redirlst.append((ap_rule(rule), dest))
         except ValueError as err:
             logger.error('add redirect rule failed: %s', err)
@@ -82,16 +73,11 @@ class redirector:
         result = []
         for rule, dst in self.redirlst:
             result.append(f'{rule.rule} {dst}')
-        for rule in self.reset.rules:
-            result.append(f'{rule} reset')
         return result
 
     def remove(self, redir_rule):
         logger.info('remove redir: %s', redir_rule)
         rule, _, dst = redir_rule.partition(' ')
-        if dst == 'reset':
-            self.reset.remove(rule)
-            return
 
         target = None
         for _rule, _dst in self.redirlst:

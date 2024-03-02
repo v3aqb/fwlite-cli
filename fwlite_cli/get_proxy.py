@@ -118,6 +118,7 @@ class get_proxy:
         self.adblock = set()
         self.local = ap_filter()
         self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
+        self.reset = ap_filter()
         self.china_ip_filter = NetFilter()
         self.host_not_in_china = set()
 
@@ -154,6 +155,7 @@ class get_proxy:
         self.gfwlist = ap_filter()
         self.chinalist = ap_filter()
         self.adblock = set()
+        self.reset = ap_filter()
 
         try:
             with open(self.cic.conf.gfwlist_path, encoding='utf8') as gfwlist:
@@ -211,6 +213,12 @@ class get_proxy:
             self.china_ip_filter.add(network)
 
     def add_redirect(self, rule, dest):
+        if dest.lower() == 'auto':
+            self.add_ignore(rule)
+            return
+        if dest.lower() == 'reset':
+            self.reset.add(rule)
+            return
         return self.cic.redir_o.add_redirect(rule, dest, self)
 
     def add_ignore(self, rule):
@@ -329,6 +337,9 @@ class get_proxy:
         if self.cic.conf.adblock_enable and host in self.adblock:
             return []
 
+        if self.reset.match(url):
+            return []
+
         if gfwed is False:
             if ip and ip.is_private:
                 return [self.cic.conf.parentlist.local or self.cic.conf.parentlist.direct]
@@ -381,6 +392,7 @@ class get_proxy:
         result += f'ignore match: {repr(self.ignore.match(url, host))}\n'
         result += f'gfwlist match: {repr(self.gfwlist.match(url, host))}\n'
         result += f'adlock match: {repr(host in self.adblock)}\n'
+        result += f'reset match: {repr(self.reset.match(url, host))}\n'
         result += f'host not in china(dynamic): {repr(host in self.host_not_in_china)}\n'
         result += f'Hosts: {repr(self.cic.conf.HOSTS.get(host))}\n\n'
 

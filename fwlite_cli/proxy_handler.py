@@ -346,10 +346,6 @@ class http_handler(BaseProxyHandler):
                 # request handled by redirector, return
                 self.logger.info('%s %s return', self.command, self.shortpath)
                 return
-            if new_url.lower() == 'reset':
-                self.close_connection = True
-                self.logger.info('%s %s reset', self.command, self.shortpath)
-                return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
                 # sort by priority?
@@ -771,9 +767,6 @@ class http_handler(BaseProxyHandler):
             self.logger.debug('redirect %s, %s %s', new_url, self.command, self.path)
             if new_url.isdigit() and 400 <= int(new_url) < 600:
                 self.logger.info('%s %s send error %s', self.command, self.path, new_url)
-                return
-            if new_url.lower() in ('reset', 'return'):
-                self.logger.info('%s %s reset', self.command, self.path)
                 return
             if all(u in self.conf.parentlist.dict.keys() for u in new_url.split()):
                 self._proxylist = [self.conf.parentlist.get(u) for u in new_url.split()]
