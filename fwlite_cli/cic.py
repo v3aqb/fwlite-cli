@@ -61,7 +61,6 @@ class CIC:
             host = urlparse.urlparse(url).netloc
             host = parse_hostport(host, 80)[0]
         else:
-            host = url
-            url = f'https://{url}/'
+            host = url.split(':')[0]
         result += self.get_proxy_o.inspect(url, host)
         return result
