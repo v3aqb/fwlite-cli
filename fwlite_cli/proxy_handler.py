@@ -37,6 +37,7 @@ from fwlite_cli.util import extract_tls_extension, parse_hostport
 from fwlite_cli.hxscommon import ConnectionDenied
 
 MAX_TIMEOUT = 16
+MAX_TIMEOUT2 = 60
 WELCOME = '''<!DOCTYPE html>
 <html>
 <body>
@@ -573,10 +574,10 @@ class http_handler(BaseProxyHandler):
                             break
                         self.remote_writer.write(data)
                         await self.remote_writer.drain()
-                # read response line
-                timelog = time.monotonic()
-                response_line, protocol_version, response_status, _ = await self.read_resp_line()
-                rtime = time.monotonic() - timelog
+            # read response line
+            timelog = time.monotonic()
+            response_line, protocol_version, response_status, _ = await self.read_resp_line()
+            rtime = time.monotonic() - timelog
             # read response headers
             while response_status == 100:
                 hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
@@ -999,7 +1000,7 @@ class http_handler(BaseProxyHandler):
                 self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout - 1,
                                    MAX_TIMEOUT)
         else:
-            self.timeout = MAX_TIMEOUT
+            self.timeout = MAX_TIMEOUT2
 
     async def api(self, parse):
         '''
