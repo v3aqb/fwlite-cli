@@ -41,13 +41,10 @@ class redirector:
         self.conf = conf
 
         self.reset = ap_filter()
-        self.adblock = set()
         self.redirlst = []
 
     def redirect(self, hdlr):
         if self.reset.match(hdlr.path):
-            return 'reset'
-        if self.conf.adblock_enable and hdlr.request_host[0] in self.adblock:
             return 'reset'
         for rule, result in self.redirlst:
             if rule.match(hdlr.path):
@@ -81,35 +78,12 @@ class redirector:
         except ValueError as err:
             logger.error('add redirect rule failed: %s', err)
 
-    def load(self, adblock=None):
-        logger.info('loading adblock.txt')
-        if adblock is not None:
-            iter_ = adblock
-        else:
-            with open(self.conf.adblock_path) as f:
-                iter_ = f.readlines()
-        for line in iter_:
-            if not line.strip():
-                continue
-            if line.startswith('#'):
-                continue
-            if 'loopback' in line:
-                continue
-            if 'localhost' in line:
-                continue
-            if " " in line:
-                # "127.0.0.1 114so.cn\r\n"
-                _, _, host = line.strip().partition(' ')
-            else:
-                host = line.strip()
-            self.adblock.add(host)
-
     def list(self):
         result = []
         for rule, dst in self.redirlst:
-            result.append('%s %s' % (rule.rule, dst))
+            result.append(f'{rule.rule} {dst}')
         for rule in self.reset.rules:
-            result.append('%s reset' % rule)
+            result.append(f'{rule} reset')
         return result
 
     def remove(self, redir_rule):

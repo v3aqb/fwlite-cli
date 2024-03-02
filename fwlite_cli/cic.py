@@ -19,7 +19,6 @@ class CIC:
         self.resolver = Resolver(self)
 
     def load(self):
-        self.redir_o.load()
         self.get_proxy_o.load()
 
     def get_proxy(self, *args):

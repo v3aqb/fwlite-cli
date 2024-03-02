@@ -115,6 +115,7 @@ class get_proxy:
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
         self.chinalist = ap_filter()
+        self.adblock = set()
         self.local = ap_filter()
         self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
         self.china_ip_filter = NetFilter()
@@ -152,6 +153,7 @@ class get_proxy:
         from .apfilter import ap_filter
         self.gfwlist = ap_filter()
         self.chinalist = ap_filter()
+        self.adblock = set()
 
         try:
             with open(self.cic.conf.gfwlist_path, encoding='utf8') as gfwlist:
@@ -164,6 +166,9 @@ class get_proxy:
         except Exception as err:
             self.logger.warning('gfw_list is corrupted! %r', err, exc_info=True)
 
+        for addr in BLOCKED_IP_LIST:
+            self.gfwlist.add(addr)
+
         try:
             with open(self.cic.conf.chinalist_path, encoding='utf8') as chinalist:
                 for line in chinalist:
@@ -172,8 +177,22 @@ class get_proxy:
         except Exception as err:
             self.logger.warning('china_list is corrupted! %r', err, exc_info=True)
 
-        for addr in BLOCKED_IP_LIST:
-            self.gfwlist.add(addr)
+        try:
+            with open(self.cic.conf.adblock_path) as adblock:
+                for line in adblock:
+                    if not line.strip():
+                        continue
+                    if line.startswith('#'):
+                        continue
+                    if not line.startswith('0.0.0.0'):
+                        continue
+                    _, _, host = line.strip().partition(' ')
+                    if host == '0.0.0.0':
+                        continue
+                    self.adblock.add(host)
+        except Exception as err:
+            self.logger.warning('adblock is corrupted! %r', err, exc_info=True)
+
 
     def load_china_ip_list(self):
         self.logger.info('loading china_ip_list.txt...')
@@ -307,6 +326,9 @@ class get_proxy:
 
         gfwed = self.isgfwed(url, host, port, ip, mode)
 
+        if self.cic.conf.adblock_enable and host in self.adblock:
+            return []
+
         if gfwed is False:
             if ip and ip.is_private:
                 return [self.cic.conf.parentlist.local or self.cic.conf.parentlist.direct]
@@ -358,6 +380,7 @@ class get_proxy:
         result += f'local match: {repr(self.local.match(url, host))}\n'
         result += f'ignore match: {repr(self.ignore.match(url, host))}\n'
         result += f'gfwlist match: {repr(self.gfwlist.match(url, host))}\n'
+        result += f'adlock match: {repr(host in self.adblock)}\n'
         result += f'host not in china(dynamic): {repr(host in self.host_not_in_china)}\n'
         result += f'Hosts: {repr(self.cic.conf.HOSTS.get(host))}\n\n'
 
