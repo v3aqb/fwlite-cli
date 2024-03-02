@@ -346,7 +346,7 @@ def test():
     print('10000 query for %s, %fs' % (url, time.perf_counter() - t))
     print('O(1): %d' % (len(gfwlist.rules) - (len(gfwlist.excludes) + len(gfwlist.slow))))
     print('O(n): %d' % (len(gfwlist.excludes) + len(gfwlist.slow)))
-    print('domain rules: %d' % len(gfwlist.domains))
+    print('domain rules: %d' % len(gfwlist.host_endswith))
     print('total: %d' % len(gfwlist.rules))
     print(repr(gfwlist.net_filter))
 
