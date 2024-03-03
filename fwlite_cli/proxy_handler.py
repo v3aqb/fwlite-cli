@@ -805,6 +805,7 @@ class http_handler(BaseProxyHandler):
 
         self.set_timeout()
 
+        do_reconnect = False
         try:
             self.logger.info('%s %s via %s. %s', self.command, self.shortpath or self.path,
                              self.pproxy.name, self.client_address[1])
@@ -817,16 +818,14 @@ class http_handler(BaseProxyHandler):
                                 self.command, self.shortpath or self.path, self.ppname, err)
             self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
                                  False, self.failed_parents, self.ppname)
-            await self._do_CONNECT(True)
-            return
+            do_reconnect = True
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
-                                self.command, self.shortpath or self.path, self.ppname, err, exc_info=True)
+                                self.command, self.shortpath or self.path, self.ppname, err)
             self.conf.proxy_log(self.pproxy, self.request_host[0], MAX_TIMEOUT)
             self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
                                  False, self.failed_parents, self.ppname)
-            await self._do_CONNECT(True)
-            return
+            do_reconnect = True
         except Exception:
             self.conf.cic.notify(self.command, self.shortpath or self.path, self.request_host,
                                  False, self.failed_parents, self.ppname)
@@ -834,8 +833,9 @@ class http_handler(BaseProxyHandler):
             return
         self.logger.debug('%s connected', self.path)
 
-        if self.ppname != self.pproxy.name:
-            self._proxylist.insert(0, self.pproxy)
+        if do_reconnect:
+            await self._do_CONNECT(True)
+            return
 
         # forward
         context = ForwardContext(self.path)
