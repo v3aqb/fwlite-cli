@@ -180,15 +180,16 @@ class get_proxy:
             self.logger.warning('china_list is corrupted! %r', err, exc_info=True)
 
         try:
-            with open(self.cic.conf.adblock_path) as adblock:
+            with open(self.cic.conf.adblock_path, encoding='utf8') as adblock:
                 for line in adblock:
-                    if not line.strip():
+                    line = line.strip()
+                    if not line:
                         continue
                     if line.startswith('#'):
                         continue
                     if not line.startswith('0.0.0.0'):
                         continue
-                    _, _, host = line.strip().partition(' ')
+                    _, _, host = line.partition(' ')
                     if host == '0.0.0.0':
                         continue
                     self.adblock.add(host)
