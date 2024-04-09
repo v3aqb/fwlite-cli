@@ -62,8 +62,13 @@ class v2_filter:
             完整匹配: 由"full:"开始，余下部分是一个域名。当此域名完整匹配目标域名时，该规则生效。例如"full:v2ray.com"匹配"v2ray.com"但不匹配"www.v2ray.com"。
         '''
         rule = rule.strip()
-        if len(rule) < 3 or rule.startswith(('!', '[')) or '#' in rule:
+        if len(rule) < 3 or rule.startswith(('!', '[', '#')):
             return
+        if ' ' in rule:
+            if not rule.startswith('0.0.0.0'):
+                return
+            _, _, domain = rule.partition(' ')
+            rule = f'full:{domain}'
         if rule in self.rules:
             logger.debug('%s already in filter', rule)
             return

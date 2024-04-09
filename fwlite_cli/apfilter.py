@@ -108,8 +108,12 @@ class ap_filter:
 
     def add(self, rule, expire=None):
         rule = rule.strip()
-        if len(rule) < 3 or rule.startswith(('!', '[')) or '#' in rule:
+        if len(rule) < 3 or rule.startswith(('!', '[', '#')):
             return
+        if ' ' in rule:
+            if not rule.startswith('0.0.0.0'):
+                return
+            _, _, rule = rule.partition(' ')
         if rule in self.rules:
             logger.debug('%s already in filter', rule)
             return

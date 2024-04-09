@@ -182,17 +182,7 @@ class get_proxy:
         try:
             with open(self.cic.conf.adblock_path, encoding='utf8') as adblock:
                 for line in adblock:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if line.startswith('#'):
-                        continue
-                    if not line.startswith('0.0.0.0'):
-                        continue
-                    _, _, host = line.partition(' ')
-                    if host == '0.0.0.0':
-                        continue
-                    self.adblock.add(host)
+                    self.adblock.add(line)
         except Exception as err:
             self.logger.warning('adblock is corrupted! %r', err, exc_info=True)
 
