@@ -294,6 +294,9 @@ class get_proxy:
         if self.ip_in_china(host, ip):
             return False
 
+        if mode == 2 and url.startswith('http://'):
+            return True
+
         if mode == 3:
             return True
 
@@ -312,6 +315,7 @@ class get_proxy:
             host: ('www.google.com', 443)
             mode:  0 -- direct
                    1 -- auto:        proxy if local_rule, direct if ip in china or override, proxy if gfwlist
+                   2 -- encrypt:     proxy if local_rule, direct if ip in china or override, proxy if gfwlist or http
                    3 -- chnroute:    proxy if local_rule, direct if ip in china or override, proxy for all
                    4 -- global:      proxy if not local
                    5 -- global:      proxy if not localhost
@@ -320,8 +324,6 @@ class get_proxy:
             host, port = host
         else:
             port = 0
-        if mode == 2:
-            mode = 1
 
         gfwed = self.isgfwed(url, host, port, ip, mode)
 
