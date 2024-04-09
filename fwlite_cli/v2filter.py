@@ -107,28 +107,6 @@ class v2_filter:
             raise ValueError('%s not domain name' % domain)
         self.host_endswith.add(domain)
 
-    def _add_domain_match(self, domain):
-        if self.match(domain):
-            raise ValueError('%s already listed' % domain)
-        if not dn.match(domain):
-            raise ValueError('%s not domain name' % domain)
-        self.host_endswith.add(domain)
-
-    def match(self, host):
-        if self._domainmatch(host) is not None:
-            return self._domainmatch(host)
-        return None
-
-    def _domainmatch(self, host):
-        if host in self.net_filter:
-            return True
-        if host in self.host_match:
-            return True
-        lst = ['.'.join(host.split('.')[i:]) for i in range(len(host.split('.')))]
-        if any(host in self.host_endswith for host in lst):
-            return True
-        return None
-
     def _remove_domain(self, domain):
         try:
             self.net_filter.remove(domain)
@@ -137,9 +115,26 @@ class v2_filter:
             pass
         self.host_endswith.discard(domain)
 
+    def _add_domain_match(self, domain):
+        if self.match(domain):
+            raise ValueError('%s already listed' % domain)
+        if not dn.match(domain):
+            raise ValueError('%s not domain name' % domain)
+        self.host_match.add(domain)
+
     def _remove_domain_match(self, rule):
         domain = rule.rstrip('/')[4:]
         self.host_match.discard(domain)
+
+    def match(self, host):
+        if host in self.net_filter:
+            return True
+        if host in self.host_match:
+            return True
+        subhost_lst = ['.'.join(host.split('.')[i:]) for i in range(len(host.split('.')))]
+        if any(subhost in self.host_endswith for subhost in subhost_lst):
+            return True
+        return None
 
     def remove(self, rule, delay=None):
         if delay:
