@@ -476,12 +476,9 @@ class Config:
 
         await asyncio.gather(*task_list)
 
-    def load(self):
-        self.cic.load()
-
     async def post_start(self):
         await self.download()
-        self.load()
+        self.cic.load()
         self.stdout('all')
 
     @property
@@ -512,7 +509,7 @@ class Config:
         return self.stderr.getvalue()
 
     def list_proxy(self):
-        data = [(p.name, p.short, p.priority, '%.2f' % p.get_avg_resp_time())
+        data = [(p.name, p.short, p.priority, f'{p.get_avg_resp_time():.2f}')
                 for _, p in self.parentlist.dict.items()]
         data = sorted(data, key=lambda item: item[0])
         data = sorted(data, key=lambda item: item[2])
