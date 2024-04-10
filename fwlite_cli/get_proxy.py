@@ -160,7 +160,7 @@ class get_proxy:
         try:
             with open(self.cic.conf.gfwlist_path, encoding='utf8') as gfwlist:
                 data = gfwlist.read()
-                if '!' not in data:
+                if '.' not in data:
                     data = ''.join(data.split())
                     data = base64.b64decode(data).decode()
                 for line in data.splitlines():

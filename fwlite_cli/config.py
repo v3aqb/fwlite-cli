@@ -452,7 +452,7 @@ class Config:
                 if path == self.gfwlist_path:
                     with open(self.gfwlist_path) as f:
                         data = f.read()
-                        if '!' not in data:
+                        if '.' not in data:
                             data = ''.join(data.split())
                             data = base64.b64decode(data).decode()
                     with open(self.gfwlist_path, 'w') as f:
