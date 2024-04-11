@@ -167,6 +167,8 @@ class get_proxy:
                     self.gfwlist.add(line)
         except Exception as err:
             self.logger.warning('gfw_list is corrupted! %r', err, exc_info=True)
+        else:
+            self.logger.info('gfw_list loaded.')
 
         for addr in BLOCKED_IP_LIST:
             self.gfwlist.add(addr)
@@ -175,9 +177,11 @@ class get_proxy:
             with open(self.cic.conf.chinalist_path, encoding='utf8') as chinalist:
                 for line in chinalist:
                     if line.strip():
-                        self.chinalist.add(f'||{line.strip()}')
+                        self.chinalist.add(line)
         except Exception as err:
             self.logger.warning('china_list is corrupted! %r', err, exc_info=True)
+        else:
+            self.logger.info('china_list loaded.')
 
         try:
             with open(self.cic.conf.adblock_path, encoding='utf8') as adblock:
@@ -185,6 +189,8 @@ class get_proxy:
                     self.adblock.add(line)
         except Exception as err:
             self.logger.warning('adblock is corrupted! %r', err, exc_info=True)
+        else:
+            self.logger.info('adblock loaded.')
 
 
     def load_china_ip_list(self):
@@ -230,7 +236,7 @@ class get_proxy:
     def isgfwed_resolver(self, host, mode=1):
         if self.cic.conf.rproxy:
             return None
-        url = 'http://%s/' % host
+        url = f'http://{host}/'
         result = self.local.match(url, host)
         if result is not None:
             return result
@@ -330,7 +336,7 @@ class get_proxy:
         if self.cic.conf.adblock_enable and host in self.adblock:
             return []
 
-        if self.reset.match(url):
+        if self.reset.match(url, host):
             return []
 
         if gfwed is False:
@@ -363,12 +369,12 @@ class get_proxy:
                     exp = pow(resp_time, 2.5) if resp_time > 1 else 1
                     self.add_temp(rule, min(exp, 60))
 
-    def add_temp(self, rule, exp=None):
+    def add_temp(self, rule, expire=None):
         # add temp rule for &exp minutes
         rule = rule.strip()
         if rule not in self.local.rules:
-            self.local.add(rule, (exp * 60) if exp else None)
-            self.logger.info('add autoproxy rule: %s%s', rule, (' expire in %.1f min' % exp) if exp else '')
+            self.local.add(rule, (expire * 60) if expire else None)
+            self.logger.info('add autoproxy rule: %s%s', rule, (f' expire in {expire:.1f} min') if expire else '')
             self.cic.conf.stdout('local')
 
     def inspect(self, url, host):
