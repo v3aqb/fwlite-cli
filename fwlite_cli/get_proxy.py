@@ -284,6 +284,8 @@ class get_proxy:
             return result
 
         if self.chinalist.match(url, host):
+            if self.gfwlist.match(url, host):
+                return None
             return False
 
         if int(ip) == 0:
