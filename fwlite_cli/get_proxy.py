@@ -112,13 +112,13 @@ class get_proxy:
 
     def __init__(self, cic, load_local=None):
         self.cic = cic
-        from .apfilter import ap_filter
-        self.gfwlist = ap_filter()
-        self.chinalist = ap_filter()
+        from .apfilter import APFilter
+        self.gfwlist = APFilter()
+        self.chinalist = APFilter()
         self.adblock = set()
-        self.local = ap_filter()
-        self.ignore = ap_filter()  # used by rules like "||twimg.com auto"
-        self.reset = ap_filter()
+        self.local = APFilter()
+        self.ignore = APFilter()  # used by rules like "||twimg.com auto"
+        self.reset = APFilter()
         self.china_ip_filter = NetFilter()
         self.host_not_in_china = set()
 
@@ -151,11 +151,11 @@ class get_proxy:
 
     def load_gfwlist(self):
         self.logger.info('loading gfwlist...')
-        from .apfilter import ap_filter
-        self.gfwlist = ap_filter()
-        self.chinalist = ap_filter()
+        from .apfilter import APFilter
+        self.gfwlist = APFilter()
+        self.chinalist = APFilter()
         self.adblock = set()
-        self.reset = ap_filter()
+        self.reset = APFilter()
 
         try:
             with open(self.cic.conf.gfwlist_path, encoding='utf8') as gfwlist:
@@ -214,8 +214,8 @@ class get_proxy:
 
     def add_ignore(self, rule):
         '''called by redirector'''
-        from .apfilter import ap_rule
-        self.ignore.add(ap_rule(rule))
+        from .apfilter import APRule
+        self.ignore.add(APRule(rule))
 
     @lru_cache(1024)
     def ip_in_china(self, host, ip):

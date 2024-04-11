@@ -45,12 +45,12 @@ class ExpiredError(Exception):
         super().__init__()
 
 
-class ap_rule:
+class APRule:
 
     def __init__(self, rule, msg=None, expire=None):
         self.rule = rule.strip()
         if len(self.rule) < 3 or self.rule.startswith(('!', '[')) or '#' in self.rule or ' ' in self.rule:
-            raise ValueError("invalid abp_rule: %s" % self.rule)
+            raise ValueError(f"invalid abp_rule: {self.rule}")
         self.msg = msg
         self.expire = expire
         self.override = self.rule.startswith('@@')
@@ -85,11 +85,11 @@ class ap_rule:
 
     def __repr__(self):
         if self.expire:
-            return '<ap_rule: %s exp @ %s>' % (self.rule, self.expire)
-        return '<ap_rule: %s>' % self.rule
+            return f'<APRule: {self.rule} exp @ {self.expire}>' % (self.rule, self.expire)
+        return f'<APRule: {self.rule}>'
 
 
-class ap_filter:
+class APFilter:
     KEYLEN = 9
 
     def __init__(self, lst=None):
@@ -127,7 +127,7 @@ class ap_filter:
             return self.add(rule)
         elif rule.startswith('|https://'):
             if '*' in rule:
-                logger.info('%s ignored, 126', rule)
+                logger.info('%s ignored, "*"" in rule', rule)
                 return
             # strip and treat as domain rule
             rule = '||' + urllib.parse.urlparse(rule[1:]).hostname
@@ -159,12 +159,12 @@ class ap_filter:
         if not lst:
             logger.info('%s ignored, short', rule)
             return
-        rule_o = ap_rule(rule)
+        rule_o = APRule(rule)
         key = lst[-1][self.KEYLEN * -1:]
         self.fast[key].append(rule_o)
 
     def _add_slow(self, rule):
-        rule_o = ap_rule(rule)
+        rule_o = APRule(rule)
         lst = self.excludes if rule_o.override else self.slow
         lst.append(rule_o)
 
@@ -201,7 +201,7 @@ class ap_filter:
             else:  # www.google.com:443
                 host = parse_hostport(url)[0]
         if '://' not in url:
-            url = 'https://%s/' % host
+            url = f'https://{host}/'
         if self._listmatch(self.excludes, url):
             return False
         if self._domainmatch(host) is not None:
@@ -311,7 +311,7 @@ class ap_filter:
 
 
 def test():
-    gfwlist = ap_filter()
+    gfwlist = APFilter()
     t = time.perf_counter()
     with open('../gfwlist.txt') as f:
         data = f.read()

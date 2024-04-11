@@ -37,7 +37,7 @@ set_logger()
 
 class redirector:
     def __init__(self, conf):
-        from .apfilter import ap_filter
+        from .apfilter import APFilter
         self.conf = conf
 
         self.redirlst = []
@@ -56,7 +56,7 @@ class redirector:
         return None
 
     def add_redirect(self, rule, dest, getp=None):
-        from .apfilter import ap_rule
+        from .apfilter import APRule
         logger.info('add redir: %s %s', rule, dest)
         if getp is None:
             # in case "get_proxy" is initializing
@@ -65,7 +65,7 @@ class redirector:
             if rule in [a.rule for a, b in self.redirlst]:
                 logger.warning('multiple redirector rule! %s', rule)
                 return
-            self.redirlst.append((ap_rule(rule), dest))
+            self.redirlst.append((APRule(rule), dest))
         except ValueError as err:
             logger.error('add redirect rule failed: %s', err)
 
