@@ -112,9 +112,10 @@ class get_proxy:
 
     def __init__(self, cic, load_local=None):
         self.cic = cic
+        from .v2filter import V2Filter
         from .apfilter import APFilter
-        self.gfwlist = APFilter()
-        self.chinalist = APFilter()
+        self.gfwlist = V2Filter()
+        self.chinalist = V2Filter()
         self.adblock = set()
         self.local = APFilter()
         self.ignore = APFilter()  # used by rules like "||twimg.com auto"
@@ -151,9 +152,10 @@ class get_proxy:
 
     def load_gfwlist(self):
         self.logger.info('loading gfwlist...')
+        from .v2filter import V2Filter
         from .apfilter import APFilter
-        self.gfwlist = APFilter()
-        self.chinalist = APFilter()
+        self.gfwlist = V2Filter()
+        self.chinalist = V2Filter()
         self.adblock = set()
         self.reset = APFilter()
 

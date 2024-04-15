@@ -433,11 +433,11 @@ class Config:
     async def download(self):
         proxy = self.parentlist.get('FWLITE:3')
 
-        file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'),
-                     self.chinalist_path: self.userconf.dget('FWLite', 'chinalist_url', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chinalist.txt'),
+        file_list = {self.gfwlist_path: self.userconf.dget('FWLite', 'gfwlist_url', 'https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt'),
+                     self.chinalist_path: self.userconf.dget('FWLite', 'chinalist_url', 'https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt'),
                      self.china_ip_path: self.userconf.dget('FWLite', 'china_ip_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute.txt'),
                      self.china_ipv6_path: self.userconf.dget('FWLite', 'china_ipv6_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute-v6.txt'),
-                     self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts'),
+                     self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt'),
                      }
 
         def _dl(path, url, proxy):
