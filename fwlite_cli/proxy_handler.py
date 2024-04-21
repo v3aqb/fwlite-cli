@@ -37,7 +37,7 @@ from fwlite_cli.util import extract_tls_extension, parse_hostport
 from fwlite_cli.hxscommon import ConnectionDenied
 
 MAX_TIMEOUT = 16
-MAX_TIMEOUT2 = 60
+MAX_TIMEOUT2 = 300
 WELCOME = '''<!DOCTYPE html>
 <html>
 <body>
