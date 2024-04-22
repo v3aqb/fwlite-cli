@@ -36,7 +36,7 @@ logger = logging.getLogger('V2Filter')
 logger.setLevel(logging.INFO)
 
 
-dn = re.compile(r'^[0-9a-zA-Z\-\.]+$')
+dn = re.compile(r'^[0-9a-zA-Z\-\._]+$')
 
 
 class V2Filter:
@@ -70,6 +70,7 @@ class V2Filter:
             if not rule.startswith('0.0.0.0'):
                 return
             _, _, domain = rule.partition(' ')
+            domain, _, _ = domain.partition(' ')
             rule = f'full:{domain}'
         if rule in self.rules:
             logger.debug('%s already in filter', rule)
@@ -120,7 +121,7 @@ class V2Filter:
         if self.match(None, domain):
             raise ValueError(f'{domain} already listed')
         if not dn.match(domain):
-            raise ValueError(f'{domain} not fqdn' % domain)
+            raise ValueError(f'{domain} not fqdn')
         self.host_match.add(domain)
 
     def _remove_domain_match(self, rule):
