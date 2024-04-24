@@ -256,6 +256,7 @@ class Config:
         self.china_ip_path = os.path.join(self.conf_dir, 'china_ip_list.txt')
         self.china_ipv6_path = os.path.join(self.conf_dir, 'china_ip_list_v6.txt')
         self.adblock_path = os.path.join(self.conf_dir, 'adblock.txt')
+        self.porn_path = os.path.join(self.conf_dir, 'porn.txt')
 
         self.userconf.read(self.conf_path)
 
@@ -438,6 +439,7 @@ class Config:
                      self.china_ip_path: self.userconf.dget('FWLite', 'china_ip_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute.txt'),
                      self.china_ipv6_path: self.userconf.dget('FWLite', 'china_ipv6_list', 'https://github.com/QiuSimons/Chnroute/raw/master/dist/chnroute/chnroute-v6.txt'),
                      self.adblock_path: self.userconf.dget('FWLite', 'adblock_url', 'https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt'),
+                     self.porn_path: self.userconf.dget('FWLite', 'porn_url', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts'),
                      }
 
         def _dl(path, url, proxy):
@@ -488,6 +490,16 @@ class Config:
     @adblock_enable.setter
     def adblock_enable(self, val):
         self.userconf.set('FWLite', 'adblock', '1' if val else '0')
+        self.confsave()
+        self.stdout('setting')
+
+    @property
+    def pornblock_enable(self):
+        return self.userconf.dgetbool('FWLite', 'pornblock', False)
+
+    @pornblock_enable.setter
+    def pornblock_enable(self, val):
+        self.userconf.set('FWLite', 'pornblock', '1' if val else '0')
         self.confsave()
         self.stdout('setting')
 

@@ -120,6 +120,7 @@ class get_proxy:
         self.local = APFilter()
         self.ignore = APFilter()  # used by rules like "||twimg.com auto"
         self.reset = APFilter()
+        self.porn_list = V2Filter()
         self.china_ip_filter = NetFilter()
         self.host_not_in_china = set()
 
@@ -158,6 +159,7 @@ class get_proxy:
         self.chinalist = V2Filter()
         self.adblock = set()
         self.reset = APFilter()
+        self.porn_list = V2Filter()
 
         try:
             with open(self.cic.conf.gfwlist_path, encoding='utf8') as gfwlist:
@@ -194,6 +196,14 @@ class get_proxy:
         else:
             self.logger.info('adblock loaded.')
 
+        try:
+            with open(self.cic.conf.porn_path, encoding='utf8') as porn_list:
+                for line in porn_list:
+                    self.porn_list.add(line)
+        except Exception as err:
+            self.logger.warning('porn_list is corrupted! %r', err, exc_info=True)
+        else:
+            self.logger.info('porn_list loaded.')
 
     def load_china_ip_list(self):
         self.logger.info('loading china_ip_list.txt...')
@@ -253,6 +263,8 @@ class get_proxy:
             result = self.gfwlist.match(url, host)
             if result is not None:
                 return result
+            if self.porn_list.match(url, host):
+                return True
 
         if mode >= 3 and host in self.host_not_in_china:
             return True
@@ -335,13 +347,16 @@ class get_proxy:
         else:
             port = 0
 
-        gfwed = self.isgfwed(url, host, port, ip, mode)
+        if self.cic.conf.pornblock_enable and self.porn_list.match(url, host):
+            return []
 
         if self.cic.conf.adblock_enable and host in self.adblock:
             return []
 
         if self.reset.match(url, host):
             return []
+
+        gfwed = self.isgfwed(url, host, port, ip, mode)
 
         if gfwed is False:
             if ip and ip.is_private:
@@ -396,6 +411,7 @@ class get_proxy:
         result += f'gfwlist match: {repr(self.gfwlist.match(url, host))}\n'
         result += f'adlock match: {repr(host in self.adblock)}\n'
         result += f'reset match: {repr(self.reset.match(url, host))}\n'
+        result += f'porn_list match: {repr(self.porn_list.match(url, host))}\n'
         result += f'host not in china(dynamic): {repr(host in self.host_not_in_china)}\n'
         result += f'Hosts: {repr(self.cic.conf.HOSTS.get(host))}\n\n'
 
