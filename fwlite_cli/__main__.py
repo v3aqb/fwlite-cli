@@ -32,7 +32,7 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.c):
-        sys.stderr.write('config file {} not exist!\n'.format(args.c))
+        sys.stderr.write(f'config file {args.c} not exist!\n')
         sys.exit()
 
     conf = Config(args.c, args.gui)

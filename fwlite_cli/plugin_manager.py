@@ -88,12 +88,13 @@ def plugin_command(host_port, plugin_info, port):
     plugin_args = plugin_info[1:]
 
     if plugin not in PLUGIN_PATH:
-        raise ValueError('plugin "%s" not registered!' % plugin)
+        raise ValueError(f'plugin "{plugin}" not registered!')
 
     cmd = shlex.split(PLUGIN_PATH[plugin])
     if 'kcptun' in plugin.lower():
-        cmd.extend(['--localaddr', '127.0.0.1:%d' % port])
-        cmd.extend(['--remoteaddr', '%s:%d' % host_port])
+        cmd.extend(['--localaddr', f'127.0.0.1:{port}'])
+        host, port = host_port
+        cmd.extend(['--remoteaddr', f'{host}:{port}'])
         for args in plugin_args:
             if '=' in args:
                 key, val = args.split('=')
@@ -115,8 +116,9 @@ class PluginManager:
 
     def add(self, host_port, plugin_info, proxy):
         # log plugin info
-        key = '%s:%s' % host_port
-        key += '-%s' % proxy.proxy
+        host, port = host_port
+        key = f'{host}:{port}'
+        key += f'-{proxy.proxy}'
         if key in self.plugin_port:
             logger.warning('plugin registered!')
             # TODO: check if plugin is running

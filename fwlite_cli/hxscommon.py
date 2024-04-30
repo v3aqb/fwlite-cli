@@ -117,14 +117,16 @@ def get_client_auth_2(key_len, usn, psw, mode, b85encode):
     ecc = ECC(key_len)
     pubk = ecc.get_pub_key()
     timestamp = struct.pack('>I', int(time.time()) // 30)
-    data = b''.join([bytes((len(pubk), )),
+    data = b''.join([bytes((len(pubk), )),  # 91, 120, 158, 44, 68 for curve P256R1, P384R1, P521R1, x25519, x448
                      pubk,
                      hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
                      bytes((mode, )),
                      ])
-    # keylen = 256, len(data) = 192
+    # keylen = 256, len(data) = 192 (158 + 32 + 2)
     # keylen = 192, len(data) = 154
     # keylen = 128, len(data) = 125
+    # x25519, len(data) = 78
+    # x448, len(data) = 102
     if b85encode:
         padding_len_low = math.ceil((HC.CLIENT_AUTH_PADDING // 2 - len(data) * 0.25 - 8) * 0.8)
         padding_len_high = math.ceil((HC.CLIENT_AUTH_PADDING - len(data) * 0.25 - 8) * 0.8)
