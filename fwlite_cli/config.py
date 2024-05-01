@@ -563,10 +563,12 @@ class Config:
     def del_forward(self, port):
         self.port_forward.stop(port)
 
-    def stop(self):
+    def stop(self, sig=None, frame=None):
+        self.logger.info('Stop')
         self.plugin_manager.cleanup()
         self.port_forward.stop_all()
         self.stop_fwlite()
+        sys.exit()
 
     def stop_fwlite(self):
         for server in self.server_list:
