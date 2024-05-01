@@ -120,7 +120,7 @@ class Hxs4Connection(HxsConnection):
     def __init__(self, proxy, manager):
         super().__init__(proxy, manager)
         self.logger = logging.getLogger('hxs4')
-        self.b85encode = int(self.proxy.query.get('b85encode', ['0'])[0])
+        self.b85encode = int(self.proxy.query.get('b85encode', ['1'])[0])
 
     async def send_frame_data(self, ct_):
         try:
