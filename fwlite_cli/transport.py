@@ -20,7 +20,7 @@ class FWTransport(transports._FlowControlMixin):
 
     async def connect(self, addr, port, timeout):
         # set self._conn, self._stream_id
-        await self._conn.create_connection(addr, port, timeout, self)
+        self._stream_id = await self._conn.create_connection(addr, port, timeout, self)
         self._protocol.connection_made(self)
 
     def is_closing(self):
@@ -46,7 +46,7 @@ class FWTransport(transports._FlowControlMixin):
         try:
             self._protocol.connection_lost(exc)
         finally:
-            self._conn.close(self._stream_id)
+            self._conn.close_stream(self._stream_id)
             self._conn = None
             self._protocol = None
             self._loop = None
@@ -164,7 +164,7 @@ class FWTransport(transports._FlowControlMixin):
         The protocol's connection_lost() method will (eventually) be
         called with None as its argument.
         """
-        self._conn.abort(self._stream_id)
+        self._conn.abort_stream(self._stream_id)
 
     def data_received(self, data):
         self._protocol.data_received(data)

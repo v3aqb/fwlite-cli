@@ -107,11 +107,12 @@ class SSConn:
             limit=131072)
         self._allow_reading.set()
         asyncio.ensure_future(self._forward_from_remote())
+        return 0
 
-    def abort(self, _):
+    def abort_stream(self, _):
         self._remote_writer.close()
 
-    def close(self, _):
+    def close_stream(self, _):
         self._remote_writer.close()
 
     def write(self, data, _):
