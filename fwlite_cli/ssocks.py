@@ -83,7 +83,7 @@ class SSConn:
         self._task = None
 
         self.aead = is_aead(ssmethod)
-        self._crypto = Encryptor(sspassword, ssmethod, role=0)
+        self.__crypto = Encryptor(sspassword, ssmethod, role=0)
         self._connected = False
         self._last_active = time.monotonic()
         # if eof recieved
@@ -122,14 +122,14 @@ class SSConn:
                                chr(len(self._address)).encode('latin1'),
                                self._address.encode(),
                                struct.pack(b">H", self._port)])
-            if self._crypto.ctx == SS_SUBKEY_2022:
+            if self.__crypto.ctx == SS_SUBKEY_2022:
                 padding_len = random.randint(0, 255)
                 header += struct.pack(b"!H", padding_len)
                 header += bytes(padding_len)
             self._connected = True
-            self._remote_writer.write(self._crypto.encrypt(header + data))
+            self._remote_writer.write(self.__crypto.encrypt(header + data))
         else:
-            self._remote_writer.write(self._crypto.encrypt(data))
+            self._remote_writer.write(self.__crypto.encrypt(data))
 
     def write_eof(self, _):
         self._client_eof = True
@@ -142,7 +142,7 @@ class SSConn:
         if self.aead:
             fut = self._remote_reader.readexactly(18)
             data = await asyncio.wait_for(fut, timeout=6)
-            data = self._crypto.decrypt(data)
+            data = self.__crypto.decrypt(data)
             _len, = struct.unpack("!H", data)
             fut = self._remote_reader.readexactly(_len + 16)
             try:
@@ -152,21 +152,21 @@ class SSConn:
         else:
             fut = self._remote_reader.read(self.bufsize)
             data = await asyncio.wait_for(fut, timeout=6)
-        return self._crypto.decrypt(data)
+        return self.__crypto.decrypt(data)
 
     async def _forward_from_remote(self):
         # read from remote, decrypt, sent to client
 
         if self.aead:
             # read first chunk
-            if self._crypto.ctx == SS_SUBKEY_2022:
-                fut = self._remote_reader.readexactly(self._crypto.iv_len * 2 + 27)
+            if self.__crypto.ctx == SS_SUBKEY_2022:
+                fut = self._remote_reader.readexactly(self.__crypto.iv_len * 2 + 27)
             else:
-                fut = self._remote_reader.readexactly(self._crypto.iv_len + 18)
+                fut = self._remote_reader.readexactly(self.__crypto.iv_len + 18)
             try:
                 data = await asyncio.wait_for(fut, timeout=12)
-                data = self._crypto.decrypt(data)
-                if self._crypto.ctx == SS_SUBKEY_2022:
+                data = self.__crypto.decrypt(data)
+                if self.__crypto.ctx == SS_SUBKEY_2022:
                     _, timestamp = struct.unpack(b'!BQ', data[:9])
                     diff = time.time() - timestamp
                     if abs(diff) > 30:
@@ -174,7 +174,7 @@ class SSConn:
                 data_len, = struct.unpack(b'!H', data[-2:])
                 fut = self._remote_reader.readexactly(data_len + 16)
                 data = await asyncio.wait_for(fut, timeout=4)
-                data = self._crypto.decrypt(data)
+                data = self.__crypto.decrypt(data)
                 self._transport.data_received(data)
             except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
