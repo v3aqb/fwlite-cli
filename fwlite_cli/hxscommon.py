@@ -425,7 +425,7 @@ class HxsConnection(HC):
             except asyncio.TimeoutError:
                 continue
             except ConnectionError:
-                await self.close_stream(stream_id)
+                self.close_stream(stream_id)
                 return
 
             if not data:
@@ -434,13 +434,13 @@ class HxsConnection(HC):
                     self._stream_ctx[stream_id].stream_status |= EOF_SENT
                     await self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
                 if self._stream_ctx[stream_id].stream_status == CLOSED:
-                    await self.close_stream(stream_id)
+                    self.close_stream(stream_id)
                     return
                 break
 
             if self._stream_ctx[stream_id].stream_status & EOF_SENT:
                 self.logger.error('data recv from client, while stream EOF_SENT!')
-                await self.close_stream(stream_id)
+                self.close_stream(stream_id)
                 return
             if count < 5:
                 await self.send_data_frame(stream_id, data, more_padding=True)
@@ -449,7 +449,7 @@ class HxsConnection(HC):
                 await self.send_data_frame(stream_id, data)
         while time.monotonic() - self._stream_ctx[stream_id].last_active < 12:
             await asyncio.sleep(6)
-        await self.close_stream(stream_id)
+        self.close_stream(stream_id)
 
     async def send_frame(self, type_, flags, stream_id, payload=None):
         if self.connection_lost:
@@ -613,7 +613,7 @@ class HxsConnection(HC):
                     except (OSError, KeyError) as err:
                         self.logger.error('send data to stream fail. %r', err)
                         # client error, reset stream
-                        asyncio.ensure_future(self.close_stream(stream_id))
+                        self.close_stream(stream_id)
                 elif frame_type == HEADERS:  # 1
                     if frame_flags == END_STREAM_FLAG:
                         self._stream_ctx[stream_id].stream_status |= EOF_RECV
@@ -623,7 +623,7 @@ class HxsConnection(HC):
                             except OSError:
                                 self._stream_ctx[stream_id].stream_status = CLOSED
                         if self._stream_ctx[stream_id].stream_status == CLOSED:
-                            asyncio.ensure_future(self.close_stream(stream_id))
+                            self.close_stream(stream_id)
                     else:
                         if stream_id in self._remote_connected_event:
                             self._stream_ctx[stream_id].stream_status = OPEN
@@ -637,7 +637,7 @@ class HxsConnection(HC):
                     self._stream_ctx[stream_id].stream_status = CLOSED
                     if stream_id in self._remote_connected_event:
                         self._remote_connected_event[stream_id].set()
-                    asyncio.ensure_future(self.close_stream(stream_id))
+                    self.close_stream(stream_id)
                 elif frame_type == SETTINGS:
                     if stream_id & 1:
                         self._settings_async_drain = True
@@ -858,22 +858,6 @@ class HxsConnection(HC):
                          self._stat_total_sent, self._stream_ctx[0].traffic_from_client,
                          self._stream_ctx[0].traffic_from_client / self._stat_total_sent)
 
-    async def close_stream(self, stream_id):
-        if not self._stream_ctx[stream_id].resume_reading.is_set():
-            self._stream_ctx[stream_id].resume_reading.set()
-        if self._stream_ctx[stream_id].stream_status != CLOSED:
-            await self.send_frame(RST_STREAM, 0, stream_id)
-            self._stream_ctx[stream_id].stream_status = CLOSED
-        if stream_id in self._client_writer:
-            writer = self._client_writer[stream_id]
-            del self._client_writer[stream_id]
-            if not writer.is_closing():
-                writer.close()
-            try:
-                await writer.wait_closed()
-            except ConnectionError:
-                pass
-
     async def client_writer_drain(self, stream_id):
         if self._settings_async_drain:
             asyncio.ensure_future(self.async_drain(stream_id))
@@ -895,7 +879,7 @@ class HxsConnection(HC):
                 # tell client to resume reading
                 await self.send_frame(WINDOW_UPDATE, 0, stream_id)
             except (OSError, KeyError):
-                await self.close_stream(stream_id)
+                self.close_stream(stream_id)
                 return
 
     async def get_key(self, timeout, tcp_nodelay):
@@ -922,3 +906,16 @@ class HxsConnection(HC):
         payload += data
         payload += bytes(random.randint(self.PING_SIZE // 4, self.PING_SIZE))
         await self.send_frame(UDP_DGRAM2, 0, 0, payload)
+
+    def close_stream(self, stream_id):
+        if not self._stream_ctx[stream_id].resume_reading.is_set():
+            self._stream_ctx[stream_id].resume_reading.set()
+        if self._stream_ctx[stream_id].stream_status != CLOSED:
+            asyncio.ensure_future(self.send_frame(RST_STREAM, 0, stream_id))
+            self._stream_ctx[stream_id].stream_status = CLOSED
+        if stream_id in self._client_writer:
+            writer = self._client_writer[stream_id]
+            del self._client_writer[stream_id]
+            if not writer.is_closing():
+                writer.close()
+
