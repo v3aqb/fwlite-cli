@@ -23,15 +23,15 @@ from builtins import chr
 import sys
 import base64
 import struct
-import socket
 import time
 import random
 import logging
 import asyncio
+from asyncio import get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
 
 from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor, SS_SUBKEY, SS_SUBKEY_2022
 
-from fwlite_cli.parent_proxy import ParentProxy
+from .transport import FWTransport
 
 
 def set_logger():
@@ -51,14 +51,15 @@ class IncompleteChunk(Exception):
     pass
 
 
-async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
-    if not isinstance(proxy, ParentProxy):
-        proxy = ParentProxy(proxy, proxy)
-    assert proxy.scheme == 'ss'
-
-    # connect to ss server
-    context = SSConn(proxy)
-    reader, writer = await context.connect(addr, port, timeout, limit, tcp_nodelay)
+async def ss_connect(proxy, timeout, addr, port, limit, _):
+    loop = get_running_loop()
+    reader = StreamReader(limit=limit, loop=loop)
+    protocol = StreamReaderProtocol(reader, loop=loop)
+    conn = SSConn(proxy)
+    transport = FWTransport(loop, protocol, conn)
+    await transport.connect(addr, port, timeout)
+    # protocol is for Reader, transport is for Writer
+    writer = StreamWriter(transport, protocol, reader, loop)
     return reader, writer
 
 
@@ -66,7 +67,7 @@ class SSConn:
     bufsize = 16383
     tcp_timeout = 600
 
-    def __init__(self, proxy, ):
+    def __init__(self, proxy):
         self.logger = logging.getLogger('ss')
         self.proxy = proxy
         ssmethod, sspassword = self.proxy.username, self.proxy.password
@@ -76,8 +77,7 @@ class SSConn:
 
         self._address = None
         self._port = 0
-        self._client_reader = None
-        self._client_writer = None
+        self._transport = None
         self._remote_reader = None
         self._remote_writer = None
         self._task = None
@@ -85,17 +85,18 @@ class SSConn:
         self.aead = is_aead(ssmethod)
         self._crypto = Encryptor(sspassword, ssmethod, role=0)
         self._connected = False
-        self._last_active = time.time()
+        self._last_active = time.monotonic()
         # if eof recieved
         self._remote_eof = False
         self._client_eof = False
         self._data_recved = False
         self._buf = b''
+        self._allow_reading = asyncio.Event()
 
-    async def connect(self, addr, port, timeout, limit, tcp_nodelay):
+    async def create_connection(self, addr, port, timeout, transport):
         self._address = addr
         self._port = port
-
+        self._transport = transport
         from .connection import open_connection
         self._remote_reader, self._remote_writer, _ = await open_connection(
             self.proxy.hostname,
@@ -103,75 +104,34 @@ class SSConn:
             proxy=self.proxy.get_via(),
             timeout=timeout,
             tunnel=True,
-            limit=131072,
-            tcp_nodelay=tcp_nodelay)
-        self._remote_writer.transport.set_write_buffer_limits(65536)
+            limit=131072)
+        self._allow_reading.set()
+        asyncio.ensure_future(self._forward_from_remote())
 
-        # create socket_pair
-        sock_a, sock_b = socket.socketpair()
-        if sys.platform == 'win32':
-            sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            sock_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self._client_reader, self._client_writer = await asyncio.open_connection(sock=sock_b)
-        self._client_writer.transport.set_write_buffer_limits(65536)
+    def abort(self, _):
+        self._remote_writer.close()
 
-        # start forward
-        self._task = asyncio.ensure_future(self._forward())
+    def close(self, _):
+        self._remote_writer.close()
 
-        # return reader, writer
-        reader, writer = await asyncio.open_connection(sock=sock_a, limit=limit)
-        return reader, writer
+    def write(self, data, _):
+        # encrypt, sent to server
+        self._last_active = time.monotonic()
+        if not self._connected:
+            header = b''.join([chr(3).encode(),
+                               chr(len(self._address)).encode('latin1'),
+                               self._address.encode(),
+                               struct.pack(b">H", self._port)])
+            if self._crypto.ctx == SS_SUBKEY_2022:
+                padding_len = random.randint(0, 255)
+                header += struct.pack(b"!H", padding_len)
+                header += bytes(padding_len)
+            self._connected = True
+            self._remote_writer.write(self._crypto.encrypt(header + data))
+        else:
+            self._remote_writer.write(self._crypto.encrypt(data))
 
-    async def create_connection(self, addr, port, transport):
-        self._address = addr
-        self._port = port
-        self._transport = transport
-
-    async def _forward(self):
-
-        tasks = [asyncio.create_task(self._forward_from_client()),
-                 asyncio.create_task(self._forward_from_remote()),
-                 ]
-        await asyncio.wait(tasks)
-        for writer in (self._remote_writer, self._client_writer):
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except ConnectionError:
-                pass
-
-    async def _forward_from_client(self):
-        # read from client, encrypt, sent to server
-        while True:
-            fut = self._client_reader.read(self.bufsize)
-            try:
-                data = await asyncio.wait_for(fut, timeout=6)
-                self._last_active = time.time()
-            except asyncio.TimeoutError:
-                continue
-            except OSError:
-                self._remote_writer.close()
-                break
-
-            if not data:
-                break
-            if not self._connected:
-                header = b''.join([chr(3).encode(),
-                                   chr(len(self._address)).encode('latin1'),
-                                   self._address.encode(),
-                                   struct.pack(b">H", self._port)])
-                if self._crypto.ctx == SS_SUBKEY_2022:
-                    padding_len = random.randint(0, 255)
-                    header += struct.pack(b"!H", padding_len)
-                    header += bytes(padding_len)
-                self._connected = True
-                self._remote_writer.write(self._crypto.encrypt(header + data))
-            else:
-                self._remote_writer.write(self._crypto.encrypt(data))
-            try:
-                await self._remote_writer.drain()
-            except ConnectionError:
-                break
+    def write_eof(self, _):
         self._client_eof = True
         try:
             self._remote_writer.write_eof()
@@ -210,45 +170,57 @@ class SSConn:
                     _, timestamp = struct.unpack(b'!BQ', data[:9])
                     diff = time.time() - timestamp
                     if abs(diff) > 30:
-                        raise ValueError('timestamp error, diff: %.3f' % diff)
+                        raise ValueError('timestamp error, diff: %ds' % diff)
                 data_len, = struct.unpack(b'!H', data[-2:])
                 fut = self._remote_reader.readexactly(data_len + 16)
                 data = await asyncio.wait_for(fut, timeout=4)
                 data = self._crypto.decrypt(data)
-                self._client_writer.write(data)
+                self._transport.data_received(data)
             except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
                 self._remote_eof = True
                 try:
-                    self._client_writer.write_eof()
+                    self._transport.eof_received()
                 except ConnectionError:
                     pass
                 return
 
         while True:
             try:
+                await self._allow_reading.wait()
                 data = await self._read()
-                self._last_active = time.time()
+                self._last_active = time.monotonic()
                 self._data_recved = True
             except asyncio.TimeoutError:
                 idle_time = time.time() - self._last_active
                 if self._client_eof and idle_time > 60:
-                    self._client_writer.close()
+                    self._transport.close()
                     break
                 continue
             except (BufEmptyError, asyncio.IncompleteReadError, InvalidTag, IncompleteChunk):
-                self._client_writer.close()
+                self._transport.close()
                 break
 
             if not data:
                 break
             try:
-                self._client_writer.write(data)
-                await self._client_writer.drain()
+                self._transport.data_received(data)
             except ConnectionError:
                 break
         self._remote_eof = True
         try:
-            self._client_writer.write_eof()
+            self._transport.eof_received()
         except ConnectionError:
             pass
+
+    def get_write_buffer_size(self, _):
+        return self._remote_writer.transport.get_write_buffer_size()
+
+    def pause_reading(self, _):
+        self._allow_reading.clear()
+
+    def resume_reading(self, _):
+        self._allow_reading.set()
+
+    async def drain(self, _):
+        await self._remote_writer.drain()
