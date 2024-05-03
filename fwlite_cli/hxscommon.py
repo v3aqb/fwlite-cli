@@ -164,8 +164,6 @@ class ForwardContext:
         self.host = host  # (host, port)
         self.drain_lock = asyncio.Lock()
         self.last_active = time.monotonic()
-        self.resume_reading = asyncio.Event()
-        self.resume_reading.set()
 
         # eof recieved
         self.stream_status = OPEN
@@ -187,9 +185,9 @@ class ForwardContext:
         self._fc_enable = bool(send_w)
         if send_w or stream_id == 0:
             self._monitor_task = asyncio.ensure_future(self.monitor())
-        self.send_w = send_w
+        self.send_w = send_w or float('inf')
         self._lock = asyncio.Lock()
-        self._window_open = asyncio.Event()
+        self._window_open = asyncio.Event()  # blocked when cannot send to connection
         self._window_open.set()
         self.recv_w = recv_w
         self._recv_w_max = recv_w
@@ -203,10 +201,9 @@ class ForwardContext:
             self.traffic_from_client += size
             self.sent_counter += size
             self.last_active = time.monotonic()
-            if self.fc_enable:
-                self.send_w -= size
-                if self.send_w <= 0:
-                    self._window_open.clear()
+            self.send_w -= size
+            if self.send_w <= 0:
+                self._window_open.clear()
 
     def data_recv(self, size):
         self.traffic_from_remote += size
@@ -277,6 +274,10 @@ class ForwardContext:
                 self.new_recv_window(new_window)
 
     def window_update(self, size):
+        if size < 0:
+            self.send_w = size
+            self._window_open.clear()
+            return
         self.send_w += size
         if self.send_w > 0:
             self._window_open.set()
@@ -422,7 +423,6 @@ class HxsConnection(HC):
 
         count = 0
         while not self.connection_lost:
-            await self._stream_ctx[stream_id].resume_reading.wait()
             fut = client_reader.read(self.bufsize)
             try:
                 data = await asyncio.wait_for(fut, timeout=6)
@@ -682,11 +682,13 @@ class HxsConnection(HC):
                             except ConnectionError:
                                 pass
                 elif frame_type == WINDOW_UPDATE:  # 8
-                    if self._settings_async_drain and stream_id:
+                    if not self._stream_ctx[stream_id].fc_enable:
                         if frame_flags == 1:
-                            self._stream_ctx[stream_id].resume_reading.clear()
+                            # pause reading
+                            self._stream_ctx[stream_id].window_update(-1)
                         else:
-                            self._stream_ctx[stream_id].resume_reading.set()
+                            # resume reading
+                            self._stream_ctx[stream_id].window_update(float('inf'))
                     else:
                         size = struct.unpack('>I', payload.read(4))[0]
                         self._stream_ctx[stream_id].window_update(size)
@@ -926,8 +928,6 @@ class HxsConnection(HC):
         self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
 
     def close_stream(self, stream_id):
-        if not self._stream_ctx[stream_id].resume_reading.is_set():
-            self._stream_ctx[stream_id].resume_reading.set()
         if self._stream_ctx[stream_id].stream_status != CLOSED:
             self.send_frame(RST_STREAM, 0, stream_id)
             self._stream_ctx[stream_id].stream_status = CLOSED
