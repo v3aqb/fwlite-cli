@@ -877,22 +877,10 @@ class HxsConnection(HC):
                 self.close_stream(stream_id)
                 return
 
-    async def get_key(self, timeout, tcp_nodelay):
-        raise NotImplementedError
-
-    async def send_frame_data(self, ct_):
-        raise NotImplementedError
-
     async def read_frame(self, timeout=30):
         frame_data = await self._read_frame(timeout)
         self._stat_total_recv += len(frame_data)
         return frame_data
-
-    async def _read_frame(self, timeout=30):
-        raise NotImplementedError
-
-    async def close(self):
-        raise NotImplementedError
 
     async def send_dgram2(self, udp_sid, data):
         # remote addr included in data, as shadowsocks format
@@ -901,6 +889,21 @@ class HxsConnection(HC):
         payload += data
         payload += bytes(random.randint(self.PING_SIZE // 4, self.PING_SIZE))
         await self.send_frame(UDP_DGRAM2, 0, 0, payload)
+
+    async def get_key(self, timeout, tcp_nodelay):
+        raise NotImplementedError
+
+    async def _read_frame(self, timeout=30):
+        raise NotImplementedError
+
+    def send_frame_data(self, ct_):
+        raise NotImplementedError
+
+    async def drain(self):
+        raise NotImplementedError
+
+    async def close(self):
+        raise NotImplementedError
 
     def write_eof_stream(self, stream_id):
         if not self._stream_ctx[stream_id].stream_status & EOF_SENT:

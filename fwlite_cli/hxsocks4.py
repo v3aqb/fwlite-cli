@@ -122,34 +122,6 @@ class Hxs4Connection(HxsConnection):
         self.logger = logging.getLogger('hxs4')
         self.b85encode = int(self.proxy.query.get('b85encode', ['1'])[0])
 
-    async def send_frame_data(self, ct_):
-        try:
-            frame_len = struct.pack('>H', len(ct_))
-            if self.encrypt_frame_len:
-                frame_len = self._flen_cipher.encrypt(frame_len)
-            self.remote_writer.write(frame_len + ct_)
-            await self.remote_writer.drain()
-        except OSError:
-            self.connection_lost = True
-
-    async def _read_frame(self, timeout=30):
-        try:
-            frame_len = await self._rfile_read(2, timeout)
-            if self.encrypt_frame_len:
-                frame_len = self._flen_cipher.decrypt(frame_len)
-            frame_len, = struct.unpack('>H', frame_len)
-        except (OSError, asyncio.IncompleteReadError) as err:
-            # destroy connection
-            raise ReadFrameError(err) from err
-
-        # read frame_data
-        try:
-            frame_data = await self._rfile_read(frame_len, timeout=HC.READ_FRAME_TIMEOUT)
-            frame_data = self._cipher.decrypt(frame_data)
-            return frame_data
-        except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
-            raise ReadFrameError(err) from err
-
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks4 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
@@ -196,12 +168,36 @@ class Hxs4Connection(HxsConnection):
                 continue
         raise ConnectionResetError(0, 'hxs4 read server response Error, timeout: %s' % timeout)
 
-    async def _rfile_read(self, size, timeout=None):
-        if timeout:
-            fut = self.remote_reader.readexactly(size)
-            data = await asyncio.wait_for(fut, timeout=timeout)
-            return data
-        return await self.remote_reader.readexactly(size)
+    async def _read_frame(self, timeout=30):
+        try:
+            frame_len = await self._rfile_read(2, timeout)
+            if self.encrypt_frame_len:
+                frame_len = self._flen_cipher.decrypt(frame_len)
+            frame_len, = struct.unpack('>H', frame_len)
+        except (OSError, asyncio.IncompleteReadError) as err:
+            # destroy connection
+            raise ReadFrameError(err) from err
+
+        # read frame_data
+        try:
+            frame_data = await self._rfile_read(frame_len, timeout=HC.READ_FRAME_TIMEOUT)
+            frame_data = self._cipher.decrypt(frame_data)
+            return frame_data
+        except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
+            raise ReadFrameError(err) from err
+
+    async def send_frame_data(self, ct_):
+        try:
+            frame_len = struct.pack('>H', len(ct_))
+            if self.encrypt_frame_len:
+                frame_len = self._flen_cipher.encrypt(frame_len)
+            self.remote_writer.write(frame_len + ct_)
+            await self.remote_writer.drain()
+        except OSError:
+            self.connection_lost = True
+
+    async def drain(self):
+        raise NotImplementedError
 
     async def close(self):
         if self.remote_writer:
@@ -211,3 +207,10 @@ class Hxs4Connection(HxsConnection):
                 await self.remote_writer.wait_closed()
             except OSError:
                 pass
+
+    async def _rfile_read(self, size, timeout=None):
+        if timeout:
+            fut = self.remote_reader.readexactly(size)
+            data = await asyncio.wait_for(fut, timeout=timeout)
+            return data
+        return await self.remote_reader.readexactly(size)

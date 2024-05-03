@@ -158,21 +158,6 @@ class Hxs3Connection(HxsConnection):
         super().__init__(proxy, manager)
         self.logger = logging.getLogger('hxs3')
 
-    async def send_frame_data(self, ct_):
-        try:
-            await self.remote_writer.send(ct_)
-        except ConnectionClosed:
-            self.connection_lost = True
-
-    async def _read_frame(self, timeout=30):
-        try:
-            fut = self.remote_writer.recv()
-            frame_data = await asyncio.wait_for(fut, timeout=timeout)
-            frame_data = self._cipher.decrypt(frame_data)
-            return frame_data
-        except (ConnectionClosed, RuntimeError, InvalidTag) as err:
-            raise ReadFrameError(err) from err
-
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks3 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
@@ -221,6 +206,24 @@ class Hxs3Connection(HxsConnection):
         data = await asyncio.wait_for(fut, timeout=timeout)
 
         self.key_exchange(data, usn, psw, pubk, ecc)
+
+    async def _read_frame(self, timeout=30):
+        try:
+            fut = self.remote_writer.recv()
+            frame_data = await asyncio.wait_for(fut, timeout=timeout)
+            frame_data = self._cipher.decrypt(frame_data)
+            return frame_data
+        except (ConnectionClosed, RuntimeError, InvalidTag) as err:
+            raise ReadFrameError(err) from err
+
+    async def send_frame_data(self, ct_):
+        try:
+            await self.remote_writer.send(ct_)
+        except ConnectionClosed:
+            self.connection_lost = True
+
+    async def drain(self):
+        raise NotImplementedError
 
     async def close(self):
         if self.remote_writer:
