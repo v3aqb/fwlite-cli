@@ -25,6 +25,8 @@ import logging
 import asyncio
 from ipaddress import ip_address
 
+from collections import deque
+
 import websockets.client
 from websockets.exceptions import ConnectionClosed
 
@@ -33,7 +35,6 @@ from hxcrypto import InvalidTag
 from fwlite_cli.parent_proxy import ParentProxy
 from fwlite_cli.hxscommon import HxsConnection, HC, get_client_auth
 from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
-from fwlite_cli.util import cipher_test
 
 # see "openssl ciphers" command for cipher names
 CIPHERS_A = [
@@ -56,7 +57,7 @@ CIPHERS_C = [
 'ECDHE-ECDSA-AES128-SHA256',
 'ECDHE-ECDSA-AES256-SHA384',
 ]
-CIPHERS = ':'.join(CIPHERS_A if cipher_test[2] < 1.2 else CIPHERS_C)
+CIPHERS = ':'.join(CIPHERS_A)
 
 
 def set_logger():
@@ -67,7 +68,6 @@ def set_logger():
                                   datefmt='%H:%M:%S')
     hdr.setFormatter(formatter)
     logger.addHandler(hdr)
-    logger.info(repr(cipher_test))
 
 
 set_logger()
@@ -157,6 +157,8 @@ class Hxs3Connection(HxsConnection):
     def __init__(self, proxy, manager):
         super().__init__(proxy, manager)
         self.logger = logging.getLogger('hxs3')
+        self._sendq = asyncio.Queue()
+        self._sending = False
 
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks3 getKey')
@@ -216,15 +218,37 @@ class Hxs3Connection(HxsConnection):
         except (ConnectionClosed, RuntimeError, InvalidTag) as err:
             raise ReadFrameError(err) from err
 
-    async def send_frame_data(self, ct_):
-        try:
-            await self.remote_writer.send(ct_)
-        except ConnectionClosed:
-            self.connection_lost = True
+    def send_frame_data(self, ct_):
+        self._sendq.put_nowait(ct_)
+        asyncio.ensure_future(self._maybe_start_sending())
+
+    async def _maybe_start_sending(self):
+        if self._sending:
+            return
+        self._sending = True
+        while True:
+            try:
+                ct_ = self._sendq.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            if self.connection_lost:
+                self._sendq.task_done()
+                continue
+            try:
+                await self.remote_writer.send(ct_)
+            except ConnectionClosed:
+                self.connection_lost = True
+            finally:
+                self._sendq.task_done()
+        self._sending = False
 
     async def drain(self):
-        raise NotImplementedError
+        await self._maybe_start_sending()
+        await self._sendq.join()
 
-    async def close(self):
+    def close(self):
+        return
+
+    async def wait_closed(self):
         if self.remote_writer:
             await self.remote_writer.close()

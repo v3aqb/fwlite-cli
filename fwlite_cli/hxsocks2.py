@@ -189,27 +189,28 @@ class Hxs2Connection(HxsConnection):
         except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
             raise ReadFrameError(err) from err
 
-    async def send_frame_data(self, ct_):
+    def send_frame_data(self, ct_):
+        frame_len = struct.pack('>H', len(ct_))
+        if self.encrypt_frame_len:
+            frame_len = self._flen_cipher.encrypt(frame_len)
+        self.remote_writer.write(frame_len + ct_)
+
+    async def drain(self):
         try:
-            frame_len = struct.pack('>H', len(ct_))
-            if self.encrypt_frame_len:
-                frame_len = self._flen_cipher.encrypt(frame_len)
-            self.remote_writer.write(frame_len + ct_)
             await self.remote_writer.drain()
         except OSError:
             self.connection_lost = True
 
-    async def drain(self):
-        raise NotImplementedError
-
-    async def close(self):
+    def close(self):
         if self.remote_writer:
             if not self.remote_writer.is_closing():
                 self.remote_writer.close()
-            try:
-                await self.remote_writer.wait_closed()
-            except OSError:
-                pass
+
+    async def wait_closed(self):
+        try:
+            await self.remote_writer.wait_closed()
+        except OSError:
+            pass
 
     async def _rfile_read(self, size, timeout=None):
         if timeout:

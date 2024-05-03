@@ -219,7 +219,7 @@ class ForwardContext:
                 self._recv_w_counter = 0
                 payload = struct.pack('>I', w_counter)
                 payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
-                asyncio.ensure_future(self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload))
+                self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
 
     def enable_fc(self, send_w, recv_w):
         self.fc_enable = bool(send_w)
@@ -245,7 +245,7 @@ class ForwardContext:
             self._recv_w_counter = 0
             payload = struct.pack('>I', w_counter)
             payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
-            asyncio.ensure_future(self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload))
+            self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
         self._conn.logger.debug('%s: update window form %s to %s', self._conn.name, old_size, self.recv_w)
 
     def reduce_window(self, rtt):
@@ -374,7 +374,7 @@ class HxsConnection(HC):
                 self._manager.remove(self)
 
             self._stream_ctx[stream_id] = ForwardContext(self, stream_id, (addr, port), 0, 0)
-            await self.send_frame(HEADERS, OPEN, stream_id, payload)
+            self.send_frame(HEADERS, OPEN, stream_id, payload)
             # asyncio.ensure_future(self.send_ping_sequence())
             # self._ponging = max(self._ponging, 4)
 
@@ -390,7 +390,7 @@ class HxsConnection(HC):
                 self.logger.error('%s connect %s timeout %ds',
                                   self.name, f'{addr}:{port}', timeout)
                 del self._remote_connected_event[stream_id]
-                asyncio.ensure_future(self.send_ping())
+                self.send_ping()
                 raise
 
         del self._remote_connected_event[stream_id]
@@ -437,16 +437,19 @@ class HxsConnection(HC):
                 self.logger.error('data recv from client, while stream EOF_SENT!')
                 self.close_stream(stream_id)
                 return
+            await self._stream_ctx[stream_id].acquire(len(data))
+            await self._stream_ctx[0].acquire(len(data))
             if count < 5:
                 await self.send_data_frame(stream_id, data, more_padding=True)
                 count += 1
             else:
                 await self.send_data_frame(stream_id, data)
+            await self.drain()
         while time.monotonic() - self._stream_ctx[stream_id].last_active < 12:
             await asyncio.sleep(6)
         self.close_stream(stream_id)
 
-    async def send_frame(self, type_, flags, stream_id, payload=None):
+    def send_frame(self, type_, flags, stream_id, payload=None):
         if self.connection_lost:
             self.logger.debug('send_frame: connection closed. %s', self.name)
             return
@@ -454,7 +457,7 @@ class HxsConnection(HC):
             self._setting_sent = True
             payload = struct.pack('>I', self.WINDOW_SIZE[1])
             payload += bytes(random.randint(self.HEADER_SIZE // 4 - 4, self.HEADER_SIZE - 4))
-            await self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, payload)
+            self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, payload)
         if type_ != PING:
             self._last_send = time.monotonic()
         elif flags == 0:
@@ -468,19 +471,19 @@ class HxsConnection(HC):
         ct_ = self._cipher.encrypt(data)
 
         self.logger.debug('send_frame type: %d, stream_id: %d, size: %d %s', type_, stream_id, len(ct_), self.name)
-        async with self._lock:
-            await self.send_frame_data(ct_)
-            self._stat_total_sent += len(ct_)
 
-    async def send_ping(self, size=0):
+        self.send_frame_data(ct_)
+        self._stat_total_sent += len(ct_)
+
+    def send_ping(self, size=0):
         if self._ping_time:
-            await self.send_pong(0, size)
+            self.send_pong(0, size)
             return
         if not size:
             size = self.PING_SIZE
         self._ping_id = random.randint(1, 32767)
         self._ping_time = time.monotonic()
-        await self.send_frame(PING, 0, self._ping_id, bytes(random.randint(size // 4, size)))
+        self.send_frame(PING, 0, self._ping_id, bytes(random.randint(size // 4, size)))
 
     async def send_ping_sequence(self):
         count = random.randint(3, 8)
@@ -492,19 +495,17 @@ class HxsConnection(HC):
             await asyncio.sleep(random.random() * 0.2)
             if self._ping_time:
                 continue
-            await self.send_ping(self.PONG_SIZE)
+            self.send_ping(self.PONG_SIZE)
             self._pinging -= 1
 
-    async def send_pong(self, sid=0, size=0):
+    def send_pong(self, sid=0, size=0):
         if not size:
             size = self.PONG_SIZE
-        await self.send_frame(PING, PONG, sid, bytes(random.randint(size // 4, size)))
+        self.send_frame(PING, PONG, sid, bytes(random.randint(size // 4, size)))
 
-    async def send_one_data_frame(self, stream_id, data, more_padding=False):
+    def send_one_data_frame(self, stream_id, data, more_padding=False):
         if self._stream_ctx[stream_id].stream_status & EOF_SENT:
             return
-        await self._stream_ctx[stream_id].acquire(len(data))
-        await self._stream_ctx[0].acquire(len(data))
         payload = struct.pack('>H', len(data)) + data
         diff = self.FRAME_SIZE_LIMIT - len(data)
         if 0 <= diff < self.FRAME_SIZE_LIMIT * 0.05:
@@ -519,7 +520,7 @@ class HxsConnection(HC):
                 padding_len = random.randint(8, 64)
             padding = bytes(padding_len)
         payload += padding
-        await self.send_frame(DATA, 0, stream_id, payload)
+        self.send_frame(DATA, 0, stream_id, payload)
 
     async def send_data_frame(self, stream_id, data, more_padding=False):
         data_len = len(data)
@@ -527,13 +528,13 @@ class HxsConnection(HC):
             data = io.BytesIO(data)
             data_ = data.read(random.randint(64, self.FRAME_SIZE_LIMIT))
             while data_:
-                await self.send_one_data_frame(stream_id, data_)
+                self.send_one_data_frame(stream_id, data_)
                 if random.random() < self.PING_FREQ:
-                    await self.send_ping(1024)
+                    self.send_ping(1024)
                 data_ = data.read(random.randint(64, self.FRAME_SIZE_LIMIT))
                 await asyncio.sleep(0)
         else:
-            await self.send_one_data_frame(stream_id, data, more_padding)
+            self.send_one_data_frame(stream_id, data, more_padding)
         try:
             buffer_size = self.remote_writer.transport.get_write_buffer_size()
             self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
@@ -573,10 +574,10 @@ class HxsConnection(HC):
                     self._last_recv = time.monotonic()
                     if self._ponging:
                         if random.random() < 0.8:
-                            await self.send_pong()
+                            self.send_pong()
                             self._ponging -= 1
                     elif random.random() < self.PING_FREQ:
-                        await self.send_pong()
+                        self.send_pong()
 
                 if frame_type == DATA:  # 0
                     data_len, = struct.unpack('>H', payload.read(2))
@@ -627,7 +628,7 @@ class HxsConnection(HC):
                             addr = '%s:%s' % self._stream_ctx[stream_id].host
                             self.logger.info('%s stream open, client closed, %s', self.name, addr)
                             self._stream_ctx[stream_id].stream_status = CLOSED
-                            await self.send_frame(RST_STREAM, 0, stream_id)
+                            self.send_frame(RST_STREAM, 0, stream_id)
                 elif frame_type == RST_STREAM:  # 3
                     self._stream_ctx[stream_id].stream_status = CLOSED
                     if stream_id in self._remote_connected_event:
@@ -642,7 +643,7 @@ class HxsConnection(HC):
                         self._stream_ctx[0].enable_fc(send_w, self.WINDOW_SIZE[1])
                 elif frame_type == PING:  # 6
                     if frame_flags == 0:
-                        await self.send_pong(stream_id, self.PING_SIZE)
+                        self.send_pong(stream_id, self.PING_SIZE)
                     elif self._ping_time and self._ping_id == stream_id:
                         resp_time = time.monotonic() - self._ping_time
                         self._rtt = min(self._rtt, resp_time)
@@ -710,7 +711,8 @@ class HxsConnection(HC):
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
         if task_list:
             await asyncio.wait(task_list)
-        await self.close()
+        self.close()
+        await self.wait_closed()
 
     def key_exchange(self, data, usn, psw, pubk, ecc):
         data = io.BytesIO(data)
@@ -793,12 +795,12 @@ class HxsConnection(HC):
                 break
 
             if time.monotonic() - self._last_ping > self.PING_INTV_2:
-                await self.send_ping()
+                self.send_ping()
                 continue
             if time.monotonic() - self._last_ping > self.PING_INTV:
                 if self._stream_ctx[0].recv_counter > self.WINDOW_SIZE[0] or \
                         self._stream_ctx[0].sent_counter > self.WINDOW_SIZE[0]:
-                    await self.send_ping()
+                    self.send_ping()
             continue
         self.connection_lost = True
 
@@ -817,7 +819,8 @@ class HxsConnection(HC):
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
         if task_list:
             await asyncio.wait(task_list)
-        await self.close()
+        self.close()
+        await self.wait_closed()
 
     def update_stat(self):
         try:
@@ -869,10 +872,10 @@ class HxsConnection(HC):
         async with self._stream_ctx[stream_id].drain_lock:
             try:
                 # tell client to stop reading
-                await self.send_frame(WINDOW_UPDATE, 1, stream_id)
+                self.send_frame(WINDOW_UPDATE, 1, stream_id)
                 await self._client_writer[stream_id].drain()
                 # tell client to resume reading
-                await self.send_frame(WINDOW_UPDATE, 0, stream_id)
+                self.send_frame(WINDOW_UPDATE, 0, stream_id)
             except (OSError, KeyError):
                 self.close_stream(stream_id)
                 return
@@ -888,7 +891,7 @@ class HxsConnection(HC):
         payload += struct.pack(b'!LH', udp_sid, len(data))
         payload += data
         payload += bytes(random.randint(self.PING_SIZE // 4, self.PING_SIZE))
-        await self.send_frame(UDP_DGRAM2, 0, 0, payload)
+        self.send_frame(UDP_DGRAM2, 0, 0, payload)
 
     async def get_key(self, timeout, tcp_nodelay):
         raise NotImplementedError
@@ -902,7 +905,10 @@ class HxsConnection(HC):
     async def drain(self):
         raise NotImplementedError
 
-    async def close(self):
+    def close(self):
+        raise NotImplementedError
+
+    async def wait_closed(self):
         raise NotImplementedError
 
     def write_eof_stream(self, stream_id):
@@ -912,13 +918,13 @@ class HxsConnection(HC):
         if self._stream_ctx[stream_id].stream_status == CLOSED:
             self.close_stream(stream_id)
             return
-        asyncio.ensure_future(self.send_frame(HEADERS, END_STREAM_FLAG, stream_id))
+        self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
 
     def close_stream(self, stream_id):
         if not self._stream_ctx[stream_id].resume_reading.is_set():
             self._stream_ctx[stream_id].resume_reading.set()
         if self._stream_ctx[stream_id].stream_status != CLOSED:
-            asyncio.ensure_future(self.send_frame(RST_STREAM, 0, stream_id))
+            self.send_frame(RST_STREAM, 0, stream_id)
             self._stream_ctx[stream_id].stream_status = CLOSED
         if stream_id in self._client_writer:
             writer = self._client_writer[stream_id]
