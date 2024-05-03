@@ -184,7 +184,7 @@ class ForwardContext:
 
         self._conn = conn
         self._stream_id = stream_id
-        self.fc_enable = bool(send_w)
+        self._fc_enable = bool(send_w)
         if send_w or stream_id == 0:
             self._monitor_task = asyncio.ensure_future(self.monitor())
         self.send_w = send_w
@@ -197,6 +197,7 @@ class ForwardContext:
         self._recv_w_counter = 0
 
     async def acquire(self, size):
+        ''' called before send data to connection, or maybe after'''
         async with self._lock:
             await self._window_open.wait()
             self.traffic_from_client += size
@@ -222,7 +223,9 @@ class ForwardContext:
                 self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
 
     def enable_fc(self, send_w, recv_w):
-        self.fc_enable = bool(send_w)
+        if self.fc_enable:
+            raise ValueError('fc already enabled')
+        self._fc_enable = bool(send_w)
         self.send_w = send_w
         self.recv_w = recv_w
         self._recv_w_max = recv_w
@@ -230,13 +233,15 @@ class ForwardContext:
         if not self._monitor_task:
             self._monitor_task = asyncio.ensure_future(self.monitor())
 
+    @property
+    def fc_enable(self):
+        return self._fc_enable
+
     def new_recv_window(self, new_window):
         # change recv window
         new_window = int(new_window)
-        if new_window < self._conn.WINDOW_SIZE[0]:
-            new_window = self._conn.WINDOW_SIZE[0]
-        if new_window > self._conn.WINDOW_SIZE[2]:
-            new_window = self._conn.WINDOW_SIZE[2]
+        new_window = max(new_window, self._conn.WINDOW_SIZE[0])
+        new_window = max(new_window, self._conn.WINDOW_SIZE[2])
         old_size = self.recv_w
         self.recv_w = new_window
         self._recv_w_counter += new_window - old_size
@@ -246,7 +251,7 @@ class ForwardContext:
             payload = struct.pack('>I', w_counter)
             payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
             self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
-        self._conn.logger.debug('%s: update window form %s to %s', self._conn.name, old_size, self.recv_w)
+        self._conn.logger.debug(f'{self._conn.name}: update window form {old_size} to {self.recv_w}')
 
     def reduce_window(self, rtt):
         if self.fc_enable:
