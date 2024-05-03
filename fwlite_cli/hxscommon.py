@@ -430,7 +430,7 @@ class HxsConnection(HC):
 
             if not data:
                 # close stream(LOCAL)
-                self.write_eof(stream_id)
+                self.write_eof_stream(stream_id)
                 break
 
             if self._stream_ctx[stream_id].stream_status & EOF_SENT:
