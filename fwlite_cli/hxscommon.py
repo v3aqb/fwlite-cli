@@ -373,7 +373,7 @@ class HxsConnection(HC):
                 self.logger.error('MAX_STREAM_ID reached')
                 self._manager.remove(self)
 
-            self._stream_ctx[stream_id] = ForwardContext(self, stream_id, (addr, port), 0, 0)
+            self._stream_ctx[stream_id] = ForwardContext(conn=self, stream_id=stream_id, host=(addr, port), send_w=0, recv_w=0)
             await self.send_frame(HEADERS, OPEN, stream_id, payload)
             # asyncio.ensure_future(self.send_ping_sequence())
             # self._ponging = max(self._ponging, 4)
@@ -430,12 +430,7 @@ class HxsConnection(HC):
 
             if not data:
                 # close stream(LOCAL)
-                if not self._stream_ctx[stream_id].stream_status & EOF_SENT:
-                    self._stream_ctx[stream_id].stream_status |= EOF_SENT
-                    await self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
-                if self._stream_ctx[stream_id].stream_status == CLOSED:
-                    self.close_stream(stream_id)
-                    return
+                self.write_eof(stream_id)
                 break
 
             if self._stream_ctx[stream_id].stream_status & EOF_SENT:
@@ -907,6 +902,9 @@ class HxsConnection(HC):
         payload += bytes(random.randint(self.PING_SIZE // 4, self.PING_SIZE))
         await self.send_frame(UDP_DGRAM2, 0, 0, payload)
 
+    def abort_stream(self, stream_id):
+        self.close_stream(stream_id)
+
     def close_stream(self, stream_id):
         if not self._stream_ctx[stream_id].resume_reading.is_set():
             self._stream_ctx[stream_id].resume_reading.set()
@@ -918,4 +916,13 @@ class HxsConnection(HC):
             del self._client_writer[stream_id]
             if not writer.is_closing():
                 writer.close()
+
+    def write_eof(self, stream_id):
+        if not self._stream_ctx[stream_id].stream_status & EOF_SENT:
+            self._stream_ctx[stream_id].stream_status |= EOF_SENT
+
+        if self._stream_ctx[stream_id].stream_status == CLOSED:
+            self.close_stream(stream_id)
+            return
+        asyncio.ensure_future(self.send_frame(HEADERS, END_STREAM_FLAG, stream_id))
 
