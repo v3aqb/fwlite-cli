@@ -918,6 +918,9 @@ class HxsConnection(HC):
     async def wait_closed(self):
         raise NotImplementedError
 
+    def get_write_buffer_size(self, stream_id):
+        raise NotImplementedError
+
     def write_eof_stream(self, stream_id):
         if not self._stream_ctx[stream_id].stream_status & EOF_SENT:
             self._stream_ctx[stream_id].stream_status |= EOF_SENT

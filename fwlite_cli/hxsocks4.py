@@ -215,3 +215,6 @@ class Hxs4Connection(HxsConnection):
             data = await asyncio.wait_for(fut, timeout=timeout)
             return data
         return await self._remote_reader.readexactly(size)
+
+    def get_write_buffer_size(self, stream_id):
+        return self._remote_writer.transport.get_write_buffer_size()

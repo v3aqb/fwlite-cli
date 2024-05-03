@@ -159,6 +159,7 @@ class Hxs3Connection(HxsConnection):
         self.logger = logging.getLogger('hxs3')
         self._sendq = asyncio.Queue()
         self._sending = False
+        self._wbuffer_size = 0
 
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks3 getKey')
@@ -221,6 +222,7 @@ class Hxs3Connection(HxsConnection):
 
     def send_frame_data(self, ct_):
         self._sendq.put_nowait(ct_)
+        self._wbuffer_size += len(ct_)
         asyncio.ensure_future(self._maybe_start_sending())
 
     async def _maybe_start_sending(self):
@@ -246,6 +248,7 @@ class Hxs3Connection(HxsConnection):
     async def drain(self):
         await self._maybe_start_sending()
         await self._sendq.join()
+        self._wbuffer_size = 0
 
     def close(self):
         return
@@ -253,3 +256,6 @@ class Hxs3Connection(HxsConnection):
     async def wait_closed(self):
         if self._remote_writer:
             await self._remote_writer.close()
+
+    def get_write_buffer_size(self, stream_id):
+        return self._wbuffer_size
