@@ -163,7 +163,7 @@ class Hxs2Connection(HxsConnection):
             ct_ = self._pskcipher.decrypt(ct_)
             data = ct_[2:]  # first 2 bytes is data length
         else:
-            resp_len = await self._rfile_read(2, timeout)
+            resp_len = await self._rfile_read(self._pskcipher.iv_len + 2, timeout)
             resp_len = self._pskcipher.decrypt(resp_len)
             resp_len, = struct.unpack('>H', resp_len)
             data = await self._rfile_read(resp_len)
