@@ -169,8 +169,8 @@ class ForwardContext:
         # eof recieved
         self.stream_status = OPEN
         # traffic, for log
-        self.traffic_from_client = 0
-        self.traffic_from_remote = 0
+        self.traffic_from_endpoint = 0
+        self.traffic_from_conn = 0
         # traffic, for flow control
         self.sent_rate = 0
         self.sent_rate_max = 0
@@ -199,7 +199,7 @@ class ForwardContext:
         ''' called before send data to connection, or maybe after'''
         async with self._lock:
             await self._window_open.wait()
-            self.traffic_from_client += size
+            self.traffic_from_endpoint += size
             self.sent_counter += size
             self.last_active = time.monotonic()
             self.send_w -= size
@@ -208,7 +208,7 @@ class ForwardContext:
 
     def data_recv(self, size):
         '''data recv from connection, maybe update window'''
-        self.traffic_from_remote += size
+        self.traffic_from_conn += size
         self.recv_counter += size
         self.last_active = time.monotonic()
         if self.fc_enable:
@@ -861,11 +861,11 @@ class HxsConnection(HC):
         self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w: %8d', self._stream_ctx[0].sent_rate_max, self._stream_ctx[0].sent_rate, self._stream_ctx[0].send_w)
         self.logger.info('buffer_ewma: %8d, active stream: %6d', self._buffer_size_ewma, self.count())
         self.logger.info('total_recv: %d, data_recv: %d %.3f',
-                         self._stat_total_recv, self._stream_ctx[0].traffic_from_remote,
-                         self._stream_ctx[0].traffic_from_remote / self._stat_total_recv)
+                         self._stat_total_recv, self._stream_ctx[0].traffic_from_conn,
+                         self._stream_ctx[0].traffic_from_conn / self._stat_total_recv)
         self.logger.info('total_sent: %d, data_sent: %d %.3f',
-                         self._stat_total_sent, self._stream_ctx[0].traffic_from_client,
-                         self._stream_ctx[0].traffic_from_client / self._stat_total_sent)
+                         self._stat_total_sent, self._stream_ctx[0].traffic_from_endpoint,
+                         self._stream_ctx[0].traffic_from_endpoint / self._stat_total_sent)
 
     async def client_writer_drain(self, stream_id, data_len):
         if self._settings_async_drain or self._stream_ctx[stream_id].fc_enable:
