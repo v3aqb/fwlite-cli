@@ -206,6 +206,7 @@ class ForwardContext:
                 self._window_open.clear()
 
     def data_recv(self, size):
+        '''data recv from connection, maybe update window'''
         self.traffic_from_remote += size
         self.recv_counter += size
         self.last_active = time.monotonic()
@@ -587,8 +588,7 @@ class HxsConnection(HC):
                 if frame_type == DATA:  # 0
                     data_len, = struct.unpack('>H', payload.read(2))
                     data = payload.read(data_len)
-                    self._stream_ctx[0].data_recv(len(data))
-                    self._stream_ctx[stream_id].data_recv(len(data))
+                    self._stream_ctx[0].data_recv(data_len)
 
                     # first 2 bytes of payload indicates data_len, the rest would be padding
                     if len(data) != data_len:
@@ -610,7 +610,7 @@ class HxsConnection(HC):
                     try:
                         self._stream_ctx[stream_id].last_active = time.monotonic()
                         self._stream_writer[stream_id].write(data)
-                        await self.client_writer_drain(stream_id)
+                        await self.client_writer_drain(stream_id, data_len)
                     except (OSError, KeyError) as err:
                         self.logger.error('send data to stream fail. %r', err)
                         # client error, reset stream
@@ -863,29 +863,33 @@ class HxsConnection(HC):
                          self._stat_total_sent, self._stream_ctx[0].traffic_from_client,
                          self._stream_ctx[0].traffic_from_client / self._stat_total_sent)
 
-    async def client_writer_drain(self, stream_id):
-        if self._settings_async_drain:
-            asyncio.ensure_future(self.async_drain(stream_id))
+    async def client_writer_drain(self, stream_id, data_len):
+        if self._settings_async_drain or self._stream_ctx[stream_id].fc_enable:
+            asyncio.ensure_future(self.async_drain(stream_id, data_len))
         else:
             await self._stream_writer[stream_id].drain()
+            self._stream_ctx[stream_id].data_recv(data_len)
 
-    async def async_drain(self, stream_id):
+    async def async_drain(self, stream_id, data_len):
         if stream_id not in self._stream_writer:
             return
         wbuffer_size = self._stream_writer[stream_id].transport.get_write_buffer_size()
         if wbuffer_size <= self.CLIENT_WRITE_BUFFER:
+            self._stream_ctx[stream_id].data_recv(data_len)
             return
 
         async with self._stream_ctx[stream_id].drain_lock:
             try:
                 # tell client to stop reading
-                self.send_frame(WINDOW_UPDATE, 1, stream_id)
+                if not self._stream_ctx[stream_id].fc_enable:
+                    self.send_frame(WINDOW_UPDATE, 1, stream_id)
                 await self._stream_writer[stream_id].drain()
                 # tell client to resume reading
-                self.send_frame(WINDOW_UPDATE, 0, stream_id)
+                if not self._stream_ctx[stream_id].fc_enable:
+                    self.send_frame(WINDOW_UPDATE, 0, stream_id)
+                self._stream_ctx[stream_id].data_recv(data_len)
             except (OSError, KeyError):
                 self.close_stream(stream_id)
-                return
 
     async def read_frame(self, timeout=30):
         frame_data = await self._read_frame(timeout)
