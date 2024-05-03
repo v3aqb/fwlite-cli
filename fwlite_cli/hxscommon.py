@@ -328,7 +328,7 @@ class HxsConnection(HC):
         self._client_writer = {}
         self._remote_connected_event = {}
         self._stream_ctx = {}
-        self._stream_ctx[0] = ForwardContext(self, 0, ('', 0), 0, 0)
+        self._stream_ctx[0] = ForwardContext(conn=self, stream_id=0, host=('', 0), send_w=0, recv_w=0)
         self._stream_task = {}
         self._last_recv = time.monotonic()
         self._last_send = time.monotonic()
@@ -373,7 +373,7 @@ class HxsConnection(HC):
                 self.logger.error('MAX_STREAM_ID reached')
                 self._manager.remove(self)
 
-            self._stream_ctx[stream_id] = ForwardContext(conn=self, stream_id=stream_id, host=(addr, port), send_w=0, recv_w=0)
+            self._stream_ctx[stream_id] = ForwardContext(self, stream_id, (addr, port), 0, 0)
             await self.send_frame(HEADERS, OPEN, stream_id, payload)
             # asyncio.ensure_future(self.send_ping_sequence())
             # self._ponging = max(self._ponging, 4)
