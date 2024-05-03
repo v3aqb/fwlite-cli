@@ -154,7 +154,8 @@ class HC:
     PING_SIZE = 256
     PONG_SIZE = 256
     PING_FREQ = 0.2
-    FRAME_SIZE_LIMIT = 16383 - 22
+    FRAME_SIZE_LIMIT = 4096 - 22
+    FRAME_SIZE_LIMIT2 = 1024 - 22
     FRAME_SPLIT_FREQ = 0.3
     WINDOW_SIZE = (4096, 65536, 1048576 * 4)
 
@@ -509,7 +510,7 @@ class HxsConnection(HC):
             size = self.PONG_SIZE
         self.send_frame(PING, PONG, sid, bytes(random.randint(size // 4, size)))
 
-    def send_one_data_frame(self, stream_id, data, more_padding=False):
+    def send_one_data_frame(self, stream_id, data, more_padding=False, frag=False):
         if self._stream_ctx[stream_id].stream_status & EOF_SENT:
             return
         payload = struct.pack('>H', len(data)) + data
@@ -526,18 +527,18 @@ class HxsConnection(HC):
                 padding_len = random.randint(8, 64)
             padding = bytes(padding_len)
         payload += padding
-        self.send_frame(DATA, 0, stream_id, payload)
+        flag = 1 if frag else 0
+        self.send_frame(DATA, flag, stream_id, payload)
 
     async def send_data_frame(self, stream_id, data, more_padding=False):
         data_len = len(data)
-        if data_len > self.FRAME_SIZE_LIMIT and random.random() < self.FRAME_SPLIT_FREQ:
+        size_limit = self.FRAME_SIZE_LIMIT2 if more_padding else self.FRAME_SIZE_LIMIT
+        if data_len > size_limit and (more_padding or random.random() < self.FRAME_SPLIT_FREQ):
             data = io.BytesIO(data)
-            data_ = data.read(random.randint(64, self.FRAME_SIZE_LIMIT))
+            data_ = data.read(random.randint(64, size_limit))
             while data_:
-                self.send_one_data_frame(stream_id, data_)
-                if random.random() < self.PING_FREQ:
-                    self.send_ping(1024)
-                data_ = data.read(random.randint(64, self.FRAME_SIZE_LIMIT))
+                self.send_one_data_frame(stream_id, data_, frag=True)
+                data_ = data.read(random.randint(64, size_limit))
                 await asyncio.sleep(0)
         else:
             self.send_one_data_frame(stream_id, data, more_padding)
@@ -578,12 +579,6 @@ class HxsConnection(HC):
 
                 if frame_type in (DATA, HEADERS, RST_STREAM, UDP_DGRAM2):
                     self._last_recv = time.monotonic()
-                    if self._ponging:
-                        if random.random() < 0.8:
-                            self.send_pong()
-                            self._ponging -= 1
-                    elif random.random() < self.PING_FREQ:
-                        self.send_pong()
 
                 if frame_type == DATA:  # 0
                     data_len, = struct.unpack('>H', payload.read(2))
@@ -595,6 +590,15 @@ class HxsConnection(HC):
                         # something went wrong, destory connection
                         self.logger.error('len(data) != data_len')
                         break
+
+                    if frame_flags & 1:
+                        self.send_pong()
+                    elif self._ponging:
+                        if random.random() < 0.8:
+                            self.send_pong()
+                            self._ponging -= 1
+                    elif random.random() < self.PING_FREQ:
+                        self.send_pong()
 
                     # sent data to stream
                     for _ in range(5):
