@@ -330,7 +330,7 @@ class HxsConnection(HC):
         self._next_stream_id = 1
         self._settings_async_drain = False
 
-        self._client_writer = {}
+        self._stream_writer = {}
         self._remote_connected_event = {}
         self._stream_ctx = {}
         self._stream_ctx[0] = ForwardContext(conn=self, stream_id=0, host=('', 0), send_w=0, recv_w=0)
@@ -408,7 +408,7 @@ class HxsConnection(HC):
             reader, writer = await asyncio.open_connection(sock=socketpair_b, limit=131072)
             writer.transport.set_write_buffer_limits(self.CLIENT_WRITE_BUFFER)
 
-            self._client_writer[stream_id] = writer
+            self._stream_writer[stream_id] = writer
             self._stream_ctx[stream_id].last_active = time.monotonic()
             # start forwarding
             self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
@@ -598,7 +598,7 @@ class HxsConnection(HC):
 
                     # sent data to stream
                     for _ in range(5):
-                        if stream_id not in self._client_writer:
+                        if stream_id not in self._stream_writer:
                             await asyncio.sleep(0)
 
                     if self._stream_ctx[stream_id].stream_status & EOF_RECV:
@@ -609,7 +609,7 @@ class HxsConnection(HC):
 
                     try:
                         self._stream_ctx[stream_id].last_active = time.monotonic()
-                        self._client_writer[stream_id].write(data)
+                        self._stream_writer[stream_id].write(data)
                         await self.client_writer_drain(stream_id)
                     except (OSError, KeyError) as err:
                         self.logger.error('send data to stream fail. %r', err)
@@ -618,9 +618,9 @@ class HxsConnection(HC):
                 elif frame_type == HEADERS:  # 1
                     if frame_flags == END_STREAM_FLAG:
                         self._stream_ctx[stream_id].stream_status |= EOF_RECV
-                        if stream_id in self._client_writer:
+                        if stream_id in self._stream_writer:
                             try:
-                                self._client_writer[stream_id].write_eof()
+                                self._stream_writer[stream_id].write_eof()
                             except OSError:
                                 self._stream_ctx[stream_id].stream_status = CLOSED
                         if self._stream_ctx[stream_id].stream_status == CLOSED:
@@ -673,7 +673,7 @@ class HxsConnection(HC):
                     # no more new stream
                     max_stream_id = payload.read(2)
                     self._manager.remove(self)
-                    for stream_id, client_writer in self._client_writer:
+                    for stream_id, client_writer in self._stream_writer:
                         if stream_id > max_stream_id:
                             # reset stream
                             client_writer.close()
@@ -707,12 +707,12 @@ class HxsConnection(HC):
                 event.set()
 
         task_list = []
-        for stream_id in self._client_writer:
+        for stream_id in self._stream_writer:
             self._stream_ctx[stream_id].stream_status = CLOSED
-            if not self._client_writer[stream_id].is_closing():
-                self._client_writer[stream_id].close()
-                task_list.append(self._client_writer[stream_id])
-        self._client_writer = {}
+            if not self._stream_writer[stream_id].is_closing():
+                self._stream_writer[stream_id].close()
+                task_list.append(self._stream_writer[stream_id])
+        self._stream_writer = {}
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
         if task_list:
             await asyncio.wait(task_list)
@@ -780,7 +780,7 @@ class HxsConnection(HC):
         raise ConnectionResetError(0, 'hxs getKey Error')
 
     def count(self):
-        return len(self._client_writer)
+        return len(self._stream_writer)
 
     async def monitor(self):
         while not self.connection_lost:
@@ -815,12 +815,12 @@ class HxsConnection(HC):
                 event.set()
 
         task_list = []
-        for stream_id in self._client_writer:
+        for stream_id in self._stream_writer:
             self._stream_ctx[stream_id].stream_status = CLOSED
-            if not self._client_writer[stream_id].is_closing():
-                self._client_writer[stream_id].close()
-                task_list.append(self._client_writer[stream_id])
-        self._client_writer = {}
+            if not self._stream_writer[stream_id].is_closing():
+                self._stream_writer[stream_id].close()
+                task_list.append(self._stream_writer[stream_id])
+        self._stream_writer = {}
         task_list = [asyncio.create_task(w.wait_closed()) for w in task_list]
         if task_list:
             await asyncio.wait(task_list)
@@ -865,12 +865,12 @@ class HxsConnection(HC):
         if self._settings_async_drain:
             asyncio.ensure_future(self.async_drain(stream_id))
         else:
-            await self._client_writer[stream_id].drain()
+            await self._stream_writer[stream_id].drain()
 
     async def async_drain(self, stream_id):
-        if stream_id not in self._client_writer:
+        if stream_id not in self._stream_writer:
             return
-        wbuffer_size = self._client_writer[stream_id].transport.get_write_buffer_size()
+        wbuffer_size = self._stream_writer[stream_id].transport.get_write_buffer_size()
         if wbuffer_size <= self.CLIENT_WRITE_BUFFER:
             return
 
@@ -878,7 +878,7 @@ class HxsConnection(HC):
             try:
                 # tell client to stop reading
                 self.send_frame(WINDOW_UPDATE, 1, stream_id)
-                await self._client_writer[stream_id].drain()
+                await self._stream_writer[stream_id].drain()
                 # tell client to resume reading
                 self.send_frame(WINDOW_UPDATE, 0, stream_id)
             except (OSError, KeyError):
@@ -931,9 +931,9 @@ class HxsConnection(HC):
         if self._stream_ctx[stream_id].stream_status != CLOSED:
             self.send_frame(RST_STREAM, 0, stream_id)
             self._stream_ctx[stream_id].stream_status = CLOSED
-        if stream_id in self._client_writer:
-            writer = self._client_writer[stream_id]
-            del self._client_writer[stream_id]
+        if stream_id in self._stream_writer:
+            writer = self._stream_writer[stream_id]
+            del self._stream_writer[stream_id]
             if not writer.is_closing():
                 writer.close()
 
