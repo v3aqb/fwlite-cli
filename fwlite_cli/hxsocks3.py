@@ -185,15 +185,16 @@ class Hxs3Connection(HxsConnection):
         else:
             url = '%s://%s:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
 
-        self.remote_writer = await websockets.client.connect(url, ssl=ctx, compression=None,
-                                                             server_hostname=hostname,
-                                                             ping_interval=None,
-                                                             ping_timeout=None,
-                                                             max_size=2 ** 17,
-                                                             max_queue=2,
-                                                             read_limit=2 ** 17,
-                                                             write_limit=2 ** 17,)
-        self._socport = self.remote_writer.local_address[1]
+        self._remote_writer = await websockets.client.connect(
+            url, ssl=ctx, compression=None,
+            server_hostname=hostname,
+            ping_interval=None,
+            ping_timeout=None,
+            max_size=2 ** 17,
+            max_queue=2,
+            read_limit=2 ** 17,
+            write_limit=2 ** 17,)
+        self._socport = self._remote_writer.local_address[1]
 
         # prep key exchange request
         data, pubk, ecc = get_client_auth(32, usn, psw, self.mode)
@@ -201,17 +202,17 @@ class Hxs3Connection(HxsConnection):
         data = bytes((0, )) + data
 
         # send key exchange request
-        await self.remote_writer.send(data)
+        await self._remote_writer.send(data)
 
         # read server response
-        fut = self.remote_writer.recv()
+        fut = self._remote_writer.recv()
         data = await asyncio.wait_for(fut, timeout=timeout)
 
         self.key_exchange(data, usn, psw, pubk, ecc)
 
     async def _read_frame(self, timeout=30):
         try:
-            fut = self.remote_writer.recv()
+            fut = self._remote_writer.recv()
             frame_data = await asyncio.wait_for(fut, timeout=timeout)
             frame_data = self._cipher.decrypt(frame_data)
             return frame_data
@@ -235,7 +236,7 @@ class Hxs3Connection(HxsConnection):
                 self._sendq.task_done()
                 continue
             try:
-                await self.remote_writer.send(ct_)
+                await self._remote_writer.send(ct_)
             except ConnectionClosed:
                 self.connection_lost = True
             finally:
@@ -250,5 +251,5 @@ class Hxs3Connection(HxsConnection):
         return
 
     async def wait_closed(self):
-        if self.remote_writer:
-            await self.remote_writer.close()
+        if self._remote_writer:
+            await self._remote_writer.close()

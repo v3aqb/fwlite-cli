@@ -316,8 +316,8 @@ class HxsConnection(HC):
         self.encrypt_frame_len = False
         self._flen_cipher = None
 
-        self.remote_reader = None
-        self.remote_writer = None
+        self._remote_reader = None
+        self._remote_writer = None
         self._socport = None
 
         self._pskcipher = None
@@ -536,7 +536,7 @@ class HxsConnection(HC):
         else:
             self.send_one_data_frame(stream_id, data, more_padding)
         try:
-            buffer_size = self.remote_writer.transport.get_write_buffer_size()
+            buffer_size = self._remote_writer.transport.get_write_buffer_size()
             self._buffer_size_ewma = self._buffer_size_ewma * 0.87 + buffer_size * 0.13
         except AttributeError:
             pass
@@ -824,7 +824,7 @@ class HxsConnection(HC):
 
     def update_stat(self):
         try:
-            buffer_size = self.remote_writer.transport.get_write_buffer_size()
+            buffer_size = self._remote_writer.transport.get_write_buffer_size()
             self._buffer_size_ewma = self._buffer_size_ewma * 0.8 + buffer_size * 0.2
         except AttributeError:
             pass

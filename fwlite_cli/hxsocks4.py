@@ -127,7 +127,7 @@ class Hxs4Connection(HxsConnection):
         usn, psw = (self.proxy.username, self.proxy.password)
         self.logger.info('%s connect to server', self.name)
         from .connection import open_connection
-        self.remote_reader, self.remote_writer, _ = await open_connection(
+        self._remote_reader, self._remote_writer, _ = await open_connection(
             self.proxy.hostname,
             self.proxy.port,
             proxy=self.proxy.get_via(),
@@ -135,8 +135,8 @@ class Hxs4Connection(HxsConnection):
             tunnel=True,
             limit=262144,
             tcp_nodelay=tcp_nodelay)
-        self.remote_writer.transport.set_write_buffer_limits(131072)
-        self._socport = self.remote_writer.get_extra_info('sockname')[1]
+        self._remote_writer.transport.set_write_buffer_limits(131072)
+        self._socport = self._remote_writer.get_extra_info('sockname')[1]
 
         # prep key exchange request
         self._pskcipher = AEncryptor(self._psk.encode(), self.method, CTX, role=1)
@@ -147,14 +147,14 @@ class Hxs4Connection(HxsConnection):
             ct_ = base64.b85encode(ct_)
 
         # send key exchange request
-        self.remote_writer.write(ct_)
-        await self.remote_writer.drain()
+        self._remote_writer.write(ct_)
+        await self._remote_writer.drain()
 
         # read server response
         data = b''
         for _ in range(10):
             try:
-                fut = self.remote_reader.read(self.bufsize)
+                fut = self._remote_reader.read(self.bufsize)
                 buf = await asyncio.wait_for(fut, timeout=timeout / 10)
                 if not buf:
                     raise ConnectionResetError(0, 'hxs4 read server response Error, EOF')
@@ -190,28 +190,28 @@ class Hxs4Connection(HxsConnection):
         frame_len = struct.pack('>H', len(ct_))
         if self.encrypt_frame_len:
             frame_len = self._flen_cipher.encrypt(frame_len)
-        self.remote_writer.write(frame_len + ct_)
+        self._remote_writer.write(frame_len + ct_)
 
     async def drain(self):
         try:
-            await self.remote_writer.drain()
+            await self._remote_writer.drain()
         except OSError:
             self.connection_lost = True
 
     def close(self):
-        if self.remote_writer:
-            if not self.remote_writer.is_closing():
-                self.remote_writer.close()
+        if self._remote_writer:
+            if not self._remote_writer.is_closing():
+                self._remote_writer.close()
 
     async def wait_closed(self):
         try:
-            await self.remote_writer.wait_closed()
+            await self._remote_writer.wait_closed()
         except OSError:
             pass
 
     async def _rfile_read(self, size, timeout=None):
         if timeout:
-            fut = self.remote_reader.readexactly(size)
+            fut = self._remote_reader.readexactly(size)
             data = await asyncio.wait_for(fut, timeout=timeout)
             return data
-        return await self.remote_reader.readexactly(size)
+        return await self._remote_reader.readexactly(size)
