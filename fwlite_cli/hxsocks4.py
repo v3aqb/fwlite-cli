@@ -97,7 +97,7 @@ class ConnectionManager:
                     try:
                         await connection.get_key(timeout, tcp_nodelay)
                     except Exception as err:
-                        asyncio.ensure_future(connection.close())
+                        connection.close()
                         self._err = repr(err)
                         self._err_time = time.time()
                         if not self.connection_list:

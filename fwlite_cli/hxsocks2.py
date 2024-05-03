@@ -98,11 +98,11 @@ class ConnectionManager:
                     try:
                         await connection.get_key(timeout, tcp_nodelay)
                     except Exception as err:
-                        asyncio.ensure_future(connection.close())
+                        connection.close()
                         self._err = repr(err)
                         self._err_time = time.time()
                         if not self.connection_list:
-                            raise ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err) from err
+                            raise ConnectionResetError(0, 'hxsocks2 get_key() failed: %r' % err) from err
                     else:
                         self._err = None
                         self.connection_list.append(connection)
