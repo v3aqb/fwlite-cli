@@ -902,8 +902,14 @@ class HxsConnection(HC):
         payload += bytes(random.randint(self.PING_SIZE // 4, self.PING_SIZE))
         await self.send_frame(UDP_DGRAM2, 0, 0, payload)
 
-    def abort_stream(self, stream_id):
-        self.close_stream(stream_id)
+    def write_eof_stream(self, stream_id):
+        if not self._stream_ctx[stream_id].stream_status & EOF_SENT:
+            self._stream_ctx[stream_id].stream_status |= EOF_SENT
+
+        if self._stream_ctx[stream_id].stream_status == CLOSED:
+            self.close_stream(stream_id)
+            return
+        asyncio.ensure_future(self.send_frame(HEADERS, END_STREAM_FLAG, stream_id))
 
     def close_stream(self, stream_id):
         if not self._stream_ctx[stream_id].resume_reading.is_set():
@@ -917,12 +923,5 @@ class HxsConnection(HC):
             if not writer.is_closing():
                 writer.close()
 
-    def write_eof(self, stream_id):
-        if not self._stream_ctx[stream_id].stream_status & EOF_SENT:
-            self._stream_ctx[stream_id].stream_status |= EOF_SENT
-
-        if self._stream_ctx[stream_id].stream_status == CLOSED:
-            self.close_stream(stream_id)
-            return
-        asyncio.ensure_future(self.send_frame(HEADERS, END_STREAM_FLAG, stream_id))
-
+    def abort_stream(self, stream_id):
+        self.close_stream(stream_id)

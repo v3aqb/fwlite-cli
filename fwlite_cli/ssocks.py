@@ -93,52 +93,6 @@ class SSConn:
         self._buf = b''
         self._allow_reading = asyncio.Event()
 
-    async def create_connection(self, addr, port, timeout, transport):
-        self._address = addr
-        self._port = port
-        self._transport = transport
-        from .connection import open_connection
-        self._remote_reader, self._remote_writer, _ = await open_connection(
-            self.proxy.hostname,
-            self.proxy.port,
-            proxy=self.proxy.get_via(),
-            timeout=timeout,
-            tunnel=True,
-            limit=131072)
-        self._allow_reading.set()
-        asyncio.ensure_future(self._forward_from_remote())
-        return 0
-
-    def abort_stream(self, _):
-        self._remote_writer.close()
-
-    def close_stream(self, _):
-        self._remote_writer.close()
-
-    def write(self, data, _):
-        # encrypt, sent to server
-        self._last_active = time.monotonic()
-        if not self._connected:
-            header = b''.join([chr(3).encode(),
-                               chr(len(self._address)).encode('latin1'),
-                               self._address.encode(),
-                               struct.pack(b">H", self._port)])
-            if self.__crypto.ctx == SS_SUBKEY_2022:
-                padding_len = random.randint(0, 255)
-                header += struct.pack(b"!H", padding_len)
-                header += bytes(padding_len)
-            self._connected = True
-            self._remote_writer.write(self.__crypto.encrypt(header + data))
-        else:
-            self._remote_writer.write(self.__crypto.encrypt(data))
-
-    def write_eof(self, _):
-        self._client_eof = True
-        try:
-            self._remote_writer.write_eof()
-        except ConnectionError:
-            pass
-
     async def _read(self):
         if self.aead:
             fut = self._remote_reader.readexactly(18)
@@ -214,8 +168,44 @@ class SSConn:
         except ConnectionError:
             pass
 
+    async def create_connection(self, addr, port, timeout, transport):
+        self._address = addr
+        self._port = port
+        self._transport = transport
+        from .connection import open_connection
+        self._remote_reader, self._remote_writer, _ = await open_connection(
+            self.proxy.hostname,
+            self.proxy.port,
+            proxy=self.proxy.get_via(),
+            timeout=timeout,
+            tunnel=True,
+            limit=131072)
+        self._allow_reading.set()
+        asyncio.ensure_future(self._forward_from_remote())
+        return 0
+
+    def write_stream(self, data, _):
+        # encrypt, sent to server
+        self._last_active = time.monotonic()
+        if not self._connected:
+            header = b''.join([chr(3).encode(),
+                               chr(len(self._address)).encode('latin1'),
+                               self._address.encode(),
+                               struct.pack(b">H", self._port)])
+            if self.__crypto.ctx == SS_SUBKEY_2022:
+                padding_len = random.randint(0, 255)
+                header += struct.pack(b"!H", padding_len)
+                header += bytes(padding_len)
+            self._connected = True
+            self._remote_writer.write(self.__crypto.encrypt(header + data))
+        else:
+            self._remote_writer.write(self.__crypto.encrypt(data))
+
     def get_write_buffer_size(self, _):
         return self._remote_writer.transport.get_write_buffer_size()
+
+    async def drain_stream(self, _):
+        await self._remote_writer.drain()
 
     def pause_reading(self, _):
         self._allow_reading.clear()
@@ -223,5 +213,15 @@ class SSConn:
     def resume_reading(self, _):
         self._allow_reading.set()
 
-    async def drain(self, _):
-        await self._remote_writer.drain()
+    def write_eof_stream(self, _):
+        self._client_eof = True
+        try:
+            self._remote_writer.write_eof()
+        except ConnectionError:
+            pass
+
+    def close_stream(self, _):
+        self._remote_writer.close()
+
+    def abort_stream(self, _):
+        self._remote_writer.close()

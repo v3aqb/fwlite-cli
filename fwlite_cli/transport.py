@@ -114,7 +114,7 @@ class FWTransport(transports._FlowControlMixin):
                 logger.warning('socket.send() raised exception.')
             self._conn_lost += 1
             return
-        self._conn.write(data, self._stream_id)
+        self._conn.write_stream(data, self._stream_id)
         self._maybe_pause_protocol()
 
     def _maybe_pause_protocol(self):
@@ -138,7 +138,7 @@ class FWTransport(transports._FlowControlMixin):
 
     async def wait_resume_writing(self):
         try:
-            await self._conn.drain(self._stream_id)
+            await self._conn.drain_stream(self._stream_id)
         except ConnectionError:
             self.close()
             return
@@ -151,7 +151,7 @@ class FWTransport(transports._FlowControlMixin):
 
         Data may still be received.
         """
-        self._conn.write_eof(self._stream_id)
+        self._conn.write_eof_stream(self._stream_id)
 
     def can_write_eof(self):
         """Return True if this transport supports write_eof(), False if not."""
