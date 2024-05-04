@@ -216,5 +216,5 @@ class Hxs2Connection(HxsConnection):
             return data
         return await self._remote_reader.readexactly(size)
 
-    def get_write_buffer_size(self, stream_id):
+    def get_conn_buffer_size(self):
         return self._remote_writer.transport.get_write_buffer_size()

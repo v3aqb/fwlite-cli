@@ -258,5 +258,5 @@ class Hxs3Connection(HxsConnection):
         if self._remote_writer:
             await self._remote_writer.close()
 
-    def get_write_buffer_size(self, stream_id):
+    def get_conn_buffer_size(self):
         return self._wbuffer_size
