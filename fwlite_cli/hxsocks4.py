@@ -204,10 +204,7 @@ class Hxs4Connection(HxsConnection):
                 self._remote_writer.close()
 
     async def wait_closed(self):
-        try:
-            await self._remote_writer.wait_closed()
-        except OSError:
-            pass
+        await self._remote_writer.wait_closed()
 
     async def _rfile_read(self, size, timeout=None):
         if timeout:

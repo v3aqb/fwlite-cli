@@ -196,10 +196,7 @@ class Hxs2Connection(HxsConnection):
         self._remote_writer.write(frame_len + ct_)
 
     async def drain(self):
-        try:
-            await self._remote_writer.drain()
-        except OSError:
-            self.connection_lost = True
+        await self._remote_writer.drain()
 
     def close(self):
         if self._remote_writer:

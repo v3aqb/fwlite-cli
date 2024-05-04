@@ -246,7 +246,8 @@ class Hxs3Connection(HxsConnection):
         self._sending = False
 
     async def drain(self):
-        await self._maybe_start_sending()
+        if self.connection_lost:
+            raise ConnectionError(0, 'ConnectionClosed')
         await self._sendq.join()
         self._wbuffer_size = 0
 
