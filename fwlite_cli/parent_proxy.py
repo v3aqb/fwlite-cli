@@ -130,7 +130,6 @@ class ParentProxy:
         self.avg_resp_time_by_host = DefaultDict(self.GATE)
         self.avg_resp_time_by_host_ts = DefaultDict(0)
         self.avg_resp_time_by_host['udp'] = self.GATE if self.scheme in UDP_SUPPORT else 99
-        self.avg_resp_time_by_host[None] = 0
         self.last_limit_reach = 0
 
         self.country_code = self.query.get('location', [''])[0] or None
@@ -146,11 +145,12 @@ class ParentProxy:
 
     def log(self, host, rtime):
         if host != 'udp':
-            self.avg_resp_time = 0.2 * rtime + (1 - 0.2) * self.get_avg_resp_time()
+            r = 0.14 if rtime > self.avg_resp_time else 0.2
+            self.avg_resp_time = r * rtime + (1 - r) * self.avg_resp_time
+            self.avg_resp_time_ts = time.monotonic()
         if host:
             self.avg_resp_time_by_host[host] = 0.2 * rtime + (1 - 0.2) * self.avg_resp_time_by_host[host]
             self.avg_resp_time_by_host_ts[host] = time.monotonic()
-        self.avg_resp_time_ts = time.monotonic()
         if self.avg_resp_time > RESPONSE_LIMIT:
             if not self.last_limit_reach:
                 self.last_limit_reach = time.monotonic()
@@ -163,19 +163,21 @@ class ParentProxy:
 
     def get_avg_resp_time(self, host=None):
         if host:
-            if time.monotonic() - self.avg_resp_time_by_host_ts[host] > 60:
-                self.avg_resp_time_by_host_ts[host] = time.monotonic()
-                if self.avg_resp_time_by_host[host] > self.GATE and \
-                        self.avg_resp_time_by_host[host] <= 16:
-                    self.log(host, self.GATE)
+            if host in self.avg_resp_time_by_host:
+                if time.monotonic() - self.avg_resp_time_by_host_ts[host] > 60:
+                    self.avg_resp_time_by_host_ts[host] = time.monotonic()
+                    if self.avg_resp_time_by_host[host] > self.GATE and \
+                            self.avg_resp_time_by_host[host] <= 16:
+                        self.log(host, self.GATE)
         elif time.monotonic() - self.avg_resp_time_ts > 60:
             self.avg_resp_time_ts = time.monotonic()
             if self.avg_resp_time > self.GATE:
                 self.log(host, self.GATE)
-        result = max(self.avg_resp_time_by_host[host], self.avg_resp_time)
+
         if self.avg_resp_time > RESPONSE_LIMIT:
             if time.monotonic() - self.last_limit_reach < self.PROBATION:
                 return RESPONSE_LIMIT - 0.1
+        result = self.avg_resp_time_by_host[host] if host in self.avg_resp_time_by_host else self.avg_resp_time
         return result
 
     @classmethod
@@ -250,7 +252,7 @@ class ParentProxyList:
             # random.shuffle(parentlist)
             parentlist = sorted(parentlist, key=priority)
 
-        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time() < RESPONSE_LIMIT]
+        parentlist = [proxy for proxy in parentlist if proxy.get_avg_resp_time(host) < RESPONSE_LIMIT]
         return parentlist
 
     def get(self, key):
