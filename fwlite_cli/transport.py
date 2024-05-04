@@ -165,7 +165,7 @@ class FWTransport(transports._FlowControlMixin):
     async def wait_resume_writing(self):
         try:
             await self._conn.drain_stream(self._stream_id)
-        except ConnectionError:
+        except OSError:
             self.close()
             return
         self._protocol.resume_writing()
