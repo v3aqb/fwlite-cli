@@ -1,5 +1,5 @@
 
-from asyncio import transports, constants, ensure_future
+from asyncio import transports, constants, ensure_future, Event
 from asyncio.log import logger
 
 
@@ -7,22 +7,26 @@ class FWTransport(transports._FlowControlMixin):
     def __init__(self, loop, protocol, conn):
         super().__init__()
         self._loop = loop
-        self._protocol = protocol
+        self._protocol = protocol  # reader protocol
         self._conn = conn
         self._stream_id = None
         self._closing = False
         self._server = None
         self._paused = False  # Reading
+        self._reading = Event()
+        self._reading.set()
         self._protocol_paused = False
         self._conn_lost = 0
-        self._eof = False
+        self._eof = False            # eof from Endpoint, sent to Conn
+        self._eof_from_conn = False  # eof from Conn, sent to Endpoint
         self._empty_waiter = None
 
     async def connect(self, addr, port, timeout):
-        # set self._conn, self._stream_id
+        # set self._stream_id
         self._stream_id = await self._conn.create_connection(addr, port, timeout, self)
         self._protocol.connection_made(self)
 
+    # BaseTransport
     def is_closing(self):
         """Return True if the transport is closing or closed."""
         return self._closing
@@ -38,7 +42,8 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing:
             return
         self._closing = True
-
+        self.write_eof()
+        self.eof_from_conn()
         self._conn_lost += 1
         self._loop.call_soon(self._call_connection_lost, None)
 
@@ -46,6 +51,7 @@ class FWTransport(transports._FlowControlMixin):
         try:
             self._protocol.connection_lost(exc)
         finally:
+            self._reading.set()
             self._conn.close_stream(self._stream_id)
             self._conn = None
             self._protocol = None
@@ -63,6 +69,7 @@ class FWTransport(transports._FlowControlMixin):
         """Return the current protocol."""
         return self._protocol
 
+    # Called by Endpoint StreamReaderProtocol
     def is_reading(self):
         """Return True if the transport is receiving."""
         return not self._paused and not self._closing
@@ -76,7 +83,7 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing or self._paused:
             return
         self._paused = True
-        self._conn.pause_reading(self._stream_id)
+        self._reading.clear()
 
     def resume_reading(self):
         """Resume the receiving end.
@@ -87,8 +94,26 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing or not self._paused:
             return
         self._paused = False
-        self._conn.resume_reading(self._stream_id)
+        self._reading.set()
 
+    # Called by Conn, act as writer. StreamReaderProtocol, feed data to Endpoint StreamReaderProtocol
+    def data_from_conn(self, data):
+        '''called by conn, should await self.drain() next'''
+        if not self._eof_from_conn:
+            self._protocol.data_received(data)
+
+    def eof_from_conn(self):
+        self._eof_from_conn = True
+        if self._protocol:
+            self._protocol.eof_received()
+
+    async def drain(self):
+        '''called after data_recieved from conn'''
+        await self._reading.wait()
+        if self._closing:
+            raise ConnectionError(0, 'FWTransport closed.')
+
+    # called by Endpoint StreamWriter, send data to Conn
     def get_write_buffer_size(self):
         """Return the current size of the write buffer."""
         return self._conn.get_write_buffer_size(self._stream_id)
@@ -111,13 +136,14 @@ class FWTransport(transports._FlowControlMixin):
 
         if self._conn_lost:
             if self._conn_lost >= constants.LOG_THRESHOLD_FOR_CONNLOST_WRITES:
-                logger.warning('socket.send() raised exception.')
+                logger.warning('FWTransport.write() raised exception.')
             self._conn_lost += 1
             return
         self._conn.write_stream(data, self._stream_id)
         self._maybe_pause_protocol()
 
     def _maybe_pause_protocol(self):
+        '''called after write to conn'''
         size = self.get_write_buffer_size()
         if size <= self._high_water:
             return
@@ -151,6 +177,9 @@ class FWTransport(transports._FlowControlMixin):
 
         Data may still be received.
         """
+        if self._eof:
+            return
+        self._eof = True
         self._conn.write_eof_stream(self._stream_id)
 
     def can_write_eof(self):
@@ -165,10 +194,3 @@ class FWTransport(transports._FlowControlMixin):
         called with None as its argument.
         """
         self._conn.abort_stream(self._stream_id)
-
-    def data_received(self, data):
-        self._protocol.data_received(data)
-
-    def eof_received(self):
-        if self._protocol:
-            self._protocol.eof_received()

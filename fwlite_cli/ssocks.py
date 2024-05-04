@@ -91,7 +91,6 @@ class SSConn:
         self._client_eof = False
         self._data_recved = False
         self._buf = b''
-        self._allow_reading = asyncio.Event()
 
     async def _read(self):
         if self.aead:
@@ -130,19 +129,16 @@ class SSConn:
                 fut = self._remote_reader.readexactly(data_len + 16)
                 data = await asyncio.wait_for(fut, timeout=4)
                 data = self.__crypto.decrypt(data)
-                self._transport.data_received(data)
+                self._transport.data_from_conn(data)
+                await self._transport.drain()
             except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
                 self._remote_eof = True
-                try:
-                    self._transport.eof_received()
-                except ConnectionError:
-                    pass
+                self._transport.close()
                 return
 
         while True:
             try:
-                await self._allow_reading.wait()
                 data = await self._read()
                 self._last_active = time.monotonic()
                 self._data_recved = True
@@ -159,12 +155,13 @@ class SSConn:
             if not data:
                 break
             try:
-                self._transport.data_received(data)
+                self._transport.data_from_conn(data)
+                await self._transport.drain()
             except ConnectionError:
                 break
         self._remote_eof = True
         try:
-            self._transport.eof_received()
+            self._transport.eof_from_conn()
         except ConnectionError:
             pass
 
@@ -180,7 +177,6 @@ class SSConn:
             timeout=timeout,
             tunnel=True,
             limit=131072)
-        self._allow_reading.set()
         asyncio.ensure_future(self._forward_from_remote())
         return 0
 
@@ -207,15 +203,15 @@ class SSConn:
     async def drain_stream(self, _):
         await self._remote_writer.drain()
 
-    def pause_reading(self, _):
-        self._allow_reading.clear()
-
-    def resume_reading(self, _):
-        self._allow_reading.set()
-
     def write_eof_stream(self, _):
+        if self._client_eof:
+            return
         self._client_eof = True
+        asyncio.ensure_future(self._write_eof())
+
+    async def _write_eof(self):
         try:
+            await self._remote_writer.drain()
             self._remote_writer.write_eof()
         except ConnectionError:
             pass
