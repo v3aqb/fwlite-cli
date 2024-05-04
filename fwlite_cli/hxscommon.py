@@ -45,8 +45,8 @@ DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
 
 OPEN = 0
-EOF_SENT = 1  # SENT END_STREAM
-EOF_RECV = 2  # RECV END_STREAM
+EOF_FROM_ENDPOINT = 1
+EOF_FROM_CONN = 2
 CLOSED = 3
 
 KNOWN_HOSTS = {}
@@ -440,8 +440,8 @@ class HxsConnection(HC):
                 self.write_eof_stream(stream_id)
                 break
 
-            if self._stream_ctx[stream_id].stream_status & EOF_SENT:
-                self.logger.error('data recv from client, while stream EOF_SENT!')
+            if self._stream_ctx[stream_id].stream_status & EOF_FROM_ENDPOINT:
+                self.logger.error('data recv from client, while stream EOF_FROM_ENDPOINT!')
                 self.close_stream(stream_id)
                 return
             await self._stream_ctx[stream_id].acquire(len(data))
@@ -511,7 +511,7 @@ class HxsConnection(HC):
         self.send_frame(PING, PONG, sid, bytes(random.randint(size // 4, size)))
 
     def send_one_data_frame(self, stream_id, data, more_padding=False, frag=False):
-        if self._stream_ctx[stream_id].stream_status & EOF_SENT:
+        if self._stream_ctx[stream_id].stream_status & EOF_FROM_CONN:
             return
         payload = struct.pack('>H', len(data)) + data
         diff = self.FRAME_SIZE_LIMIT - len(data)
@@ -605,7 +605,7 @@ class HxsConnection(HC):
                         if stream_id not in self._stream_writer:
                             await asyncio.sleep(0)
 
-                    if self._stream_ctx[stream_id].stream_status & EOF_RECV:
+                    if self._stream_ctx[stream_id].stream_status & EOF_FROM_CONN:
                         # from server send buffer
                         self.logger.debug('DATA recv Stream CLOSED, status: %s',
                                           self._stream_ctx[stream_id].stream_status)
@@ -621,7 +621,7 @@ class HxsConnection(HC):
                         self.close_stream(stream_id)
                 elif frame_type == HEADERS:  # 1
                     if frame_flags == END_STREAM_FLAG:
-                        self._stream_ctx[stream_id].stream_status |= EOF_RECV
+                        self._stream_ctx[stream_id].stream_status |= EOF_FROM_CONN
                         if stream_id in self._stream_writer:
                             try:
                                 self._stream_writer[stream_id].write_eof()
@@ -930,13 +930,12 @@ class HxsConnection(HC):
         raise NotImplementedError
 
     def write_eof_stream(self, stream_id):
-        if not self._stream_ctx[stream_id].stream_status & EOF_SENT:
-            self._stream_ctx[stream_id].stream_status |= EOF_SENT
-
+        if not self._stream_ctx[stream_id].stream_status & EOF_FROM_ENDPOINT:
+            self._stream_ctx[stream_id].stream_status |= EOF_FROM_ENDPOINT
+            self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
         if self._stream_ctx[stream_id].stream_status == CLOSED:
             self.close_stream(stream_id)
             return
-        self.send_frame(HEADERS, END_STREAM_FLAG, stream_id)
 
     def close_stream(self, stream_id):
         if self._stream_ctx[stream_id].stream_status != CLOSED:
