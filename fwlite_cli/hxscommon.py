@@ -709,7 +709,7 @@ class HxsConnection(HC):
             self._mode = data.read(1)[0]
 
             # TODO: ask user if a certificate should be accepted or not.
-            host, port = self.proxy._host_port
+            host, port = self.proxy.peername
             host = host.replace(':', '_')
             server_id = f'{host}_{port}'
             if server_id not in KNOWN_HOSTS:

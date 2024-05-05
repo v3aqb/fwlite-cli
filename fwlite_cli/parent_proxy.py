@@ -103,13 +103,13 @@ class ParentProxy:
         self.password = unquote(self.parse.password) if self.parse.password else None
         self.hostname = self.parse.hostname
         self.port = self.parse.port
-        self._host_port = (self.hostname, self.port)  # for plugin only
+        self.peername = (self.hostname, self.port)  # for plugin only
         if self.proxy:
             if self.scheme:
                 if ':' in self.hostname:
-                    self.short = '%s://[%s]:%s' % (self.scheme, self._host_port[0], self._host_port[1])
+                    self.short = '%s://[%s]:%s' % (self.scheme, self.peername[0], self.peername[1])
                 else:
-                    self.short = '%s://%s:%s' % (self.scheme, self._host_port[0], self._host_port[1])
+                    self.short = '%s://%s:%s' % (self.scheme, self.peername[0], self.peername[1])
             else:
                 self.short = self.proxy
         else:
@@ -119,7 +119,7 @@ class ParentProxy:
         plugin = self.query.get('plugin', [None, ])[0]
         self.plugin_info = plugin.split(';') if plugin else None
         if self.plugin_info:
-            self.port = self.conf.plugin_manager.add(self._host_port, self.plugin_info, self.via)
+            self.port = self.conf.plugin_manager.add(self.peername, self.plugin_info, self.via)
             self.hostname = '127.0.0.1'
 
         self.priority = int(float(priority))
