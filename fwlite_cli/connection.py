@@ -65,13 +65,13 @@ async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay
     except TypeError:
         fut = asyncio.open_connection(addr, port, limit=limit)
         remote_reader, remote_writer = await asyncio.wait_for(fut, timeout=timeout)
-    if tcp_nodelay:
-        soc = remote_writer.transport.get_extra_info('socket')
-        soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+    soc = remote_writer.transport.get_extra_info('socket')
+    soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1 if tcp_nodelay else 0)
     return remote_reader, remote_writer
 
 
-async def open_connection(addr, port, proxy=None, timeout=8, iplist=None, tunnel=False, limit=65536, tcp_nodelay=False):
+async def open_connection(addr, port, proxy=None, timeout=8, iplist=None, tunnel=False, limit=65536, tcp_nodelay=True):
     if not isinstance(proxy, ParentProxy):
         logger.warning('parentproxy is not a ParentProxy instance, please check. %s', proxy)
         proxy = ParentProxy(proxy or 'null', proxy or '')

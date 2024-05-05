@@ -51,13 +51,13 @@ class IncompleteChunk(Exception):
     pass
 
 
-async def ss_connect(proxy, timeout, addr, port, limit, _):
+async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     loop = get_running_loop()
     reader = StreamReader(limit=limit, loop=loop)
     protocol = StreamReaderProtocol(reader, loop=loop)
     conn = SSConn(proxy)
     transport = FWTransport(loop, protocol, conn)
-    await transport.connect(addr, port, timeout)
+    await transport.connect(addr, port, timeout, tcp_nodelay)
     # protocol is for Reader, transport is for Writer
     writer = StreamWriter(transport, protocol, reader, loop)
     return reader, writer
@@ -165,7 +165,7 @@ class SSConn:
         except ConnectionError:
             pass
 
-    async def create_connection(self, addr, port, timeout, transport):
+    async def create_connection(self, addr, port, timeout, transport, tcp_nodelay):
         self._address = addr
         self._port = port
         self._transport = transport
@@ -176,7 +176,8 @@ class SSConn:
             proxy=self.proxy.get_via(),
             timeout=timeout,
             tunnel=True,
-            limit=131072)
+            limit=131072,
+            tcp_nodelay=tcp_nodelay)
         asyncio.ensure_future(self._forward_from_remote())
         return 0
 

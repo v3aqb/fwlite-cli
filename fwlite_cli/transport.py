@@ -21,9 +21,9 @@ class FWTransport(transports._FlowControlMixin):
         self._eof_from_conn = False  # eof from Conn, sent to Endpoint
         self._empty_waiter = None
 
-    async def connect(self, addr, port, timeout):
+    async def connect(self, addr, port, timeout, tcp_nodelay):
         # set self._stream_id
-        self._stream_id = await self._conn.create_connection(addr, port, timeout, self)
+        self._stream_id = await self._conn.create_connection(addr, port, timeout, self, tcp_nodelay)
         self._protocol.connection_made(self)
 
     # BaseTransport

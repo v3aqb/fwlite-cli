@@ -194,7 +194,8 @@ class Hxs3Connection(HxsConnection):
             max_size=2 ** 17,
             max_queue=2,
             read_limit=2 ** 17,
-            write_limit=2 ** 17,)
+            write_limit=2 ** 17,
+            tcp_nodelay=tcp_nodelay)
         self._socport = self._remote_writer.local_address[1]
 
         # prep key exchange request
