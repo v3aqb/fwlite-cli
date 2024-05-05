@@ -558,9 +558,9 @@ class HxsConnection(HC):
             return
         if not self._setting_sent:
             self._setting_sent = True
-            payload = struct.pack('>I', self.WINDOW_SIZE[1])
-            payload += bytes(random.randint(self.HEADER_SIZE // 4 - 4, self.HEADER_SIZE - 4))
-            self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, payload)
+            _payload = struct.pack('>I', self.WINDOW_SIZE[1])
+            _payload += bytes(random.randint(self.HEADER_SIZE // 4 - 4, self.HEADER_SIZE - 4))
+            self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, _payload)
         if type_ != PING:
             self._last_send = time.monotonic()
         elif flags == 0:
@@ -570,8 +570,7 @@ class HxsConnection(HC):
             payload = bytes(random.randint(self.HEADER_SIZE // 4, self.HEADER_SIZE))
 
         header = struct.pack('>BBH', type_, flags, stream_id)
-        data = header + payload
-        ct_ = self._cipher.encrypt(data)
+        ct_ = self._cipher.encrypt(header + payload)
 
         self.logger.debug('send_frame type: %d, stream_id: %d, size: %d %s', type_, stream_id, len(ct_), self.name)
 
@@ -759,12 +758,13 @@ class HxsConnection(HC):
                             self.close_stream(stream_id)
                 elif frame_type == WINDOW_UPDATE:  # 8
                     if not self._stream_ctx[stream_id].fc_enable:
-                        if frame_flags == 1:
+                        self._settings_async_drain = True
+                        if frame_flags == 0:
                             # pause reading
-                            self._stream_ctx[stream_id].window_update(-1)
+                            self._stream_ctx[stream_id].window_update(float('inf'))
                         else:
                             # resume reading
-                            self._stream_ctx[stream_id].window_update(float('inf'))
+                            self._stream_ctx[stream_id].window_update(-1)
                     else:
                         size = struct.unpack('>I', payload.read(4))[0]
                         self._stream_ctx[stream_id].window_update(size)
