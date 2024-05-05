@@ -41,6 +41,8 @@ FAST_METHOD = 'chacha20-ietf-poly1305'
 DEFAULT_MODE = 0
 DEFAULT_HASH = 'sha256'
 CTX = b'hxsocks2'
+MODE_RC4MD5 = 1
+MODE_ENC_FLEN = 2
 
 OPEN = 0
 EOF_FROM_ENDPOINT = 1
@@ -409,12 +411,12 @@ class HxsConnection(HC):
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()  # for handshake
         default_mode = DEFAULT_MODE
         if self.proxy.scheme == 'hxs4':
-            default_mode |= 2
+            default_mode |= MODE_ENC_FLEN
         self.mode = int(self.proxy.query.get('mode', [default_mode])[0])
-        if self.mode & 2 and 'rc4' not in method_supported:
+        if self.mode & MODE_ENC_FLEN and 'rc4' not in method_supported:
             self.mode &= 0b11111101
         if self.method == 'rc4-md5':
-            self.mode |= 1
+            self.mode |= MODE_RC4MD5
         self._mode = 0
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
         self.encrypt_frame_len = False
@@ -727,12 +729,12 @@ class HxsConnection(HC):
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
                     shared_secret = ecc.get_dh_key(server_key)
                     self.logger.debug('hxs key exchange success')
-                    if self._mode & 1:
+                    if self._mode & MODE_RC4MD5:
                         self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False, role=2)
                         self.bufsize += 16
                     else:
                         self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False, role=2)
-                    if self._mode & 2:
+                    if self._mode & MODE_ENC_FLEN:
                         self.encrypt_frame_len = True
                         md5 = hashlib.md5()
                         md5.update(shared_secret)
