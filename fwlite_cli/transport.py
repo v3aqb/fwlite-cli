@@ -5,7 +5,7 @@ from asyncio.log import logger
 
 class FWTransport(transports._FlowControlMixin):
     def __init__(self, loop, protocol, conn):
-        super().__init__()
+        super().__init__(loop=loop)
         self._loop = loop
         self._protocol = protocol  # reader protocol
         self._conn = conn
