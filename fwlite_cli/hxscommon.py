@@ -19,10 +19,8 @@
 # along with fwlite-cli.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import sys
 import os
 import struct
-import socket
 import time
 import hmac
 import math
@@ -353,7 +351,7 @@ class ForwardContext:
         await self.acquire(len(data))
         self._conn.send_one_data_frame(self._stream_id, data, more_padding, frag=frag)
 
-    def get_buffer_size(self):
+    def get_write_buffer_size(self):
         return len(self._buffer)
 
     async def drain(self):
@@ -430,7 +428,7 @@ class HxsConnection(HC):
         self._next_stream_id = 1
         self._settings_async_drain = False
 
-        self._stream_writer = {}
+        self._stream_transport = {}
         self._remote_connected_event = {}
         self._stream_ctx = {}
         self._stream_ctx[0] = ForwardContext(conn=self, stream_id=0, host=('', 0), send_w=0, recv_w=0)
@@ -456,101 +454,6 @@ class HxsConnection(HC):
 
         self._lock = Lock()
         self._connecting_lock = Semaphore(self.CONNECTING_LIMIT)
-
-    async def connect(self, addr, port, timeout=3):
-        self.logger.debug('hxsocks send connect request')
-        async with self._connecting_lock:
-            if self.connection_lost:
-                self._manager.remove(self)
-                raise ConnectionLostError(0, 'hxs connection lost')
-            if not self.connected:
-                self._manager.remove(self)
-                raise ConnectionResetError(0, 'hxs not connected.')
-            # send connect request
-            payload = b''.join([bytes((len(addr), )),
-                                addr.encode(),
-                                struct.pack('>H', port),
-                                bytes(random.randint(self.HEADER_SIZE // 4, self.HEADER_SIZE)),
-                                ])
-            stream_id = self._next_stream_id
-            self._next_stream_id += 1
-            if self._next_stream_id > self.MAX_STREAM_ID:
-                self.logger.error('MAX_STREAM_ID reached')
-                self._manager.remove(self)
-
-            self._stream_ctx[stream_id] = ForwardContext(self, stream_id, (addr, port), 0, 0)
-            self.send_frame(HEADERS, OPEN, stream_id, payload)
-            # asyncio.ensure_future(self.send_ping_sequence())
-            # self._ponging = max(self._ponging, 4)
-
-            # wait for server response
-            event = Event()
-            self._remote_connected_event[stream_id] = event
-
-            # await event.wait()
-            fut = event.wait()
-            try:
-                await asyncio.wait_for(fut, timeout=timeout)
-            except asyncio.TimeoutError:
-                self.logger.error('%s connect %s timeout %ds',
-                                  self.name, f'{addr}:{port}', timeout)
-                del self._remote_connected_event[stream_id]
-                self.send_ping()
-                raise
-
-        del self._remote_connected_event[stream_id]
-
-        if self._stream_ctx[stream_id].stream_status == OPEN:
-            socketpair_a, socketpair_b = socket.socketpair()
-            if sys.platform == 'win32':
-                socketpair_a.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                socketpair_b.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            reader, writer = await asyncio.open_connection(sock=socketpair_b, limit=131072)
-            writer.transport.set_write_buffer_limits(self.CLIENT_WRITE_BUFFER)
-
-            self._stream_writer[stream_id] = writer
-            self._stream_ctx[stream_id].last_active = time.monotonic()
-            # start forwarding
-            self._stream_task[stream_id] = asyncio.ensure_future(self.read_from_client(stream_id, reader))
-            return socketpair_a
-        if self.connection_lost:
-            raise ConnectionLostError(0, 'hxs connection lost after request sent')
-        raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
-
-    async def read_from_client(self, stream_id, client_reader):
-        self.logger.debug('start read from client')
-
-        count = 0
-        while not self.connection_lost:
-            fut = client_reader.read(self.bufsize)
-            try:
-                data = await asyncio.wait_for(fut, timeout=6)
-                self._stream_ctx[stream_id].last_active = time.monotonic()
-            except asyncio.TimeoutError:
-                continue
-            except ConnectionError:
-                self.close_stream(stream_id)
-                return
-
-            if not data:
-                # close stream(LOCAL)
-                self.write_eof_stream(stream_id)
-                break
-
-            if self._stream_ctx[stream_id].stream_status & EOF_FROM_ENDPOINT:
-                self.logger.error('data recv from client, while stream EOF_FROM_ENDPOINT!')
-                self.close_stream(stream_id)
-                return
-
-            self.write_stream(data, stream_id)
-            try:
-                await self.drain_stream(stream_id)
-            except ConnectionError:
-                self.close_stream(stream_id)
-                return
-        while time.monotonic() - self._stream_ctx[stream_id].last_active < 12:
-            await asyncio.sleep(6)
-        self.close_stream(stream_id)
 
     def send_frame(self, type_, flags, stream_id, payload=None):
         if self.connection_lost:
@@ -677,7 +580,7 @@ class HxsConnection(HC):
 
                     # sent data to stream
                     for _ in range(5):
-                        if stream_id not in self._stream_writer:
+                        if stream_id not in self._stream_transport:
                             await asyncio.sleep(0)
 
                     if self._stream_ctx[stream_id].stream_status & EOF_FROM_CONN:
@@ -688,7 +591,7 @@ class HxsConnection(HC):
 
                     try:
                         self._stream_ctx[stream_id].last_active = time.monotonic()
-                        self._stream_writer[stream_id].write(data)
+                        self._stream_transport[stream_id].data_from_conn(data)
                         await self.client_writer_drain(stream_id, data_len)
                     except (OSError, KeyError) as err:
                         self.logger.error('send data to stream fail. %r', err)
@@ -697,9 +600,9 @@ class HxsConnection(HC):
                 elif frame_type == HEADERS:  # 1
                     if frame_flags == END_STREAM_FLAG:
                         self._stream_ctx[stream_id].stream_status |= EOF_FROM_CONN
-                        if stream_id in self._stream_writer:
+                        if stream_id in self._stream_transport:
                             try:
-                                self._stream_writer[stream_id].write_eof()
+                                self._stream_transport[stream_id].eof_from_conn()
                             except OSError:
                                 self._stream_ctx[stream_id].stream_status = CLOSED
                         if self._stream_ctx[stream_id].stream_status == CLOSED:
@@ -723,7 +626,6 @@ class HxsConnection(HC):
                         self._settings_async_drain = True
                     if stream_id & FLOW_CONTROL:
                         send_w = struct.unpack('>I', payload.read(4))[0]
-                        self.logger.info(f'send_w: {send_w}')
                         self._stream_ctx[0].enable_fc(send_w, self.WINDOW_SIZE[1])
                 elif frame_type == PING:  # 6
                     if frame_flags == 0:
@@ -752,7 +654,7 @@ class HxsConnection(HC):
                     # no more new stream
                     max_stream_id = payload.read(2)
                     self._manager.remove(self)
-                    for stream_id, client_writer in self._stream_writer:
+                    for stream_id, client_writer in self._stream_transport:
                         if stream_id > max_stream_id:
                             # reset stream
                             self.close_stream(stream_id)
@@ -784,7 +686,7 @@ class HxsConnection(HC):
                 self._stream_ctx[stream_id].stream_status = CLOSED
                 event.set()
 
-        for stream_id in self._stream_writer:
+        for stream_id in self._stream_transport:
             self.close_stream(stream_id)
 
         await asyncio.sleep(1)
@@ -852,7 +754,7 @@ class HxsConnection(HC):
         raise ConnectionResetError(0, 'hxs getKey Error')
 
     def count(self):
-        return len(self._stream_writer)
+        return len(self._stream_transport)
 
     async def monitor(self):
         while not self.connection_lost:
@@ -886,7 +788,7 @@ class HxsConnection(HC):
                 self._stream_ctx[stream_id].stream_status = CLOSED
                 event.set()
 
-        for stream_id in self._stream_writer:
+        for stream_id in self._stream_transport:
             self.close_stream(stream_id)
 
         await asyncio.sleep(1)
@@ -933,13 +835,13 @@ class HxsConnection(HC):
         if self._settings_async_drain or self._stream_ctx[stream_id].fc_enable:
             asyncio.ensure_future(self.async_drain(stream_id, data_len))
         else:
-            await self._stream_writer[stream_id].drain()
+            await self._stream_transport[stream_id].drain()
             self._stream_ctx[stream_id].data_recv(data_len)
 
     async def async_drain(self, stream_id, data_len):
-        if stream_id not in self._stream_writer:
+        if stream_id not in self._stream_transport:
             return
-        wbuffer_size = self._stream_writer[stream_id].transport.get_write_buffer_size()
+        wbuffer_size = self._stream_ctx[stream_id].get_write_buffer_size()
         if wbuffer_size <= self.CLIENT_WRITE_BUFFER:
             self._stream_ctx[stream_id].data_recv(data_len)
             return
@@ -949,7 +851,7 @@ class HxsConnection(HC):
                 # tell client to stop reading
                 if not self._stream_ctx[stream_id].fc_enable:
                     self.send_frame(WINDOW_UPDATE, 1, stream_id)
-                await self._stream_writer[stream_id].drain()
+                await self._stream_transport[stream_id].drain()
                 # tell client to resume reading
                 if not self._stream_ctx[stream_id].fc_enable:
                     self.send_frame(WINDOW_UPDATE, 0, stream_id)
@@ -988,8 +890,58 @@ class HxsConnection(HC):
     async def wait_closed(self):
         raise NotImplementedError
 
-    async def create_connection(self, addr, port, timeout, transport):
-        raise NotImplementedError
+    async def create_connection(self, addr, port, timeout, transport, tcp_nodelay):
+        self.logger.debug('hxsocks send connect request')
+        async with self._connecting_lock:
+            if self.connection_lost:
+                self._manager.remove(self)
+                raise ConnectionLostError(0, 'hxs connection lost')
+            if not self.connected:
+                self._manager.remove(self)
+                raise ConnectionResetError(0, 'hxs not connected.')
+            # send connect request
+            payload = b''.join([bytes((len(addr), )),
+                                addr.encode(),
+                                struct.pack('>H', port),
+                                bytes(random.randint(self.HEADER_SIZE // 4, self.HEADER_SIZE)),
+                                ])
+            stream_id = self._next_stream_id
+            self._next_stream_id += 1
+            if self._next_stream_id > self.MAX_STREAM_ID:
+                self.logger.error('MAX_STREAM_ID reached')
+                self._manager.remove(self)
+
+            self._stream_ctx[stream_id] = ForwardContext(self, stream_id, (addr, port), 0, 0)
+            self.send_frame(HEADERS, OPEN, stream_id, payload)
+            # asyncio.ensure_future(self.send_ping_sequence())
+            # self._ponging = max(self._ponging, 4)
+
+            # wait for server response
+            event = Event()
+            self._remote_connected_event[stream_id] = event
+
+            # await event.wait()
+            fut = event.wait()
+            try:
+                await asyncio.wait_for(fut, timeout=timeout)
+            except asyncio.TimeoutError:
+                self.logger.error('%s connect %s timeout %ds',
+                                  self.name, f'{addr}:{port}', timeout)
+                del self._remote_connected_event[stream_id]
+                self._stream_ctx[stream_id].stream_status = CLOSED
+                self.send_ping()
+                raise
+
+        del self._remote_connected_event[stream_id]
+
+        if self._stream_ctx[stream_id].stream_status == OPEN:
+            self._stream_transport[stream_id] = transport
+            self._stream_ctx[stream_id].last_active = time.monotonic()
+            # start forwarding
+            return stream_id
+        if self.connection_lost:
+            raise ConnectionLostError(0, 'hxs connection lost after request sent')
+        raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
 
     async def acquire(self, size):
         await self._stream_ctx[0].acquire(size)
@@ -1001,7 +953,7 @@ class HxsConnection(HC):
         raise NotImplementedError
 
     def get_stream_buffer_size(self, stream_id):
-        return self._stream_ctx[stream_id].get_buffer_size()
+        return self._stream_ctx[stream_id].get_write_buffer_size()
 
     def get_write_buffer_size(self, stream_id):
         return max(self.get_conn_buffer_size(), self.get_stream_buffer_size(stream_id))
@@ -1019,10 +971,10 @@ class HxsConnection(HC):
         loop.call_soon(self._close_stream, stream_id)
 
     def _close_stream(self, stream_id):
-        if stream_id in self._stream_writer:
-            writer = self._stream_writer[stream_id]
-            del self._stream_writer[stream_id]
-            writer.close()
+        if stream_id in self._stream_transport:
+            transport = self._stream_transport[stream_id]
+            del self._stream_transport[stream_id]
+            transport.close()
 
     def abort_stream(self, stream_id):
         self.close_stream(stream_id)

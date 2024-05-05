@@ -22,15 +22,16 @@ import struct
 import time
 import logging
 import asyncio
-from asyncio import Lock
+from asyncio import Lock, get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
 
 from hxcrypto import InvalidTag, is_aead, Encryptor
 
-from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import HxsConnection
-from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
-from fwlite_cli.hxscommon import HC, get_client_auth
-from fwlite_cli.ssocks import SS_SUBKEY_2022
+from .parent_proxy import ParentProxy
+from .hxscommon import HxsConnection
+from .hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from .hxscommon import HC, get_client_auth
+from .ssocks import SS_SUBKEY_2022
+from .transport import FWTransport
 
 
 def set_logger():
@@ -54,14 +55,16 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'hxs2'
 
+    loop = get_running_loop()
+    reader = StreamReader(limit=limit, loop=loop)
+    protocol = StreamReaderProtocol(reader, loop=loop)
     # get hxs2 connection
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs2_get_connection(proxy, timeout, tcp_nodelay)
-
-            soc = await conn.connect(addr, port, timeout)
-
-            reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
+            transport = FWTransport(loop, protocol, conn)
+            await transport.connect(addr, port, timeout, tcp_nodelay)
+            writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
         except ConnectionLostError as err:
             logger = logging.getLogger('hxs2')

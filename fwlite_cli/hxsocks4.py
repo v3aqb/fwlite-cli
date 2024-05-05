@@ -23,13 +23,14 @@ import time
 import base64
 import logging
 import asyncio
-from asyncio import Lock
+from asyncio import Lock, get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
 
 from hxcrypto import InvalidTag, AEncryptor
 
-from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import HxsConnection, HC, CTX, get_client_auth_2
-from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from .parent_proxy import ParentProxy
+from .hxscommon import HxsConnection, HC, CTX, get_client_auth_2
+from .hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from .transport import FWTransport
 
 
 def set_logger():
@@ -53,14 +54,16 @@ async def hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'hxs4'
 
+    loop = get_running_loop()
+    reader = StreamReader(limit=limit, loop=loop)
+    protocol = StreamReaderProtocol(reader, loop=loop)
     # get hxs2 connection
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs4_get_connection(proxy, timeout, tcp_nodelay)
-
-            soc = await conn.connect(addr, port, timeout)
-
-            reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
+            transport = FWTransport(loop, protocol, conn)
+            await transport.connect(addr, port, timeout, tcp_nodelay)
+            writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
         except ConnectionLostError as err:
             logger = logging.getLogger('hxs4')

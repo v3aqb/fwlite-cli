@@ -25,16 +25,17 @@ import logging
 import asyncio
 from ipaddress import ip_address
 
-from collections import deque
+from asyncio import get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
 
 import websockets.client
 from websockets.exceptions import ConnectionClosed
 
 from hxcrypto import InvalidTag
 
-from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxscommon import HxsConnection, HC, get_client_auth
-from fwlite_cli.hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from .parent_proxy import ParentProxy
+from .hxscommon import HxsConnection, HC, get_client_auth
+from .hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
+from .transport import FWTransport
 
 # see "openssl ciphers" command for cipher names
 CIPHERS_A = [
@@ -82,14 +83,16 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme in ('hxs3', 'hxs3s')
 
+    loop = get_running_loop()
+    reader = StreamReader(limit=limit, loop=loop)
+    protocol = StreamReaderProtocol(reader, loop=loop)
     # get hxs3 connection
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs3_get_connection(proxy, timeout, tcp_nodelay)
-
-            soc = await conn.connect(addr, port, timeout)
-
-            reader, writer = await asyncio.open_connection(sock=soc, limit=limit)
+            transport = FWTransport(loop, protocol, conn)
+            await transport.connect(addr, port, timeout, tcp_nodelay)
+            writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
         except ConnectionLostError as err:
             logger = logging.getLogger('hxs3')
