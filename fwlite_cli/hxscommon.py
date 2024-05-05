@@ -393,13 +393,14 @@ class ForwardContext:
 class HxsConnection(HC):
     bufsize = 65535 - 22
 
-    def __init__(self, proxy, manager):
+    def __init__(self, proxy, manager, limit):
         if not isinstance(proxy, ParentProxy):
             proxy = ParentProxy(proxy, proxy)
-        self.logger = None
         self.proxy = proxy
-        self.name = self.proxy.name
         self._manager = manager
+        self._limit = limit
+        self.logger = None
+        self.name = self.proxy.name
         self.connected = 0
         self.connection_lost = False
         self.udp_event = None
@@ -956,6 +957,8 @@ class HxsConnection(HC):
         return self._stream_ctx[stream_id].get_write_buffer_size()
 
     def get_write_buffer_size(self, stream_id):
+        if stream_id not in self._stream_ctx:
+            return 0
         return max(self.get_conn_buffer_size(), self.get_stream_buffer_size(stream_id))
 
     async def drain_stream(self, stream_id):

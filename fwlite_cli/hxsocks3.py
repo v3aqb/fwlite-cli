@@ -91,6 +91,7 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
         try:
             conn = await hxs3_get_connection(proxy, timeout, tcp_nodelay)
             transport = FWTransport(loop, protocol, conn)
+            transport.set_write_buffer_limits(limit)
             await transport.connect(addr, port, timeout, tcp_nodelay)
             writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
@@ -157,8 +158,8 @@ def is_ipaddr(host):
 class Hxs3Connection(HxsConnection):
     bufsize = 65535 - 22
 
-    def __init__(self, proxy, manager):
-        super().__init__(proxy, manager)
+    def __init__(self, proxy, manager, limit):
+        super().__init__(proxy, manager, limit)
         self.logger = logging.getLogger('hxs3')
         self._sendq = asyncio.Queue()
         self._sending = False
@@ -194,10 +195,10 @@ class Hxs3Connection(HxsConnection):
             server_hostname=hostname,
             ping_interval=None,
             ping_timeout=None,
-            max_size=2 ** 17,
+            max_size=self._limit * 2,
             max_queue=2,
-            read_limit=2 ** 17,
-            write_limit=2 ** 17,
+            read_limit=self._limit * 2,
+            write_limit=self._limit * 2,
             tcp_nodelay=tcp_nodelay)
         self._socport = self._remote_writer.local_address[1]
 

@@ -55,8 +55,9 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     loop = get_running_loop()
     reader = StreamReader(limit=limit, loop=loop)
     protocol = StreamReaderProtocol(reader, loop=loop)
-    conn = SSConn(proxy)
+    conn = SSConn(proxy, limit)
     transport = FWTransport(loop, protocol, conn)
+    transport.set_write_buffer_limits(limit)
     await transport.connect(addr, port, timeout, tcp_nodelay)
     # protocol is for Reader, transport is for Writer
     writer = StreamWriter(transport, protocol, reader, loop)
@@ -67,9 +68,10 @@ class SSConn:
     bufsize = 16383
     tcp_timeout = 600
 
-    def __init__(self, proxy):
+    def __init__(self, proxy, limit):
         self.logger = logging.getLogger('ss')
         self.proxy = proxy
+        self._limit = limit
         ssmethod, sspassword = self.proxy.username, self.proxy.password
         if sspassword is None:
             ssmethod, sspassword = base64.b64decode(ssmethod).decode().split(':', 1)
@@ -176,7 +178,7 @@ class SSConn:
             proxy=self.proxy.get_via(),
             timeout=timeout,
             tunnel=True,
-            limit=131072,
+            limit=self._limit,
             tcp_nodelay=tcp_nodelay)
         asyncio.ensure_future(self._forward_from_remote())
         return 0

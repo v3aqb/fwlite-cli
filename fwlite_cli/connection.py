@@ -42,7 +42,7 @@ def set_logger():
 set_logger()
 
 
-async def _open_connection(addr, port, timeout, iplist, limit=65536, tcp_nodelay=True):
+async def _open_connection(addr, port, timeout, iplist, limit, tcp_nodelay=True):
     if iplist:
         # ipv4 goes first
         iplist = sorted(iplist, key=lambda item: item[0])

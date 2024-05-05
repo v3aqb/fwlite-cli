@@ -61,8 +61,9 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     # get hxs2 connection
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
-            conn = await hxs2_get_connection(proxy, timeout, tcp_nodelay)
+            conn = await hxs2_get_connection(proxy, timeout, limit, tcp_nodelay)
             transport = FWTransport(loop, protocol, conn)
+            transport.set_write_buffer_limits(limit)
             await transport.connect(addr, port, timeout, tcp_nodelay)
             writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
@@ -73,10 +74,10 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     raise ConnectionResetError(0, 'get hxs2 connection failed.')
 
 
-async def hxs2_get_connection(proxy, timeout, tcp_nodelay):
+async def hxs2_get_connection(proxy, timeout, limit, tcp_nodelay):
     if proxy.name not in CONN_MANAGER:
         CONN_MANAGER[proxy.name] = ConnectionManager()
-    conn = await CONN_MANAGER[proxy.name].get_connection(proxy, timeout, tcp_nodelay)
+    conn = await CONN_MANAGER[proxy.name].get_connection(proxy, timeout, limit, tcp_nodelay)
     return conn
 
 
@@ -88,7 +89,7 @@ class ConnectionManager:
         self._err = None
         self._err_time = 0
 
-    async def get_connection(self, proxy, timeout, tcp_nodelay):
+    async def get_connection(self, proxy, timeout, limit, tcp_nodelay):
         # choose / create and return a connection
         async with self._lock:
             if len(self.connection_list) < HC.MAX_CONNECTION and\
@@ -97,7 +98,7 @@ class ConnectionManager:
                     if not self.connection_list:
                         raise ConnectionDenied(self._err)
                 else:
-                    connection = Hxs2Connection(proxy, self)
+                    connection = Hxs2Connection(proxy, self, limit)
                     try:
                         await connection.get_key(timeout, tcp_nodelay)
                     except Exception as err:
@@ -121,8 +122,8 @@ class ConnectionManager:
 class Hxs2Connection(HxsConnection):
     bufsize = 65535 - 22
 
-    def __init__(self, proxy, manager):
-        super().__init__(proxy, manager)
+    def __init__(self, proxy, manager, limit):
+        super().__init__(proxy, manager, limit)
         self.logger = logging.getLogger('hxs2')
 
     async def get_key(self, timeout, tcp_nodelay):
@@ -136,9 +137,8 @@ class Hxs2Connection(HxsConnection):
             proxy=self.proxy.get_via(),
             timeout=timeout,
             tunnel=True,
-            limit=262144,
+            limit=self._limit * 2,
             tcp_nodelay=tcp_nodelay)
-        self._remote_writer.transport.set_write_buffer_limits(131072)
         self._socport = self._remote_writer.get_extra_info('sockname')[1]
 
         # prep key exchange request
