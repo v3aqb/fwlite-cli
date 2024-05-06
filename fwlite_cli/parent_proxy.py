@@ -64,30 +64,19 @@ class ParentProxy:
         name: str, name of parent proxy
         proxy: "http://127.0.0.1:8087<|more proxies> <optional int: priority>"
         '''
-        proxy, _, priority = proxy.partition(' ')
-        priority = priority or 99
-        if name == '_D1R3CT_':
-            priority = 0
-        if name == '_L0C4L_':
-            priority = -1
-            proxy = ''
-        if name.startswith('FWLITE:'):
-            priority = -1
 
-        if proxy == 'direct':
-            proxy = ''
+        proxy, priority, proxy_list = self.parse_proxy(name, proxy)
         self.name = name
-        proxy_list = proxy.split('|')
         self.proxy = proxy
+        self.priority = int(float(priority))
+
         if len(proxy_list) > 1:
             self.via = ParentProxy('via', '|'.join(proxy_list[1:]), True)
-            if self.via.name == 'via':
-                self.via.name = '%s://%s:%s' % (self.via.scheme, self.via.hostname, self.via.port)
             if '//' not in proxy_list[0]:
                 if proxy_list[0] not in self.conf.parentlist:
                     raise ValueError('proxy %s not exist.' % proxy_list[0])
                 if self.conf.parentlist.get(proxy_list[0]).get_via().name != '_D1R3CT_':
-                    logger.warning('proxy chain of %s will NOT be used.', proxy_list[0])
+                    logger.warning('proxy chain set for %s will NOT be used.', proxy_list[0])
         if proxy_list[0] and '//' not in proxy_list[0] and via:
             if proxy_list[0] not in self.conf.parentlist:
                 raise ValueError('proxy %s not exist.' % proxy_list[0])
@@ -104,16 +93,12 @@ class ParentProxy:
         self.hostname = self.parse.hostname
         self.port = self.parse.port
         self.peername = (self.hostname, self.port)  # for plugin only
-        if self.proxy:
-            if self.scheme:
-                if ':' in self.hostname:
-                    self.short = '%s://[%s]:%s' % (self.scheme, self.peername[0], self.peername[1])
-                else:
-                    self.short = '%s://%s:%s' % (self.scheme, self.peername[0], self.peername[1])
-            else:
-                self.short = self.proxy
-        else:
-            self.short = 'direct'
+
+        if self.name == 'via':
+            self.name = '%s://%s:%s' % (self.scheme, self.hostname, self.port)
+
+        self.short = ''
+        self.set_short()
 
         self.query = urllib.parse.parse_qs(self.parse.query)
         plugin = self.query.get('plugin', [None, ])[0]
@@ -122,7 +107,6 @@ class ParentProxy:
             self.port = self.conf.plugin_manager.add(self.peername, self.plugin_info, self.via)
             self.hostname = '127.0.0.1'
 
-        self.priority = int(float(priority))
         self.timeout = self.DEFAULT_TIMEOUT
 
         self.avg_resp_time = self.GATE
@@ -132,12 +116,33 @@ class ParentProxy:
         self.avg_resp_time_by_host['udp'] = self.GATE if self.scheme in UDP_SUPPORT else 99
         self.last_limit_reach = 0
 
-        self.country_code = self.query.get('location', [''])[0] or None
-        self.last_ckeck = 0
+    def parse_proxy(self, name, proxy):
+        proxy, _, priority = proxy.partition(' ')
+        priority = priority or 99
+        if name == '_D1R3CT_':
+            priority = 0
+        if name == '_L0C4L_':
+            priority = -1
+            proxy = ''
+        if name.startswith('FWLITE:'):
+            priority = -1
+        if proxy == 'direct':
+            proxy = ''
+        return proxy, priority, proxy.split('|')
+
+    def set_short(self):
+        if not self.proxy:
+            self.short = 'direct'
+        elif not self.scheme:
+            self.short = self.proxy
+        elif ':' in self.hostname:
+            self.short = '%s://[%s]:%s' % (self.scheme, self.peername[0], self.peername[1])
+        else:
+            self.short = '%s://%s:%s' % (self.scheme, self.peername[0], self.peername[1])
 
     def get_priority(self, method=None, host=None):
         result = self.priority
-        score = self.get_avg_resp_time() + self.get_avg_resp_time(host)
+        score = self.get_avg_resp_time(host)
         logger.debug('penalty %s to %s: %.2f', self.name, host, score * 2)
         result += score * 2
         logger.debug('proxy %s to %s expected response time: %.3f', self.name, host, score)
@@ -166,22 +171,21 @@ class ParentProxy:
             if host in self.avg_resp_time_by_host:
                 if time.monotonic() - self.avg_resp_time_by_host_ts[host] > 60:
                     self.avg_resp_time_by_host_ts[host] = time.monotonic()
-                    if self.avg_resp_time_by_host[host] > self.GATE and \
-                            self.avg_resp_time_by_host[host] <= 16:
+                    if self.avg_resp_time_by_host[host] > self.GATE:
                         self.log(host, self.GATE)
         elif time.monotonic() - self.avg_resp_time_ts > 60:
             self.avg_resp_time_ts = time.monotonic()
             if self.avg_resp_time > self.GATE:
-                self.log(host, self.GATE)
+                self.log(None, self.GATE)
 
-        if self.avg_resp_time > RESPONSE_LIMIT:
+        result = self.avg_resp_time_by_host[host] if host in self.avg_resp_time_by_host else self.avg_resp_time
+        if result > RESPONSE_LIMIT:
             if time.monotonic() - self.last_limit_reach < self.PROBATION:
                 return RESPONSE_LIMIT - 0.1
-        result = self.avg_resp_time_by_host[host] if host in self.avg_resp_time_by_host else self.avg_resp_time
         return result
 
     @classmethod
-    def set_via(cls, proxy):
+    def set_direct(cls, proxy):
         cls.via = proxy
         cls.DIRECT = cls('_DIRECT', 'direct -1')
 
@@ -221,7 +225,7 @@ class ParentProxyList:
             self.dict[parentproxy.name] = parentproxy
         if parentproxy.name == '_D1R3CT_':
             self.direct = parentproxy
-            ParentProxy.set_via(self.direct)
+            ParentProxy.set_direct(self.direct)
             if parentproxy.proxy:
                 self.addstr('_L0C4L_', 'direct -1')
             return
