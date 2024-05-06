@@ -132,7 +132,7 @@ class SSConn:
                 data = self.__crypto.decrypt(data)
                 self._transport.data_from_conn(data)
                 await self._transport.drain()
-            except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError) as err:
+            except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError, ConnectionError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
                 self._remote_eof = True
                 self._transport.close()
@@ -159,7 +159,9 @@ class SSConn:
                 self._transport.data_from_conn(data)
                 await self._transport.drain()
             except ConnectionError:
-                break
+                self._remote_eof = True
+                self._transport.close()
+                return
         self._remote_eof = True
         try:
             self._transport.eof_from_conn()

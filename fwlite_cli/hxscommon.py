@@ -357,9 +357,9 @@ class ForwardContext:
         return len(self._buffer)
 
     async def drain(self):
-        await self._writable.wait()
         if self._closing:
             raise ConnectionError(0, 'ForwardContext closed')
+        await self._writable.wait()
 
     def write_eof(self):
         if self._buffer:
