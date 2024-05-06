@@ -1,5 +1,5 @@
 
-from asyncio import transports, constants, ensure_future, Event
+from asyncio import transports, constants, ensure_future
 from asyncio.log import logger
 
 
@@ -13,8 +13,6 @@ class FWTransport(transports._FlowControlMixin):
         self._closing = False
         self._server = None
         self._paused = False  # Reading
-        self._reading = Event()
-        self._reading.set()
         self._protocol_paused = False
         self._conn_lost = 0
         self._eof = False            # eof from Endpoint, sent to Conn
@@ -52,7 +50,7 @@ class FWTransport(transports._FlowControlMixin):
         try:
             self._protocol.connection_lost(exc)
         finally:
-            self._reading.set()
+            self.resume_reading()
             self._conn.close_stream(self._stream_id)
             self._conn = None
             self._protocol = None
@@ -84,7 +82,7 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing or self._paused:
             return
         self._paused = True
-        self._reading.clear()
+        self._conn.pause_reading_stream(self._stream_id)
 
     def resume_reading(self):
         """Resume the receiving end.
@@ -95,7 +93,7 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing or not self._paused:
             return
         self._paused = False
-        self._reading.set()
+        self._conn.resume_reading_stream(self._stream_id)
 
     # Called by Conn, act as writer. feed data to Endpoint StreamReaderProtocol
     def data_from_conn(self, data):
@@ -107,12 +105,6 @@ class FWTransport(transports._FlowControlMixin):
         self._eof_from_conn = True
         if self._protocol:
             self._protocol.eof_received()
-
-    async def drain(self):
-        """called after data_recieved from conn"""
-        await self._reading.wait()
-        if self._closing:
-            raise ConnectionError(0, 'FWTransport closed.')
 
     # called by Endpoint StreamWriter, send data to Conn
     def get_write_buffer_size(self):

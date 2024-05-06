@@ -92,6 +92,8 @@ class SSConn:
         self._client_eof = False
         self._data_recved = False
         self._buf = b''
+        self._reading = asyncio.Event()
+        self._reading.set()
 
     async def _read(self):
         if self.aead:
@@ -131,7 +133,9 @@ class SSConn:
                 data = await asyncio.wait_for(fut, timeout=4)
                 data = self.__crypto.decrypt(data)
                 self._transport.data_from_conn(data)
-                await self._transport.drain()
+                if self._transport.is_closing():
+                    raise ConnectionResetError
+                await self._reading.wait()
             except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError, ConnectionError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
                 self._remote_eof = True
@@ -157,7 +161,9 @@ class SSConn:
                 break
             try:
                 self._transport.data_from_conn(data)
-                await self._transport.drain()
+                if self._transport.is_closing():
+                    raise ConnectionResetError
+                await self._reading.wait()
             except ConnectionError:
                 self._remote_eof = True
                 self._transport.close()
@@ -185,7 +191,7 @@ class SSConn:
         return 0
 
     def write_stream(self, data, _):
-        # encrypt, sent to server
+        """encrypt, sent to server"""
         self._last_active = time.monotonic()
         if not self._connected:
             header = b''.join([chr(3).encode(),
@@ -225,3 +231,9 @@ class SSConn:
 
     def abort_stream(self, _):
         self._remote_writer.close()
+
+    def pause_reading_stream(self, _):
+        self._reading.clear()
+
+    def resume_reading_stream(self, _):
+        self._reading.set()

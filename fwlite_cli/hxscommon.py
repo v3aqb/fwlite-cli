@@ -171,6 +171,8 @@ class ForwardContext:
         self._writable.set()
         self._eof_pending = False
         self._closing = False
+        self.reading = asyncio.Event()  # reading form conn, write to endpoint
+        self.reading.set()
 
         # eof recieved
         self.stream_status = OPEN
@@ -390,6 +392,12 @@ class ForwardContext:
 
     def is_closing(self):
         return self._closing
+
+    def pause_reading(self):
+        self.reading.clear()
+
+    def resume_reading(self):
+        self.reading.set()
 
 
 class HxsConnection(HC):
@@ -830,7 +838,7 @@ class HxsConnection(HC):
         if self._settings_async_drain or self._stream_ctx[stream_id].fc_enable:
             asyncio.ensure_future(self.async_drain(stream_id, data_len))
         else:
-            await self._stream_transport[stream_id].drain()
+            await self._stream_ctx[stream_id].reading.wait()
             self._stream_ctx[stream_id].data_recv(data_len)
 
     async def async_drain(self, stream_id, data_len):
@@ -846,7 +854,7 @@ class HxsConnection(HC):
                 # tell client to stop reading
                 if not self._stream_ctx[stream_id].fc_enable:
                     self.send_frame(WINDOW_UPDATE, 1, stream_id)
-                await self._stream_transport[stream_id].drain()
+                await self._stream_ctx[stream_id].reading.wait()
                 # tell client to resume reading
                 if not self._stream_ctx[stream_id].fc_enable:
                     self.send_frame(WINDOW_UPDATE, 0, stream_id)
@@ -975,3 +983,9 @@ class HxsConnection(HC):
 
     def abort_stream(self, stream_id):
         self.close_stream(stream_id)
+
+    def pause_reading_stream(self, stream_id):
+        self._stream_ctx[stream_id].pause_reading()
+
+    def resume_reading_stream(self, stream_id):
+        self._stream_ctx[stream_id].resume_reading()
