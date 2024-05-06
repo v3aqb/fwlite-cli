@@ -564,7 +564,7 @@ class Config:
     def del_forward(self, port):
         self.port_forward.stop(port)
 
-    def stop(self, sig=None, frame=None):
+    def stop(self):
         self.logger.info('Stop')
         self.plugin_manager.cleanup()
         self.port_forward.stop_all()

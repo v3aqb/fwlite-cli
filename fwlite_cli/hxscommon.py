@@ -657,7 +657,7 @@ class HxsConnection(HC):
                     # no more new stream
                     max_stream_id = payload.read(2)
                     self._manager.remove(self)
-                    for stream_id, client_writer in self._stream_transport:
+                    for stream_id in self._stream_transport:
                         if stream_id > max_stream_id:
                             # reset stream
                             self.close_stream(stream_id)
@@ -786,14 +786,6 @@ class HxsConnection(HC):
             continue
         self.connection_lost = True
 
-        for stream_id, event in self._remote_connected_event.items():
-            if isinstance(event, Event):
-                self._stream_ctx[stream_id].stream_status = CLOSED
-                event.set()
-
-        for stream_id in self._stream_transport:
-            self.close_stream(stream_id)
-
         await asyncio.sleep(1)
         self.close()
         await self.wait_closed()
@@ -821,16 +813,16 @@ class HxsConnection(HC):
     def print_status(self):
         if not self.connected:
             return
-        self.logger.info('%s:%s next_id: %s, rtt ewma: %.3fs min: %.3fs', self.name, self._socport, self._next_stream_id, self._rtt_ewma, self._rtt)
-        self.logger.info('recv_tp_max: %8d, ewma: %8d, recv_w: %8d', self._stream_ctx[0].recv_rate_max, self._stream_ctx[0].recv_rate, self._stream_ctx[0].recv_w)
-        self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w: %8d', self._stream_ctx[0].sent_rate_max, self._stream_ctx[0].sent_rate, self._stream_ctx[0].send_w)
+        ctx = self._stream_ctx[0]
+        self.logger.info('%s:%s next_id: %s, rtt ewma: %.3fs min: %.3fs', self.name, self._socport,
+                         self._next_stream_id, self._rtt_ewma, self._rtt)
+        self.logger.info('recv_tp_max: %8d, ewma: %8d, recv_w: %8d', ctx.recv_rate_max, ctx.recv_rate, ctx.recv_w)
+        self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w: %8d', ctx.sent_rate_max, ctx.sent_rate, ctx.send_w)
         self.logger.info('buffer_ewma: %8d, active stream: %6d', self._buffer_size_ewma, self.count())
-        self.logger.info('total_recv: %d, data_recv: %d %.3f',
-                         self._stat_total_recv, self._stream_ctx[0].traffic_from_conn,
-                         self._stream_ctx[0].traffic_from_conn / self._stat_total_recv)
-        self.logger.info('total_sent: %d, data_sent: %d %.3f',
-                         self._stat_total_sent, self._stream_ctx[0].traffic_from_endpoint,
-                         self._stream_ctx[0].traffic_from_endpoint / self._stat_total_sent)
+        self.logger.info('total_recv: %d, data_recv: %d %.3f', self._stat_total_recv, ctx.traffic_from_conn,
+                         ctx.traffic_from_conn / self._stat_total_recv)
+        self.logger.info('total_sent: %d, data_sent: %d %.3f', self._stat_total_sent, ctx.traffic_from_endpoint,
+                         ctx.traffic_from_endpoint / self._stat_total_sent)
 
     async def client_writer_drain(self, stream_id, data_len):
         if self._stream_ctx[stream_id].is_closing():
@@ -893,7 +885,7 @@ class HxsConnection(HC):
     async def wait_closed(self):
         raise NotImplementedError
 
-    async def create_connection(self, addr, port, timeout, transport, tcp_nodelay):
+    async def create_connection(self, addr, port, timeout, transport, _):
         self.logger.debug('hxsocks send connect request')
         async with self._connecting_lock:
             if self.connection_lost:
@@ -944,7 +936,7 @@ class HxsConnection(HC):
             return stream_id
         if self.connection_lost:
             raise ConnectionLostError(0, 'hxs connection lost after request sent')
-        raise ConnectionResetError(0, 'remote connect to %s:%d failed.' % (addr, port))
+        raise ConnectionResetError(0, f'remote connect to {addr}:{port} failed.')
 
     async def acquire(self, size):
         await self._stream_ctx[0].acquire(size)

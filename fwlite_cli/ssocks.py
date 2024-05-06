@@ -20,7 +20,6 @@
 
 from builtins import chr
 
-import sys
 import base64
 import struct
 import time
@@ -29,7 +28,7 @@ import logging
 import asyncio
 from asyncio import get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
 
-from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor, SS_SUBKEY, SS_SUBKEY_2022
+from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor, SS_SUBKEY_2022
 
 from .transport import FWTransport
 
