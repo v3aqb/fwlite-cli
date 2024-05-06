@@ -49,7 +49,8 @@ class APRule:
 
     def __init__(self, rule, msg=None, expire=None):
         self.rule = rule.strip()
-        if len(self.rule) < 3 or self.rule.startswith(('!', '[')) or '#' in self.rule or ' ' in self.rule:
+        if len(self.rule) < 3 or self.rule.startswith(('!', '[')) or \
+                '#' in self.rule or ' ' in self.rule:
             raise ValueError(f"invalid abp_rule: {self.rule}")
         self.msg = msg
         self.expire = expire
@@ -59,17 +60,21 @@ class APRule:
     def _parse(self):
         def parse(rule):
             if rule.startswith('||'):
-                regex = rule.replace('.', r'\.').replace('/', '').replace('*', '[^/]*').replace('||', r'^(?:https?://)?(?:[^/]+\.)?') + r'(?:[:/]|$)'
+                regex = rule.replace('.', r'\.').replace('/', '')\
+                    .replace('*', '[^/]*')\
+                    .replace('||', r'^(?:https?://)?(?:[^/]+\.)?')
                 return re.compile(regex)
             if rule.startswith('/') and rule.endswith('/'):
                 return re.compile(rule[1:-1])
             if rule.startswith('|https://'):
                 index = rule.find('/', 9)
                 regex = rule[9:] if index == -1 else rule[9:index]
-                regex = r'^(?:https://)?%s(?:[:/])' % regex.replace('.', r'\.').replace('*', '[^/]*')
+                regex = regex.replace('.', r'\.').replace('*', '[^/]*')
+                regex = r'^(?:https://)?%s(?:[:/])' % regex
                 return re.compile(regex)
 
-            regex = rule.replace('.', r'\.').replace('?', r'\?').replace('*', '.*').replace('^', r'[\/:]')
+            regex = rule.replace('.', r'\.').replace('?', r'\?')\
+                .replace('*', '.*').replace('^', r'[\/:]')
             regex = re.sub(r'^\|', r'^', regex)
             regex = re.sub(r'\|$', r'$', regex)
             if not rule.startswith(('|', 'http://')):
@@ -85,7 +90,7 @@ class APRule:
 
     def __repr__(self):
         if self.expire:
-            return f'<APRule: {self.rule} exp @ {self.expire}>' % (self.rule, self.expire)
+            return f'<APRule: {self.rule} exp @ {self.expire}>'
         return f'<APRule: {self.rule}>'
 
 
@@ -134,7 +139,8 @@ class APFilter:
             return self.add(rule)
         elif rule.startswith(('@', '/')):
             self._add_slow(rule)
-        elif rule.startswith('|http://') and any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
+        elif rule.startswith('|http://') and\
+                any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
             hostname = urllib.parse.urlparse(rule[1:]).hostname.strip('.*')
             if '*' not in hostname:
                 return self.add('||' + hostname)
@@ -219,7 +225,8 @@ class APFilter:
             return False
         if host in self.net_filter:
             return True
-        lst = ['.'.join(host.split('.')[i:]) for i in range(len(host.split('.')))]
+        host_split = host.split('.')
+        lst = ['.'.join(host_split[i:]) for i in range(len(host_split))]
         if any(host in self.host_endswith_exclude for host in lst):
             return False
         if any(host in self.host_endswith for host in lst):
@@ -296,7 +303,8 @@ class APFilter:
                 if rule_o.rule == rule:
                     lst.remove(rule_o)
                     break
-        elif rule.startswith('|http://') and any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
+        elif rule.startswith('|http://') and\
+                any(len(s) >= (self.KEYLEN) for s in rule[1:].split('*')):
             self.remove_fast(rule)
         else:
             try:
@@ -327,17 +335,23 @@ def test():
                 pass
         del data
     print('loading: %fs' % (time.perf_counter() - t))
-    print('result for inxian: %r' % gfwlist.match('http://www.inxian.com', 'www.inxian.com'))
-    print('result for twitter: %r' % gfwlist.match('twitter.com:443', 'twitter.com'))
-    print('result for 163: %r' % gfwlist.match('http://www.163.com', 'www.163.com'))
-    print('result for alipay: %r' % gfwlist.match('www.alipay.com:443', 'www.alipay.com'))
-    print('result for qq: %r' % gfwlist.match('http://www.qq.com', 'www.qq.com'))
-    print('result for keyword: %r' % gfwlist.match('http://www.test.com/iredmail.org', 'www.test.com'))
-    print('result for url_startswith: %r' % gfwlist.match('http://ff.im/whatever', 'ff.im'))
-    print('result for google.com.au: %r' % gfwlist.match('www.google.com.au:443', 'www.google.com.au'))
-    print('result for riseup.net:443: %r' % gfwlist.match('riseup.net:443', 'riseup.net'))
-    print('result for 85.17.73.31: %r' % ('85.17.73.31' in gfwlist.net_filter))
-    print('result for 127.0.0.1: %r' % ('127.0.0.1' in gfwlist.net_filter))
+
+    test_result = {
+        'inxian': gfwlist.match('http://www.inxian.com', 'www.inxian.com'),
+        'twitter': gfwlist.match('twitter.com:443', 'twitter.com'),
+        '163': gfwlist.match('http://www.163.com', 'www.163.com'),
+        'alipay': gfwlist.match('www.alipay.com:443', 'www.alipay.com'),
+        'qq': gfwlist.match('http://www.qq.com', 'www.qq.com'),
+        'keyword': gfwlist.match('http://te.com/iredmail.org', 'www.test.com'),
+        'url_startswith': gfwlist.match('http://ff.im/whatever', 'ff.im'),
+        'google.com.au': gfwlist.match('www.google.com.au:443', 'www.google.com.au'),
+        'riseup.net:443': gfwlist.match('riseup.net:443', 'riseup.net'),
+        '85.17.73.31': '85.17.73.31' in gfwlist.net_filter,
+        '127.0.0.1': '127.0.0.1' in gfwlist.net_filter,
+    }
+
+    for test, result in test_result.items():
+        print(f'result for {test}: {result}')
 
     url = 'http://news.163.com/16/1226/18/C97U4AI50001875N.html'
     host = urllib.parse.urlparse(url).hostname
@@ -348,7 +362,8 @@ def test():
         gfwlist.match(url, host)
     print('KEYLEN = %d' % gfwlist.KEYLEN)
     print('10000 query for %s, %fs' % (url, time.perf_counter() - t))
-    print('O(1): %d' % (len(gfwlist.rules) - (len(gfwlist.excludes) + len(gfwlist.slow))))
+    o1 = len(gfwlist.rules) - (len(gfwlist.excludes) + len(gfwlist.slow))
+    print(f'O(1): {o1}')
     print('O(n): %d' % (len(gfwlist.excludes) + len(gfwlist.slow)))
     print('domain rules: %d' % len(gfwlist.host_endswith))
     print('total: %d' % len(gfwlist.rules))

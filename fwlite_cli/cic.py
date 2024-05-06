@@ -3,12 +3,13 @@
 # this file is a part of fwlite_cli
 # connection information center
 
-from fwlite_cli.get_proxy import get_proxy
-from fwlite_cli.redirector import redirector
-from fwlite_cli.resolver import Resolver
 import urllib.parse as urlparse
 
-from fwlite_cli.util import parse_hostport
+from .get_proxy import get_proxy
+from .redirector import redirector
+from .resolver import Resolver
+
+from .util import parse_hostport
 
 
 class CIC:

@@ -37,12 +37,12 @@ try:
 except ImportError:
     pass
 
-from fwlite_cli.parent_proxy import ParentProxyList, ParentProxy
-from fwlite_cli.cic import CIC
-from fwlite_cli.util import SConfigParser, parse_hostport
-from fwlite_cli.plugin_manager import plugin_register
-from fwlite_cli.port_forward import ForwardManager
-from fwlite_cli.plugin_manager import PluginManager
+from .parent_proxy import ParentProxyList, ParentProxy
+from .cic import CIC
+from .util import SConfigParser, parse_hostport
+from .plugin_manager import plugin_register
+from .port_forward import ForwardManager
+from .plugin_manager import PluginManager
 
 
 PAC = r'''
@@ -190,8 +190,8 @@ class Config:
         self.logger = logging.getLogger('config')
         self.logger.setLevel(logging.INFO)
         hdr = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s %(name)s:%(levelname)s %(message)s',
-                                      datefmt='%H:%M:%S')
+        format = '%(asctime)s %(name)s:%(levelname)s %(message)s'
+        formatter = logging.Formatter(format, datefmt='%H:%M:%S')
         hdr.setFormatter(formatter)
         self.logger.addHandler(hdr)
 
@@ -576,7 +576,6 @@ class Config:
 
     def start_server(self):
         from .proxy_handler import Server, http_handler
-        loop = self.loop
         addr, port = self.listen
         while port == 0:
             # find proper port
@@ -616,9 +615,9 @@ class Config:
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-        self.loop = asyncio.get_event_loop()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        self.loop = loop
 
     def start(self):
         self.set_loop()
@@ -629,7 +628,7 @@ class Config:
         self.logger.info('start() ended')
 
     def hello(self):
-        from fwlite_cli import __version__
+        from . import __version__
         hello = 'FWLite %s with asyncio, ' % __version__
         import platform
         hello += 'python %s %s' % (platform.python_version(), platform.architecture()[0])

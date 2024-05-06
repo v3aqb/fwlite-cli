@@ -23,7 +23,8 @@ class FWTransport(transports._FlowControlMixin):
 
     async def connect(self, addr, port, timeout, tcp_nodelay):
         # set self._stream_id
-        self._stream_id = await self._conn.create_connection(addr, port, timeout, self, tcp_nodelay)
+        self._stream_id = await self._conn.create_connection(
+            addr, port, timeout, self, tcp_nodelay)
         self._protocol.connection_made(self)
 
     # BaseTransport
@@ -96,9 +97,9 @@ class FWTransport(transports._FlowControlMixin):
         self._paused = False
         self._reading.set()
 
-    # Called by Conn, act as writer. StreamReaderProtocol, feed data to Endpoint StreamReaderProtocol
+    # Called by Conn, act as writer. feed data to Endpoint StreamReaderProtocol
     def data_from_conn(self, data):
-        '''called by conn, should await self.drain() next'''
+        """called by conn, should await self.drain() next"""
         if not self._eof_from_conn:
             self._protocol.data_received(data)
 
@@ -108,7 +109,7 @@ class FWTransport(transports._FlowControlMixin):
             self._protocol.eof_received()
 
     async def drain(self):
-        '''called after data_recieved from conn'''
+        """called after data_recieved from conn"""
         await self._reading.wait()
         if self._closing:
             raise ConnectionError(0, 'FWTransport closed.')

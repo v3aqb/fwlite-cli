@@ -3,7 +3,7 @@
 import struct
 import asyncio
 import logging
-from fwlite_cli.socks5udp import UDPRelayInterface
+from .socks5udp import UDPRelayInterface
 
 UDP_RELAY2_STORE = {}  # udp_sid, udp_relay
 UDP_RELAY2_ADDR = {}   # client_addr, udp_sid

@@ -26,6 +26,7 @@ from http.server import BaseHTTPRequestHandler
 from http import HTTPStatus
 
 import asyncio
+from asyncio import TimeoutError, IncompleteReadError
 
 from .util import set_keepalive
 
@@ -62,7 +63,8 @@ async def read_header_data(reader, timeout=1):
 
 async def read_headers(reader, timeout=1):
     header_data = await read_header_data(reader, timeout)
-    headers = email.parser.Parser(_class=HTTPMessage).parsestr(header_data.decode('iso-8859-1'))
+    parser = email.parser.Parser(_class=HTTPMessage)
+    headers = parser.parsestr(header_data.decode('iso-8859-1'))
     return header_data, headers
 
 
@@ -91,7 +93,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.path = ''
         self.headers = None
 
-    async def handle(self, client_reader, client_writer):  # pylint: disable=W0236
+    async def handle(self, client_reader, client_writer):
         self.client_reader = client_reader
         self.client_writer = client_writer
         # self.client_writer.transport.set_write_buffer_limits(65536)
@@ -121,7 +123,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         fut = self.client_reader.readexactly(1)
         try:
             first_byte = await asyncio.wait_for(fut, timeout=10)
-        except (asyncio.TimeoutError, asyncio.IncompleteReadError, ConnectionError):
+        except (TimeoutError, IncompleteReadError, ConnectionError):
             return
         if first_byte == b'\x05':
             self.close_connection = True
@@ -180,7 +182,8 @@ class BaseHandler(BaseHTTPRequestHandler):
             addr = '[' + addr + ']'
         else:
             self.logger.error('socks5 bad addr type')
-            self.client_writer.write(b'\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
+            self.client_writer.write(
+                b'\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
             return
         fut = self.client_reader.readexactly(2)
         port = await asyncio.wait_for(fut, timeout=1)
@@ -188,7 +191,8 @@ class BaseHandler(BaseHTTPRequestHandler):
 
         if request[1] == 2:
             self.logger.error('socks5 BIND not supported')
-            self.client_writer.write(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+            self.client_writer.write(
+                b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
             return
         if request[1] == 3:
             self.command = 'UDP_ASSOCIATE'
@@ -225,7 +229,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         except OSError:
             pass
 
-    async def handle_one_request(self, first_byte=b''):  # pylint: disable=W0236
+    async def handle_one_request(self, first_byte=b''):
         self.pre_request_init()
 
         try:
@@ -249,7 +253,7 @@ class BaseHandler(BaseHTTPRequestHandler):
             self.path = path.decode('ascii')
             self.request_version = request_version.decode('ascii')
         except UnicodeDecodeError:
-            self.logger.error('UnicodeDecodeError! requestline: %r', self.requestline)
+            self.logger.error('Bad requestline: %r', self.requestline)
             self.close_connection = True
             return
         base_version_number = self.request_version.split('/', 1)[1]

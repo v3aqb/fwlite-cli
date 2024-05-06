@@ -29,12 +29,12 @@ from ipaddress import ip_address
 import asyncio
 import asyncio.streams
 
-from fwlite_cli.socks5udp import Socks5UDPServer
-from fwlite_cli.connection import open_connection
-from fwlite_cli.base_handler import BaseHandler, read_header_data, read_headers
-from fwlite_cli.httputil import ConnectionPool
-from fwlite_cli.util import extract_tls_extension, parse_hostport
-from fwlite_cli.hxscommon import ConnectionDenied
+from .socks5udp import Socks5UDPServer
+from .connection import open_connection
+from .base_handler import BaseHandler, read_header_data, read_headers
+from .httputil import ConnectionPool
+from .util import extract_tls_extension, parse_hostport
+from .hxscommon import ConnectionDenied
 
 MAX_TIMEOUT = 16
 MAX_TIMEOUT2 = 300
@@ -289,9 +289,9 @@ class BaseProxyHandler(BaseHandler):
             raise ValueError('incomplete response line')
         protocol_version = split[0]
         response_status = split[1]
-        response_reason = b' '.join(split[2:])
-        response_status = int(response_status)
-        return response_line, protocol_version, response_status, response_reason
+        reason = b' '.join(split[2:])
+        status = int(response_status)
+        return response_line, protocol_version, status, reason
 
 
 class http_handler(BaseProxyHandler):
