@@ -89,7 +89,7 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     # get hxs3 connection
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
-            conn = await hxs3_get_connection(proxy, timeout, tcp_nodelay)
+            conn = await hxs3_get_connection(proxy, timeout, limit, tcp_nodelay)
             transport = FWTransport(loop, protocol, conn)
             transport.set_write_buffer_limits(limit)
             await transport.connect(addr, port, timeout, tcp_nodelay)
@@ -102,10 +102,10 @@ async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     raise ConnectionResetError(0, 'get hxs3 connection failed.')
 
 
-async def hxs3_get_connection(proxy, timeout, tcp_nodelay):
+async def hxs3_get_connection(proxy, timeout, limit, tcp_nodelay):
     if proxy.name not in CONN_MANAGER:
         CONN_MANAGER[proxy.name] = ConnectionManager()
-    conn = await CONN_MANAGER[proxy.name].get_connection(proxy, timeout, tcp_nodelay)
+    conn = await CONN_MANAGER[proxy.name].get_connection(proxy, timeout, limit, tcp_nodelay)
     return conn
 
 
@@ -117,7 +117,7 @@ class ConnectionManager:
         self._err = None
         self._err_time = 0
 
-    async def get_connection(self, proxy, timeout, tcp_nodelay):
+    async def get_connection(self, proxy, timeout, limit, tcp_nodelay):
         # choose / create and return a connection
         async with self._lock:
             if len(self.connection_list) < HC.MAX_CONNECTION and\
@@ -126,7 +126,7 @@ class ConnectionManager:
                     if not self.connection_list:
                         raise ConnectionDenied(self._err)
                 else:
-                    connection = Hxs3Connection(proxy, self)
+                    connection = Hxs3Connection(proxy, self, limit)
                     try:
                         await connection.get_key(timeout, tcp_nodelay)
                     except Exception as err:
