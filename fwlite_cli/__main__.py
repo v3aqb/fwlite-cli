@@ -21,7 +21,6 @@ from __future__ import absolute_import, print_function, division
 import os
 import sys
 import argparse
-import signal
 
 from .config import Config
 
@@ -39,11 +38,7 @@ def main():
     conf = Config(args.c, args.gui)
 
     conf.reload()
-    signal.signal(signal.SIGINT, conf.stop)
-    try:
-        conf.start()
-    except (SystemExit, KeyboardInterrupt):
-        conf.stop()
+    conf.start()
 
 
 if __name__ == '__main__':

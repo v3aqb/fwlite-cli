@@ -22,6 +22,7 @@ import sys
 import socket
 import json
 import base64
+import signal
 import logging
 import logging.handlers
 import asyncio
@@ -568,7 +569,6 @@ class Config:
         self.plugin_manager.cleanup()
         self.port_forward.stop_all()
         self.stop_fwlite()
-        sys.exit()
 
     def stop_fwlite(self):
         for server in self.server_list:
@@ -619,13 +619,38 @@ class Config:
             asyncio.set_event_loop(loop)
         self.loop = loop
 
+    async def shutdown(self, s):
+        self.logger.info("Received exit signal %s...", s.name)
+        self.plugin_manager.cleanup()
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+
+        _ = [task.cancel() for task in tasks]
+
+        self.logger.info("Cancelling %s outstanding tasks", len(tasks))
+        await asyncio.gather(*tasks)
+        self.loop.stop()
+
     def start(self):
         self.set_loop()
         self.start_server()
         self.register_proxy_n_forward()
         asyncio.ensure_future(self.post_start())
-        self.loop.run_forever()
-        self.logger.info('start() ended')
+        try:
+            signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+            for s in signals:
+                self.loop.add_signal_handler(
+                    s, lambda s=s: asyncio.create_task(self.shutdown(s)))
+        except (AttributeError, NotImplementedError):
+            pass
+        try:
+            self.loop.run_forever()
+        except (SystemExit, KeyboardInterrupt):
+            self.logger.info('KeyboardInterrupt')
+        finally:
+            self.loop.close()
+            self.plugin_manager.cleanup()
+            self.logger.info('start() ended')
+            sys.exit()
 
     def hello(self):
         from . import __version__
