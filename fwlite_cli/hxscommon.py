@@ -33,8 +33,8 @@ from asyncio import Event, Lock, Semaphore
 from hxcrypto import ECC, AEncryptor, InvalidSignature, method_supported
 from hxcrypto.encrypt import EncryptorStream
 
-from fwlite_cli.parent_proxy import ParentProxy
-from fwlite_cli.hxs_udp2 import on_dgram_recv
+from .parent_proxy import ParentProxy
+from .hxs_udp2 import on_dgram_recv
 
 DEFAULT_METHOD = 'chacha20-ietf-poly1305'  # for hxsocks2 handshake
 FAST_METHOD = 'chacha20-ietf-poly1305'
