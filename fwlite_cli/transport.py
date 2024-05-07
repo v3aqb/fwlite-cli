@@ -1,29 +1,28 @@
 
-from asyncio import transports, constants, ensure_future
+from asyncio import transports, constants, get_running_loop
 from asyncio.log import logger
 
 
-class FWTransport(transports._FlowControlMixin):
-    def __init__(self, loop, protocol, conn):
-        super().__init__(loop=loop)
-        self._loop = loop
+class FWTransport(transports.Transport):
+    def __init__(self, protocol, peer=None, extra=None):
+        super().__init__(extra)
         self._protocol = protocol  # reader protocol
-        self._conn = conn
-        self._stream_id = None
+        self._peer = peer
+        self._protocol.connection_made(self)
         self._closing = False
-        self._server = None
         self._paused = False  # Reading
-        self._protocol_paused = False
         self._conn_lost = 0
         self._eof = False            # eof from Endpoint, sent to Conn
         self._eof_from_conn = False  # eof from Conn, sent to Endpoint
         self._empty_waiter = None
+        self._protocol_paused = False
+        # self._set_write_buffer_limits()
 
-    async def connect(self, addr, port, timeout, tcp_nodelay):
-        # set self._stream_id
-        self._stream_id = await self._conn.create_connection(
-            addr, port, timeout, self, tcp_nodelay)
-        self._protocol.connection_made(self)
+    def get_peer(self, protocol):
+        # set self._peer
+        assert self._peer is None
+        self._peer = FWTransport(protocol, self)
+        return self._peer
 
     # BaseTransport
     def is_closing(self):
@@ -42,33 +41,41 @@ class FWTransport(transports._FlowControlMixin):
             return
         self._closing = True
         self.write_eof()
-        self.eof_from_conn()
         self._conn_lost += 1
-        self._loop.call_soon(self._call_connection_lost, None)
+        self._peer.close()
+        loop = get_running_loop()
+        loop.call_soon(self._call_connection_lost, None)
 
     def _call_connection_lost(self, exc):
         try:
             self._protocol.connection_lost(exc)
         finally:
             self.resume_reading()
-            self._conn.close_stream(self._stream_id)
-            self._conn = None
             self._protocol = None
-            self._loop = None
-            server = self._server
-            if server is not None:
-                server._detach()
-                self._server = None
 
     def set_protocol(self, protocol):
         """Set a new protocol."""
         self._protocol = protocol
+        self._protocol.connection_made(self)
 
     def get_protocol(self):
         """Return the current protocol."""
         return self._protocol
 
-    # Called by Endpoint StreamReaderProtocol
+    # called by peer transport
+    def pause_writing(self):
+        self._protocol.pause_writing()
+
+    def resume_writing(self):
+        self._protocol.resume_writing()
+
+    def data_received(self, data):
+        self._protocol.data_received(data)
+
+    def eof_received(self):
+        self._protocol.eof_received()
+
+    # called by self._protocol
     def is_reading(self):
         """Return True if the transport is receiving."""
         return not self._paused and not self._closing
@@ -82,7 +89,7 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing or self._paused:
             return
         self._paused = True
-        self._conn.pause_reading_stream(self._stream_id)
+        self._peer.pause_writing()
 
     def resume_reading(self):
         """Resume the receiving end.
@@ -93,24 +100,9 @@ class FWTransport(transports._FlowControlMixin):
         if self._closing or not self._paused:
             return
         self._paused = False
-        self._conn.resume_reading_stream(self._stream_id)
+        self._peer.resume_writing()
 
-    # Called by Conn, act as writer. feed data to Endpoint StreamReaderProtocol
-    def data_from_conn(self, data):
-        """called by conn, should await self.drain() next"""
-        if not self._eof_from_conn:
-            self._protocol.data_received(data)
-
-    def eof_from_conn(self):
-        self._eof_from_conn = True
-        if self._protocol:
-            self._protocol.eof_received()
-
-    # called by Endpoint StreamWriter, send data to Conn
-    def get_write_buffer_size(self):
-        """Return the current size of the write buffer."""
-        return self._conn.get_write_buffer_size(self._stream_id)
-
+    # called by Writer
     def write(self, data):
         """Write some data bytes to the transport.
 
@@ -132,36 +124,11 @@ class FWTransport(transports._FlowControlMixin):
                 logger.warning('FWTransport.write() raised exception.')
             self._conn_lost += 1
             return
-        self._conn.write_stream(data, self._stream_id)
-        self._maybe_pause_protocol()
+        self._peer.data_received(data)
 
-    def _maybe_pause_protocol(self):
-        '''called after write to conn'''
-        size = self.get_write_buffer_size()
-        if size <= self._high_water:
-            return
-        if not self._protocol_paused:
-            self._protocol_paused = True
-            try:
-                self._protocol.pause_writing()
-                ensure_future(self.wait_resume_writing())
-            except (SystemExit, KeyboardInterrupt):
-                raise
-            except BaseException as exc:
-                self._loop.call_exception_handler({
-                    'message': 'protocol.pause_writing() failed',
-                    'exception': exc,
-                    'transport': self,
-                    'protocol': self._protocol,
-                })
-
-    async def wait_resume_writing(self):
-        try:
-            await self._conn.drain_stream(self._stream_id)
-        except OSError:
-            self.close()
-            return
-        self._protocol.resume_writing()
+    def can_write_eof(self):
+        """Return True if this transport supports write_eof(), False if not."""
+        return True
 
     def write_eof(self):
         """Close the write end after flushing buffered data.
@@ -173,11 +140,7 @@ class FWTransport(transports._FlowControlMixin):
         if self._eof:
             return
         self._eof = True
-        self._conn.write_eof_stream(self._stream_id)
-
-    def can_write_eof(self):
-        """Return True if this transport supports write_eof(), False if not."""
-        return True
+        self._peer.eof_received()
 
     def abort(self):
         """Close the transport immediately.
@@ -186,4 +149,4 @@ class FWTransport(transports._FlowControlMixin):
         The protocol's connection_lost() method will (eventually) be
         called with None as its argument.
         """
-        self._conn.abort_stream(self._stream_id)
+        self._peer.close()

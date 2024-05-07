@@ -30,7 +30,6 @@ from hxcrypto import InvalidTag, AEncryptor
 from .parent_proxy import ParentProxy
 from .hxscommon import HxsConnection, HC, CTX, get_client_auth_2
 from .hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
-from .transport import FWTransport
 
 
 def set_logger():
@@ -61,9 +60,7 @@ async def hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs4_get_connection(proxy, timeout, limit, tcp_nodelay)
-            transport = FWTransport(loop, protocol, conn)
-            transport.set_write_buffer_limits(limit)
-            await transport.connect(addr, port, timeout, tcp_nodelay)
+            transport = await conn.create_connection(protocol, addr, port, timeout, tcp_nodelay)
             writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
         except ConnectionLostError as err:

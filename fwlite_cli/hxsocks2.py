@@ -31,7 +31,6 @@ from .hxscommon import HxsConnection
 from .hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
 from .hxscommon import HC, get_client_auth
 from .ssocks import SS_SUBKEY_2022
-from .transport import FWTransport
 
 
 def set_logger():
@@ -62,9 +61,7 @@ async def hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs2_get_connection(proxy, timeout, limit, tcp_nodelay)
-            transport = FWTransport(loop, protocol, conn)
-            transport.set_write_buffer_limits(limit)
-            await transport.connect(addr, port, timeout, tcp_nodelay)
+            transport = await conn.create_connection(protocol, addr, port, timeout, tcp_nodelay)
             writer = StreamWriter(transport, protocol, reader, loop)
             return reader, writer, conn.name
         except ConnectionLostError as err:

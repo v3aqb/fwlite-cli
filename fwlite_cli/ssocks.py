@@ -55,9 +55,7 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     reader = StreamReader(limit=limit, loop=loop)
     protocol = StreamReaderProtocol(reader, loop=loop)
     conn = SSConn(proxy, limit)
-    transport = FWTransport(loop, protocol, conn)
-    transport.set_write_buffer_limits(limit)
-    await transport.connect(addr, port, timeout, tcp_nodelay)
+    transport = await conn.create_connection(protocol, addr, port, timeout, tcp_nodelay)
     # protocol is for Reader, transport is for Writer
     writer = StreamWriter(transport, protocol, reader, loop)
     return reader, writer
@@ -113,7 +111,6 @@ class SSConn:
 
     async def _forward_from_remote(self):
         # read from remote, decrypt, sent to client
-
         if self.aead:
             # read first chunk
             if self.__crypto.ctx == SS_SUBKEY_2022:
@@ -132,7 +129,7 @@ class SSConn:
                 fut = self._remote_reader.readexactly(data_len + 16)
                 data = await asyncio.wait_for(fut, timeout=4)
                 data = self.__crypto.decrypt(data)
-                self._transport.data_from_conn(data)
+                self._transport.write(data)
                 if self._transport.is_closing():
                     raise ConnectionResetError
                 await self._reading.wait()
@@ -160,7 +157,7 @@ class SSConn:
             if not data:
                 break
             try:
-                self._transport.data_from_conn(data)
+                self._transport.write(data)
                 if self._transport.is_closing():
                     raise ConnectionResetError
                 await self._reading.wait()
@@ -170,14 +167,13 @@ class SSConn:
                 return
         self._remote_eof = True
         try:
-            self._transport.eof_from_conn()
+            self._transport.write_eof()
         except ConnectionError:
             pass
 
-    async def create_connection(self, addr, port, timeout, transport, tcp_nodelay):
+    async def create_connection(self, protocol, addr, port, timeout, tcp_nodelay):
         self._address = addr
         self._port = port
-        self._transport = transport
         from .connection import open_connection
         self._remote_reader, self._remote_writer, _ = await open_connection(
             self.proxy.hostname,
@@ -188,9 +184,16 @@ class SSConn:
             limit=self._limit,
             tcp_nodelay=tcp_nodelay)
         asyncio.ensure_future(self._forward_from_remote())
-        return 0
+        self._transport = FWTransport(self)
+        return self._transport.get_peer(protocol)
 
-    def write_stream(self, data, _):
+    def connection_made(self, _):
+        pass
+
+    def connection_lost(self, exc):
+        self._remote_writer.close()
+
+    def data_received(self, data):
         """encrypt, sent to server"""
         self._last_active = time.monotonic()
         if not self._connected:
@@ -207,13 +210,10 @@ class SSConn:
         else:
             self._remote_writer.write(self.__crypto.encrypt(data))
 
-    def get_write_buffer_size(self, _):
+    def get_write_buffer_size(self):
         return self._remote_writer.transport.get_write_buffer_size()
 
-    async def drain_stream(self, _):
-        await self._remote_writer.drain()
-
-    def write_eof_stream(self, _):
+    def eof_received(self):
         if self._client_eof:
             return
         self._client_eof = True
@@ -226,14 +226,8 @@ class SSConn:
         except ConnectionError:
             pass
 
-    def close_stream(self, _):
-        self._remote_writer.close()
-
-    def abort_stream(self, _):
-        self._remote_writer.close()
-
-    def pause_reading_stream(self, _):
+    def pause_writing(self):
         self._reading.clear()
 
-    def resume_reading_stream(self, _):
+    def resume_writing(self):
         self._reading.set()
