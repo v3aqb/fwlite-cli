@@ -142,6 +142,7 @@ class HC:
     MAX_CONNECTION = 2
     CLIENT_WRITE_BUFFER = 131072
     CONNECTING_LIMIT = 3
+    STREAM_TIMEOUT = 60
 
     READ_FRAME_TIMEOUT = 8
     PING_TIMEOUT = 8
@@ -153,7 +154,7 @@ class HC:
     HEADER_SIZE = 256
     PING_SIZE = 256
     PONG_SIZE = 256
-    PING_FREQ = 0.2
+    PONG_FREQ = 0.2
     FRAME_SIZE_LIMIT = 4096 - 22
     FRAME_SIZE_LIMIT2 = 1024 - 22
     FRAME_SPLIT_FREQ = 0.3
@@ -466,7 +467,7 @@ class HxsConnection(HC):
         self._lock = Lock()
         self._connecting_lock = Semaphore(self.CONNECTING_LIMIT)
 
-    def send_frame(self, type_, flags, stream_id, payload=None):
+    def send_frame(self, frame_type, flags, stream_id, payload=None):
         if self.connection_lost:
             self.logger.debug('send_frame: connection closed. %s', self.name)
             return
@@ -475,18 +476,18 @@ class HxsConnection(HC):
             _payload = struct.pack('>I', self.WINDOW_SIZE[1])
             _payload += bytes(random.randint(self.HEADER_SIZE // 4 - 4, self.HEADER_SIZE - 4))
             self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, _payload)
-        if type_ != PING:
+        if frame_type != PING:
             self._last_send = time.monotonic()
-        elif flags == 0:
+        if frame_type == PING and flags == 0:
             self._last_ping = time.monotonic()
 
         if not payload:
             payload = bytes(random.randint(self.HEADER_SIZE // 4, self.HEADER_SIZE))
 
-        header = struct.pack('>BBH', type_, flags, stream_id)
+        header = struct.pack('>BBH', frame_type, flags, stream_id)
         ct_ = self._cipher.encrypt(header + payload)
 
-        self.logger.debug('send_frame type: %d, stream_id: %d, size: %d %s', type_, stream_id, len(ct_), self.name)
+        self.logger.debug('send_frame type: %d, stream_id: %d, size: %d %s', frame_type, stream_id, len(ct_), self.name)
 
         self.send_frame_data(ct_)
         self._stat_total_sent += len(ct_)
@@ -586,14 +587,14 @@ class HxsConnection(HC):
                         if random.random() < 0.8:
                             self.send_pong()
                             self._ponging -= 1
-                    elif random.random() < self.PING_FREQ:
+                    elif random.random() < self.PONG_FREQ:
                         self.send_pong()
 
-                    # sent data to stream
                     for _ in range(5):
                         if stream_id not in self._stream_transport:
                             await asyncio.sleep(0)
 
+                    # sent data to stream
                     if self._stream_ctx[stream_id].stream_status & EOF_FROM_CONN:
                         # from server send buffer
                         self.logger.debug('DATA recv Stream CLOSED, status: %s',
@@ -601,7 +602,6 @@ class HxsConnection(HC):
                         continue
 
                     try:
-                        self._stream_ctx[stream_id].last_active = time.monotonic()
                         self._stream_transport[stream_id].data_from_conn(data)
                         await self.client_writer_drain(stream_id, data_len)
                     except (OSError, KeyError) as err:
@@ -623,7 +623,7 @@ class HxsConnection(HC):
                             self._stream_ctx[stream_id].stream_status = OPEN
                             self._remote_connected_event[stream_id].set()
                         else:
-                            addr = '%s:%s' % self._stream_ctx[stream_id].host
+                            addr = '%s:%s' % self._stream_ctx[stream_id].host  # pylint: disable=C0209
                             self.logger.info('%s stream open, client closed, %s', self.name, addr)
                             self._stream_ctx[stream_id].stream_status = CLOSED
                             self.send_frame(RST_STREAM, 0, stream_id)
@@ -653,7 +653,7 @@ class HxsConnection(HC):
                             self.logger.info('%s response time %.3fs',
                                              self.name, resp_time)
                             self.print_status()
-                        if max(self._rtt_ewma, resp_time) < self._rtt * 1.5:
+                        if max(resp_time, self._rtt_ewma) < self._rtt * 1.3:
                             self._stream_ctx[0].increase_window(self._rtt)
                         if resp_time > self._rtt * 2:
                             self._last_ping_log = time.monotonic()
@@ -668,6 +668,11 @@ class HxsConnection(HC):
                     for stream_id in self._stream_transport:
                         if stream_id > max_stream_id:
                             # reset stream
+                            self.close_stream(stream_id)
+                    for stream_id in self._remote_connected_event:
+                        if stream_id > max_stream_id:
+                            self._stream_ctx[stream_id].stream_status = CLOSED
+                            self._remote_connected_event[stream_id].set()
                             self.close_stream(stream_id)
                 elif frame_type == WINDOW_UPDATE:  # 8
                     if not self._stream_ctx[stream_id].fc_enable:
