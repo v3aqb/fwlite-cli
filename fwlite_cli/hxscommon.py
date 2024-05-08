@@ -250,7 +250,7 @@ class ForwardContext:
         # change recv window
         new_window = int(new_window)
         new_window = max(new_window, self._conn.WINDOW_SIZE[0])
-        new_window = max(new_window, self._conn.WINDOW_SIZE[2])
+        new_window = min(new_window, self._conn.WINDOW_SIZE[2])
         old_size = self.recv_w
         self.recv_w = new_window
         self._recv_w_counter += new_window - old_size
@@ -676,16 +676,16 @@ class HxsConnection(HC):
                             self._stream_ctx[0].reduce_window(self._rtt)
                 elif frame_type == GOAWAY:  # 7
                     # no more new stream
-                    max_stream_id = payload.read(2)
+                    max_stream_id = struct.unpack('>H', payload.read(2))[0]
                     self._manager.remove(self)
                     for stream_id in self._stream_ctx:
                         if stream_id > max_stream_id:
                             # reset stream
                             self.close_stream(stream_id)
-                    for stream_id in self._remote_connected_event:
+                    for stream_id, event in self._remote_connected_event.items():
                         if stream_id > max_stream_id:
                             self._stream_ctx[stream_id].stream_status = CLOSED
-                            self._remote_connected_event[stream_id].set()
+                            event.set()
                             self.close_stream(stream_id)
                 elif frame_type == WINDOW_UPDATE:  # 8
                     if not self._stream_ctx[stream_id].fc_enable:
@@ -985,6 +985,8 @@ class HxsConnection(HC):
         return max(self.get_conn_buffer_size(), self.get_stream_buffer_size(stream_id))
 
     def close_stream(self, stream_id):
+        if stream_id == 0:
+            return
         loop = asyncio.get_event_loop()
         loop.call_soon(self._close_stream, stream_id)
 
