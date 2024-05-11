@@ -28,7 +28,7 @@ class Socks5UDPServer:
     '''
     def __init__(self, socks5_handler, timeout=300):
         self.socks5_handler = socks5_handler
-        self.client_addr = None
+        self.client_ip = self.socks5_handler.client_address[0]
         self.client_stream = None
         self.running = False
         self.timeout = timeout
@@ -79,6 +79,9 @@ class Socks5UDPServer:
             except OSError:
                 self.logger.warning('udp_server recv OSError')
                 break
+
+            if client_addr[0] != self.client_ip:
+                continue
 
             frag = data[2]
             if frag:
