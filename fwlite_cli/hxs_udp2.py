@@ -45,7 +45,7 @@ class UDPRelayHxs2(UDPRelayInterface):
     async def _send(self, addr, port, dgram, data):
         # find a hxs_connection, send dgram
         conn = await self.get_connection()
-        await conn.send_dgram2(self.sid, data)
+        conn.send_dgram2(self.sid, data)
 
     async def get_connection(self):
         for proxy in self.hxs_list:
@@ -58,7 +58,7 @@ class UDPRelayHxs2(UDPRelayInterface):
             elif proxy.scheme == 'hxs4':
                 from .hxsocks4 import hxs4_get_connection
                 get_connection = hxs4_get_connection
-            conn = await get_connection(proxy, timeout=4, tcp_nodelay=True)
+            conn = await get_connection(proxy, timeout=4, limit=65536, tcp_nodelay=True)
             self.proxy = conn.proxy
             return conn
 
@@ -68,7 +68,7 @@ class UDPRelayHxs2(UDPRelayInterface):
         del UDP_RELAY2_STORE[self.sid]
 
     def __repr__(self):
-        return '<UDPRelayHxs2> %d' % self.sid
+        return f'<UDPRelayHxs2> {self.sid}'
 
 
 def parse_dgram2(payload):

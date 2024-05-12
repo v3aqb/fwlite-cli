@@ -81,6 +81,7 @@ class Socks5UDPServer:
                 break
 
             if client_addr[0] != self.client_ip:
+                self.logger.warning('client_addr not match, drop.')
                 continue
 
             frag = data[2]
@@ -93,6 +94,7 @@ class Socks5UDPServer:
                 await self.on_client_recv(data[3:], client_addr)
             except OSError:
                 self.logger.warning('udp_server send OSError')
+        self.running = False
         self.close_inactive_relay()
         self.logger.info('udp server finish, %ds, running: %s',
                          time.monotonic() - self.init_time, self.running)
@@ -114,7 +116,7 @@ class Socks5UDPServer:
 
         remote_ip = ipaddress.ip_address(addr)
         if remote_ip.is_private:
-            self.logger.debug('remote_ip %s is private, drop', remote_ip)
+            self.logger.warning('remote_ip %s is private, drop', remote_ip)
             return
         # send recieved dgram to relay
         async with self.lock:

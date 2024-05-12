@@ -885,7 +885,7 @@ class HxsConnection(HC):
         self._stat_total_recv += len(frame_data)
         return frame_data
 
-    async def send_dgram2(self, udp_sid, data):
+    def send_dgram2(self, udp_sid, data):
         # remote addr included in data, as shadowsocks format
         payload = CLIENT_ID
         payload += struct.pack(b'!LH', udp_sid, len(data))
