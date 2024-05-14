@@ -186,7 +186,7 @@ class Hxs4Connection(HxsConnection):
         except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, InvalidTag) as err:
             raise ReadFrameError(err) from err
 
-    def send_frame_data(self, ct_):
+    def _send_frame_data(self, ct_):
         frame_len = struct.pack('>H', len(ct_))
         if self.encrypt_frame_len:
             frame_len = self._flen_cipher.encrypt(frame_len)

@@ -497,7 +497,7 @@ class HxsConnection(HC):
 
         self.logger.debug('send_frame type: %d, stream_id: %d, size: %d %s', frame_type, stream_id, len(ct_), self.name)
 
-        self.send_frame_data(ct_)
+        self._send_frame_data(ct_)
         self._stat_total_sent += len(ct_)
 
     def send_ping(self, size=0):
@@ -901,7 +901,7 @@ class HxsConnection(HC):
     async def _read_frame(self, timeout=30):
         raise NotImplementedError
 
-    def send_frame_data(self, ct_):
+    def _send_frame_data(self, ct_):
         raise NotImplementedError
 
     async def drain(self):
@@ -970,6 +970,7 @@ class HxsConnection(HC):
         raise ConnectionResetError(0, f'remote connect to {addr}:{port} failed.')
 
     async def acquire(self, size):
+        await self.drain()
         await self._stream_ctx[0].acquire(size)
 
     def write_stream(self, data, stream_id):

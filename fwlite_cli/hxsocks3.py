@@ -222,7 +222,7 @@ class Hxs3Connection(HxsConnection):
         except (ConnectionClosed, RuntimeError, InvalidTag) as err:
             raise ReadFrameError(err) from err
 
-    def send_frame_data(self, ct_):
+    def _send_frame_data(self, ct_):
         self._sendq.put_nowait(ct_)
         self._wbuffer_size += len(ct_)
         asyncio.ensure_future(self._maybe_start_sending())
