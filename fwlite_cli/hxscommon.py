@@ -661,7 +661,9 @@ class HxsConnection(HC):
                         self._ping_time = 0
                         if resp_time < 1:
                             self.proxy.log(None, resp_time)
-                        if time.monotonic() - self._last_ping_log > 60:
+                        ctx = self._stream_ctx[0]
+                        if time.monotonic() - self._last_ping_log > 60 and\
+                                (ctx.recv_rate > 1024 or ctx.sent_rate > 1024):
                             self._last_ping_log = time.monotonic()
                             self.logger.info('%s response time %.3fs',
                                              self.name, resp_time)
