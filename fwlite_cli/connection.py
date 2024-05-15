@@ -142,14 +142,14 @@ async def open_connection(addr, port, proxy=None, timeout=8, iplist=None, tunnel
         return remote_reader, remote_writer, proxy.name
     if proxy.scheme == 'hxs2':
         from .hxsocks2 import hxs2_connect
-        remote_reader, remote_writer, name = await hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        return remote_reader, remote_writer, name
+        remote_reader, remote_writer = await hxs2_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
+        return remote_reader, remote_writer, proxy.name
     if proxy.scheme in ('hxs3', 'hxs3s'):
         from .hxsocks3 import hxs3_connect
-        remote_reader, remote_writer, name = await hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        return remote_reader, remote_writer, name
+        remote_reader, remote_writer = await hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
+        return remote_reader, remote_writer, proxy.name
     if proxy.scheme == 'hxs4':
         from .hxsocks4 import hxs4_connect
-        remote_reader, remote_writer, name = await hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
-        return remote_reader, remote_writer, name
+        remote_reader, remote_writer = await hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay)
+        return remote_reader, remote_writer, proxy.name
     raise ValueError(0, f'parentproxy {proxy.name} not supported!')

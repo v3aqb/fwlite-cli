@@ -48,21 +48,27 @@ CONN_MANAGER = {}  # (server, parentproxy): manager
 
 
 async def hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
+    loop = get_running_loop()
+    reader = StreamReader(limit=limit, loop=loop)
+    protocol = StreamReaderProtocol(reader, loop=loop)
+    transport = await hxs4_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay)
+    # protocol is for Reader, transport is for Writer
+    writer = StreamWriter(transport, protocol, reader, loop)
+    return reader, writer
+
+
+async def hxs4_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay):
     # Entry Point
     if not isinstance(proxy, ParentProxy):
         proxy = ParentProxy(proxy, proxy)
     assert proxy.scheme == 'hxs4'
 
-    loop = get_running_loop()
-    reader = StreamReader(limit=limit, loop=loop)
-    protocol = StreamReaderProtocol(reader, loop=loop)
     # get hxs2 connection
     for _ in range(HC.MAX_CONNECTION + 1):
         try:
             conn = await hxs4_get_connection(proxy, timeout, limit, tcp_nodelay)
             transport = await conn.create_connection(protocol, addr, port, timeout, tcp_nodelay)
-            writer = StreamWriter(transport, protocol, reader, loop)
-            return reader, writer, conn.name
+            return transport
         except ConnectionLostError as err:
             logger = logging.getLogger('hxs4')
             logger.info('connect %s:%d fail: %r %s', addr, port, err, proxy.name)

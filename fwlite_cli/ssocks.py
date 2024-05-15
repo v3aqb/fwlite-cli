@@ -54,11 +54,16 @@ async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
     loop = get_running_loop()
     reader = StreamReader(limit=limit, loop=loop)
     protocol = StreamReaderProtocol(reader, loop=loop)
-    conn = SSConn(proxy, limit)
-    transport = await conn.create_connection(protocol, addr, port, timeout, tcp_nodelay)
+    transport = await ss_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay)
     # protocol is for Reader, transport is for Writer
     writer = StreamWriter(transport, protocol, reader, loop)
     return reader, writer
+
+
+async def ss_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay):
+    conn = SSConn(proxy, limit)
+    transport = await conn.create_connection(protocol, addr, port, timeout, tcp_nodelay)
+    return transport
 
 
 class SSConn:
