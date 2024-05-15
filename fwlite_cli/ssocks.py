@@ -135,9 +135,7 @@ class SSConn:
                 data = await asyncio.wait_for(fut, timeout=4)
                 data = self.__crypto.decrypt(data)
                 self._transport.write(data)
-                if self._transport.is_closing():
-                    raise ConnectionResetError
-                await self._reading.wait()
+                await self.drain()
             except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError, ConnectionError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
                 self._remote_eof = True
@@ -163,9 +161,7 @@ class SSConn:
                 break
             try:
                 self._transport.write(data)
-                if self._transport.is_closing():
-                    raise ConnectionResetError
-                await self._reading.wait()
+                await self.drain()
             except ConnectionError:
                 self._remote_eof = True
                 self._transport.close()
@@ -195,7 +191,7 @@ class SSConn:
     def connection_made(self, _):
         pass
 
-    def connection_lost(self, exc):
+    def connection_lost(self, _):
         self._remote_writer.close()
 
     def data_received(self, data):
@@ -222,17 +218,15 @@ class SSConn:
         if self._client_eof:
             return
         self._client_eof = True
-        asyncio.ensure_future(self._write_eof())
-
-    async def _write_eof(self):
-        try:
-            await self._remote_writer.drain()
-            self._remote_writer.write_eof()
-        except ConnectionError:
-            pass
+        self._remote_writer.write_eof()
 
     def pause_writing(self):
         self._reading.clear()
 
     def resume_writing(self):
         self._reading.set()
+
+    async def drain(self):
+        if self._transport.is_closing():
+            raise ConnectionResetError
+        await self._reading.wait()

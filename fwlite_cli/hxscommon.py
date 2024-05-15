@@ -171,8 +171,8 @@ class ForwardContext:
         self._writing = False
         self._eof_pending = False
         self._closing = False
-        self.reading = asyncio.Event()  # reading form conn, write to endpoint
-        self.reading.set()
+        self._reading = asyncio.Event()  # reading form conn, write to endpoint
+        self._reading.set()
         self._transport = None
 
         # eof recieved
@@ -389,16 +389,16 @@ class ForwardContext:
         if self.stream_status != CLOSED:
             self._conn.send_frame(RST_STREAM, 0, self._stream_id)
             self.stream_status = CLOSED
-        self.reading.set()
+        self._reading.set()
 
     def is_closing(self):
         return self._closing
 
     def pause_writing(self):
-        self.reading.clear()
+        self._reading.clear()
 
     def resume_writing(self):
-        self.reading.set()
+        self._reading.set()
 
     def connection_made(self, transport):
         self._transport = transport
@@ -408,6 +408,11 @@ class ForwardContext:
 
     def write_eof(self):
         self._transport.write_eof()
+
+    async def drain(self):
+        if self.is_closing():
+            raise ConnectionResetError
+        await self._reading.wait()
 
 
 class HxsConnection(HC):
@@ -858,7 +863,7 @@ class HxsConnection(HC):
         if self._settings_async_drain or self._stream_ctx[stream_id].fc_enable:
             asyncio.ensure_future(self.async_drain(stream_id, data_len))
         else:
-            await self._stream_ctx[stream_id].reading.wait()
+            await self._stream_ctx[stream_id].drain()
             self._stream_ctx[stream_id].data_recv(data_len)
 
     async def async_drain(self, stream_id, data_len):
@@ -874,7 +879,7 @@ class HxsConnection(HC):
                 # tell client to stop reading
                 if not self._stream_ctx[stream_id].fc_enable:
                     self.send_frame(WINDOW_UPDATE, 1, stream_id)
-                await self._stream_ctx[stream_id].reading.wait()
+                await self._stream_ctx[stream_id].drain()
                 # tell client to resume reading
                 if not self._stream_ctx[stream_id].fc_enable:
                     self.send_frame(WINDOW_UPDATE, 0, stream_id)
