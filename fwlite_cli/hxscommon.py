@@ -372,6 +372,9 @@ class ForwardContext:
         if self.stream_status == CLOSED:
             self._conn.close_stream(self._stream_id)
 
+    def connection_made(self, transport):
+        self._transport = transport
+
     def connection_lost(self, _):
         self._conn.close_stream(self._stream_id)
 
@@ -379,6 +382,7 @@ class ForwardContext:
         if self._closing:
             return
         self._closing = True
+        self.window_update(float('+inf'))
         if self._transport:
             self._transport.close()
         if self._buffer:
@@ -399,9 +403,6 @@ class ForwardContext:
 
     def resume_writing(self):
         self._reading.set()
-
-    def connection_made(self, transport):
-        self._transport = transport
 
     def write(self, data):
         self._transport.write(data)
