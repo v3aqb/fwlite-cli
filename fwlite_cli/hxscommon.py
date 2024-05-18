@@ -404,12 +404,13 @@ class HxsForwardContext(HxsStreamContext):
 
     def reduce_window(self, rtt):
         if self.fc_enable:
-            if self.recv_rate < self._conn.WINDOW_SIZE[1]:
+            if self.recv_rate * rtt * 2.7 < self.recv_w:
                 return
             self._recv_w_max = self.recv_w
-            new_window = self.recv_rate * rtt * 0.75
+            new_window = self.recv_rate * rtt * 1.5
             new_window = max(new_window, self.recv_w * 0.75)
-            self.new_recv_window(new_window)
+            if new_window < self.recv_w:
+                self.new_recv_window(new_window)
 
     def increase_window(self, rtt):
         if self.fc_enable:
@@ -708,9 +709,9 @@ class HxsConnection(HC):
                             self.logger.info('%s response time %.3fs',
                                              self.name, resp_time)
                             self.print_status()
-                        if max(resp_time, self._rtt_ewma) < self._rtt * 1.3:
+                        if max(resp_time, self._rtt_ewma) < self._rtt * 1.5:
                             self._stream_ctx[0].increase_window(self._rtt)
-                        if resp_time > self._rtt * 2:
+                        if self._rtt_ewma > self._rtt * 2.5:
                             self._last_ping_log = time.monotonic()
                             self.logger.info('%s response time %.3fs',
                                              self.name, resp_time)
