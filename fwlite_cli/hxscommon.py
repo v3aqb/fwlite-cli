@@ -162,25 +162,164 @@ class HC:
     WINDOW_SIZE = (4096, 65536, 1048576 * 4)
 
 
-class ForwardContext:
-    def __init__(self, conn, stream_id, host, send_w, recv_w):
+class HxsStreamContext(asyncio.Protocol):
+    def __init__(self, conn, stream_id, host):
+        self._conn = conn
+        self._stream_id = stream_id
         self.host = host  # (host, port)
-        self.drain_lock = asyncio.Lock()
+
         self.last_active = time.monotonic()
-        self._buffer = bytearray()
+
+        # eof recieved
+        self.stream_status = OPEN
+        self._from_endpoint_count = 0
+
+        self._recv_buffer = bytearray()
+        self._send_buffer = bytearray()
         self._writing = False
         self._eof_pending = False
         self._closing = False
         self._reading = asyncio.Event()  # reading form conn, write to endpoint
         self._reading.set()
         self._transport = None
+        self._connected = False
 
-        # eof recieved
-        self.stream_status = OPEN
+    def connection_made(self, transport):
+        self._transport = transport
+        self._connection_made()
+
+    def _connection_made(self):
+        self._connected = True
+        if self._send_buffer:
+            data = bytes(self._send_buffer)
+            self._send_buffer.clear()
+            self.write(data)
+            self._send_buffer = None
+
+    def connection_lost(self, _):
+        self._conn.close_stream(self._stream_id)
+
+    def pause_writing(self):
+        self._reading.clear()
+
+    def resume_writing(self):
+        self._reading.set()
+
+    def data_received(self, data):
+        '''data recieved from endpoint, send to connection'''
+        if self.stream_status & EOF_FROM_ENDPOINT:
+            return
+        self._from_endpoint_count += 1
+        self._recv_buffer.extend(data)
+        if len(self._recv_buffer) > self._conn.bufsize * 2:
+            self._transport.pause_reading()
+        asyncio.ensure_future(self._maybe_start_writing())
+
+    async def _maybe_start_writing(self):
+        if self._writing:
+            return
+        self._writing = True
+        while self._recv_buffer:
+            # write buffer to conn
+            more_padding = self._from_endpoint_count < 5
+            data_len = len(self._recv_buffer)
+            frame_size_limit = self._conn.FRAME_SIZE_LIMIT2 if more_padding else self._conn.FRAME_SIZE_LIMIT
+            if data_len > frame_size_limit and (more_padding or random.random() < self._conn.FRAME_SPLIT_FREQ):
+                data = self._buf_read(random.randint(64, frame_size_limit))
+                await self.send_one_data_frame(data, more_padding, frag=len(data) < data_len)
+                await asyncio.sleep(0.01)
+            else:
+                data = self._buf_read()
+                await self.send_one_data_frame(data, more_padding)
+        if self._eof_pending:
+            self._eof_received()
+        if self._closing:
+            self._close()
+        # after self._recv_buffer is empty
+        self._writing = False
+        self._transport.resume_reading()
+
+    def _buf_read(self, n=None):
+        if not n:
+            n = self._conn.bufsize
+        if len(self._recv_buffer) <= n:
+            data = bytes(self._recv_buffer)
+            self._recv_buffer.clear()
+        else:
+            data = bytes(self._recv_buffer[:n])
+            del self._recv_buffer[:n]
+        return data
+
+    async def send_one_data_frame(self, data, more_padding, frag=False):
+        if self.stream_status & EOF_FROM_ENDPOINT:
+            return
+        await self._conn.acquire(len(data))
+        self._conn.send_one_data_frame(self._stream_id, data, more_padding, frag=frag)
+
+    def get_write_buffer_size(self):
+        return len(self._recv_buffer)
+
+    def eof_received(self):
+        if self._recv_buffer:
+            self._eof_pending = True
+            return
+        self._eof_received()
+
+    def _eof_received(self):
+        if not self.stream_status & EOF_FROM_ENDPOINT:
+            self.stream_status |= EOF_FROM_ENDPOINT
+            self._conn.send_frame(HEADERS, END_STREAM_FLAG, self._stream_id)
+        if self.stream_status == CLOSED:
+            self._conn.close_stream(self._stream_id)
+
+    def close(self):
+        if self._closing:
+            return
+        self._closing = True
+        if self._transport:
+            self._transport.close()
+        if self._recv_buffer:
+            return
+        self._close()
+
+    def _close(self):
+        if self.stream_status != CLOSED:
+            self._conn.send_frame(RST_STREAM, 0, self._stream_id)
+            self.stream_status = CLOSED
+        self._reading.set()
+
+    def is_closing(self):
+        return self._closing
+
+    def write(self, data):
+        if self._connected:
+            self._transport.write(data)
+        else:
+            self._send_buffer.extend(data)
+
+    def write_eof(self):
+        self._transport.write_eof()
+
+    async def drain(self):
+        if self.is_closing():
+            raise ConnectionResetError
+        await self._reading.wait()
+
+
+class HxsForwardContext(HxsStreamContext):
+    def __init__(self, conn, stream_id, host, send_w, recv_w):
+        super().__init__(conn, stream_id, host)
+
+        self._fc_enable = bool(send_w)
+        if send_w or stream_id == 0:
+            self._monitor_task = asyncio.ensure_future(self.monitor())
+        self.send_w = send_w or float('inf')
+        self.recv_w = recv_w
+
         # traffic, for log
         self.traffic_from_endpoint = 0
         self.traffic_from_conn = 0
-        self._from_endpoint_count = 0
+
         # traffic, for flow control
         self.sent_rate = 0
         self.sent_rate_max = 0
@@ -191,19 +330,20 @@ class ForwardContext:
 
         self._monitor_task = None
 
-        self._conn = conn
-        self._stream_id = stream_id
-        self._fc_enable = bool(send_w)
-        if send_w or stream_id == 0:
-            self._monitor_task = asyncio.ensure_future(self.monitor())
-        self.send_w = send_w or float('inf')
         self._lock = asyncio.Lock()
         self._window_open = asyncio.Event()  # blocked when cannot send to connection
         self._window_open.set()
-        self.recv_w = recv_w
+
         self._recv_w_max = recv_w
         self._recv_w_min = recv_w
         self._recv_w_counter = 0
+
+    async def send_one_data_frame(self, data, more_padding, frag=False):
+        if self.stream_status & EOF_FROM_ENDPOINT:
+            return
+        await self._conn.acquire(len(data))
+        await self.acquire(len(data))
+        self._conn.send_one_data_frame(self._stream_id, data, more_padding, frag=frag)
 
     async def acquire(self, size):
         ''' called before send data to connection, or maybe after'''
@@ -304,116 +444,9 @@ class ForwardContext:
             self.recv_rate = 0.2 * self.recv_counter + self.recv_rate * 0.8
             self.recv_counter = 0
 
-    def data_received(self, data):
-        '''data recieved from endpoint, send to connection'''
-        if self.stream_status & EOF_FROM_ENDPOINT:
-            return
-        self._from_endpoint_count += 1
-        self._buffer.extend(data)
-        if len(self._buffer) > self._conn.bufsize * 2:
-            self._transport.pause_reading()
-        asyncio.ensure_future(self._maybe_start_writing())
-
-    async def _maybe_start_writing(self):
-        if self._writing:
-            return
-        self._writing = True
-        while self._buffer:
-            # write buffer to conn
-            more_padding = self._from_endpoint_count < 5
-            data_len = len(self._buffer)
-            frame_size_limit = self._conn.FRAME_SIZE_LIMIT2 if more_padding else self._conn.FRAME_SIZE_LIMIT
-            if data_len > frame_size_limit and (more_padding or random.random() < self._conn.FRAME_SPLIT_FREQ):
-                data = self._buf_read(random.randint(64, frame_size_limit))
-                await self.send_one_data_frame(data, more_padding, frag=len(data) < data_len)
-                await asyncio.sleep(0.01)
-            else:
-                data = self._buf_read()
-                await self.send_one_data_frame(data, more_padding)
-        if self._eof_pending:
-            self._eof_received()
-        if self._closing:
-            self._close()
-        # after self._buffer is empty
-        self._writing = False
-        self._transport.resume_reading()
-
-    def _buf_read(self, n=None):
-        if not n:
-            n = self._conn.bufsize
-        if len(self._buffer) <= n:
-            data = bytes(self._buffer)
-            self._buffer.clear()
-        else:
-            data = bytes(self._buffer[:n])
-            del self._buffer[:n]
-        return data
-
-    async def send_one_data_frame(self, data, more_padding, frag=False):
-        if self.stream_status & EOF_FROM_ENDPOINT:
-            return
-        await self._conn.acquire(len(data))
-        await self.acquire(len(data))
-        self._conn.send_one_data_frame(self._stream_id, data, more_padding, frag=frag)
-
-    def get_write_buffer_size(self):
-        return len(self._buffer)
-
-    def eof_received(self):
-        if self._buffer:
-            self._eof_pending = True
-            return
-        self._eof_received()
-
-    def _eof_received(self):
-        if not self.stream_status & EOF_FROM_ENDPOINT:
-            self.stream_status |= EOF_FROM_ENDPOINT
-            self._conn.send_frame(HEADERS, END_STREAM_FLAG, self._stream_id)
-        if self.stream_status == CLOSED:
-            self._conn.close_stream(self._stream_id)
-
-    def connection_made(self, transport):
-        self._transport = transport
-
-    def connection_lost(self, _):
-        self._conn.close_stream(self._stream_id)
-
     def close(self):
-        if self._closing:
-            return
-        self._closing = True
+        super().close()
         self.window_update(float('+inf'))
-        if self._transport:
-            self._transport.close()
-        if self._buffer:
-            return
-        self._close()
-
-    def _close(self):
-        if self.stream_status != CLOSED:
-            self._conn.send_frame(RST_STREAM, 0, self._stream_id)
-            self.stream_status = CLOSED
-        self._reading.set()
-
-    def is_closing(self):
-        return self._closing
-
-    def pause_writing(self):
-        self._reading.clear()
-
-    def resume_writing(self):
-        self._reading.set()
-
-    def write(self, data):
-        self._transport.write(data)
-
-    def write_eof(self):
-        self._transport.write_eof()
-
-    async def drain(self):
-        if self.is_closing():
-            raise ConnectionResetError
-        await self._reading.wait()
 
 
 class HxsConnection(HC):
@@ -457,7 +490,7 @@ class HxsConnection(HC):
 
         self._remote_connected_event = {}
         self._stream_ctx = {}
-        self._stream_ctx[0] = ForwardContext(conn=self, stream_id=0, host=('', 0), send_w=0, recv_w=0)
+        self._stream_ctx[0] = HxsForwardContext(conn=self, stream_id=0, host=('', 0), send_w=0, recv_w=0)
         self._stream_task = {}
         self._last_recv = time.monotonic()
         self._last_send = time.monotonic()
@@ -647,10 +680,11 @@ class HxsConnection(HC):
                             self._stream_ctx[stream_id].stream_status = CLOSED
                             self.send_frame(RST_STREAM, 0, stream_id)
                 elif frame_type == RST_STREAM:  # 3
-                    self._stream_ctx[stream_id].stream_status = CLOSED
-                    if stream_id in self._remote_connected_event:
-                        self._remote_connected_event[stream_id].set()
-                    self.close_stream(stream_id)
+                    if stream_id in self._stream_ctx:
+                        self._stream_ctx[stream_id].stream_status = CLOSED
+                        if stream_id in self._remote_connected_event:
+                            self._remote_connected_event[stream_id].set()
+                        self.close_stream(stream_id)
                 elif frame_type == SETTINGS:
                     if stream_id & 1:
                         self._settings_async_drain = True
@@ -940,7 +974,7 @@ class HxsConnection(HC):
                 self.logger.error('MAX_STREAM_ID reached')
                 self._manager.remove(self)
 
-            self._stream_ctx[stream_id] = ForwardContext(self, stream_id, (addr, port), 0, 0)
+            self._stream_ctx[stream_id] = HxsForwardContext(self, stream_id, (addr, port), 0, 0)
             self.send_frame(HEADERS, OPEN, stream_id, payload)
             # asyncio.ensure_future(self.send_ping_sequence())
             # self._ponging = max(self._ponging, 4)
