@@ -727,7 +727,6 @@ class HxsConnection(HC):
                             self.close_stream(stream_id)
                     for stream_id, event in self._remote_connected_event.items():
                         if stream_id > max_stream_id:
-                            self._stream_ctx[stream_id].stream_status = CLOSED
                             event.set()
                             self.close_stream(stream_id)
                 elif frame_type == WINDOW_UPDATE:  # 8
