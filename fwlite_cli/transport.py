@@ -4,11 +4,10 @@ from asyncio.log import logger
 
 
 class FWTransport(transports.Transport):
-    def __init__(self, protocol, peer=None, extra=None):
+    def __init__(self, protocol, peer_transport=None, extra=None):
         super().__init__(extra)
         self._protocol = protocol  # reader protocol
-        self._peer = peer
-        self._protocol.connection_made(self)
+        self._peer_transport = peer_transport
         self._closing = False
         self._paused = False  # Reading
         self._conn_lost = 0
@@ -16,13 +15,16 @@ class FWTransport(transports.Transport):
         self._eof_from_conn = False  # eof from Conn, sent to Endpoint
         self._empty_waiter = None
         self._protocol_paused = False
+        self._protocol.connection_made(self)
         # self._set_write_buffer_limits()
 
     def get_peer(self, protocol):
-        # set self._peer
-        assert self._peer is None
-        self._peer = FWTransport(protocol, self)
-        return self._peer
+        # set self._peer_transport
+        assert self._peer_transport is None
+        self._peer_transport = FWTransport(protocol, self)
+        if self._paused:
+            self._peer_transport.pause_writing()
+        return self._peer_transport
 
     # BaseTransport
     def is_closing(self):
@@ -42,7 +44,7 @@ class FWTransport(transports.Transport):
         self._closing = True
         self.write_eof()
         self._conn_lost += 1
-        self._peer.close()
+        self._peer_transport.close()
         loop = get_running_loop()
         loop.call_soon(self._call_connection_lost, None)
 
@@ -89,7 +91,8 @@ class FWTransport(transports.Transport):
         if self._closing or self._paused:
             return
         self._paused = True
-        self._peer.pause_writing()
+        if self._peer_transport:
+            self._peer_transport.pause_writing()
 
     def resume_reading(self):
         """Resume the receiving end.
@@ -100,7 +103,7 @@ class FWTransport(transports.Transport):
         if self._closing or not self._paused:
             return
         self._paused = False
-        self._peer.resume_writing()
+        self._peer_transport.resume_writing()
 
     # called by Writer
     def write(self, data):
@@ -124,7 +127,7 @@ class FWTransport(transports.Transport):
                 logger.warning('FWTransport.write() raised exception.')
             self._conn_lost += 1
             return
-        self._peer.data_received(data)
+        self._peer_transport.data_received(data)
 
     def can_write_eof(self):
         """Return True if this transport supports write_eof(), False if not."""
@@ -140,7 +143,7 @@ class FWTransport(transports.Transport):
         if self._eof:
             return
         self._eof = True
-        self._peer.eof_received()
+        self._peer_transport.eof_received()
 
     def abort(self):
         """Close the transport immediately.
@@ -149,4 +152,4 @@ class FWTransport(transports.Transport):
         The protocol's connection_lost() method will (eventually) be
         called with None as its argument.
         """
-        self._peer.close()
+        self._peer_transport.close()
