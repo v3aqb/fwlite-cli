@@ -30,8 +30,6 @@ from asyncio import get_running_loop, StreamReader, StreamReaderProtocol, Stream
 
 from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor, SS_SUBKEY_2022
 
-from .transport import FWTransport
-
 
 def set_logger():
     logger = logging.getLogger('ss')
@@ -74,6 +72,7 @@ class SSConn:
         self.logger = logging.getLogger('ss')
         self.proxy = proxy
         self._limit = limit
+        self._loop = None
         ssmethod, sspassword = self.proxy.username, self.proxy.password
         if sspassword is None:
             ssmethod, sspassword = base64.b64decode(ssmethod).decode().split(':', 1)
@@ -81,7 +80,7 @@ class SSConn:
 
         self._address = None
         self._port = 0
-        self._transport = None
+        self._c_protocol = None
         self._remote_reader = None
         self._remote_writer = None
         self._task = None
@@ -90,6 +89,7 @@ class SSConn:
         self.__crypto = Encryptor(sspassword, ssmethod, role=0)
         self._connected = False
         self._last_active = time.monotonic()
+        self._closing = False
         # if eof recieved
         self._remote_eof = False
         self._client_eof = False
@@ -134,12 +134,12 @@ class SSConn:
                 fut = self._remote_reader.readexactly(data_len + 16)
                 data = await asyncio.wait_for(fut, timeout=4)
                 data = self.__crypto.decrypt(data)
-                self._transport.write(data)
+                self._c_protocol.data_received(data)
                 await self.drain()
             except (asyncio.TimeoutError, InvalidTag, ValueError, asyncio.IncompleteReadError, ConnectionError) as err:
                 self.logger.error('read first chunk fail: %r', err, exc_info=False)
                 self._remote_eof = True
-                self._transport.close()
+                self.close(err)
                 return
 
         while True:
@@ -147,34 +147,35 @@ class SSConn:
                 data = await self._read()
                 self._last_active = time.monotonic()
                 self._data_recved = True
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as err:
                 idle_time = time.time() - self._last_active
                 if self._client_eof and idle_time > 60:
-                    self._transport.close()
+                    self.close(err)
                     break
                 continue
-            except (BufEmptyError, asyncio.IncompleteReadError, InvalidTag, IncompleteChunk):
-                self._transport.close()
+            except (BufEmptyError, asyncio.IncompleteReadError, InvalidTag, IncompleteChunk, ConnectionError) as err:
+                self.close(err)
                 break
 
             if not data:
                 break
             try:
-                self._transport.write(data)
+                self._c_protocol.data_received(data)
                 await self.drain()
-            except ConnectionError:
+            except ConnectionError as err:
                 self._remote_eof = True
-                self._transport.close()
+                self.close(err)
                 return
         self._remote_eof = True
         try:
-            self._transport.write_eof()
+            self._c_protocol.eof_received()
         except ConnectionError:
             pass
 
     async def create_connection(self, protocol, addr, port, timeout, tcp_nodelay):
         self._address = addr
         self._port = port
+        self._loop = asyncio.get_running_loop()
         from .connection import open_connection
         self._remote_reader, self._remote_writer, _ = await open_connection(
             self.proxy.hostname,
@@ -185,16 +186,20 @@ class SSConn:
             limit=self._limit,
             tcp_nodelay=tcp_nodelay)
         asyncio.ensure_future(self._forward_from_remote())
-        self._transport = FWTransport(self)
-        return self._transport.get_peer(protocol)
+        self._c_protocol = protocol
+        return self
 
-    def connection_made(self, _):
-        pass
+    def close(self, exc=None):
+        if not self._closing:
+            self._closing = True
+            self._remote_writer.close()
+            self._reading.set()
+            self._loop.call_soon(self._call_connection_lost, exc)
 
-    def connection_lost(self, _):
-        self._remote_writer.close()
+    def is_closing(self):
+        return self._closing
 
-    def data_received(self, data):
+    def write(self, data):
         """encrypt, sent to server"""
         self._last_active = time.monotonic()
         if not self._connected:
@@ -211,22 +216,32 @@ class SSConn:
         else:
             self._remote_writer.write(self.__crypto.encrypt(data))
 
+    def set_write_buffer_size(self, high=None, low=None):
+        return self._remote_writer.transport.set_write_buffer_size(high, low)
+
     def get_write_buffer_size(self):
         return self._remote_writer.transport.get_write_buffer_size()
 
-    def eof_received(self):
+    def write_eof(self):
         if self._client_eof:
             return
         self._client_eof = True
         self._remote_writer.write_eof()
 
-    def pause_writing(self):
+    def pause_reading(self):
         self._reading.clear()
 
-    def resume_writing(self):
+    def resume_reading(self):
         self._reading.set()
 
     async def drain(self):
-        if self._transport.is_closing():
+        if self.is_closing():
             raise ConnectionResetError
         await self._reading.wait()
+
+    def _call_connection_lost(self, exc):
+        try:
+            if self._c_protocol:
+                self._c_protocol.connection_lost(exc)
+        finally:
+            self._remote_writer.close()

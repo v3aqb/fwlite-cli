@@ -93,6 +93,7 @@ class ConnectionManager:
 
     async def get_connection(self, proxy, timeout, limit, tcp_nodelay):
         # choose / create and return a connection
+        loop = get_running_loop()
         async with self._lock:
             if len(self.connection_list) < HC.MAX_CONNECTION and\
                     not [conn for conn in self.connection_list if not conn.is_busy()]:
@@ -100,7 +101,7 @@ class ConnectionManager:
                     if not self.connection_list:
                         raise ConnectionDenied(self._err)
                 else:
-                    connection = Hxs2Connection(proxy, self, limit)
+                    connection = Hxs2Connection(proxy, self, limit, loop)
                     try:
                         await connection.get_key(timeout, tcp_nodelay)
                     except Exception as err:
@@ -124,8 +125,8 @@ class ConnectionManager:
 class Hxs2Connection(HxsConnection):
     bufsize = 65535 - 22
 
-    def __init__(self, proxy, manager, limit):
-        super().__init__(proxy, manager, limit)
+    def __init__(self, proxy, manager, limit, loop):
+        super().__init__(proxy, manager, limit, loop)
         self.logger = logging.getLogger('hxs2')
 
     async def get_key(self, timeout, tcp_nodelay):
