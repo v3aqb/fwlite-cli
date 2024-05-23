@@ -40,7 +40,6 @@ dn = re.compile(r'^[0-9a-zA-Z\-\._]+$')
 
 
 class V2Filter:
-    KEYLEN = 9
 
     def __init__(self, lst=None):
         self.host_endswith = set()
@@ -90,7 +89,7 @@ class V2Filter:
             else:
                 self._add_domain(rule)
         except ValueError as err:
-            logger.error(repr(err))
+            logger.debug(repr(err))
         else:
             self.rules.add(rule)
             self.expire[rule] = expire
@@ -166,6 +165,7 @@ def test():
         for line in f:
             gfwlist.add(line)
 
+    gfwlist.add('85.17.73.0/24')
     print('loading: %fs' % (time.perf_counter() - t))
     print('result for inxian: %r' % gfwlist.match(None, 'www.inxian.com'))
     print('result for twitter: %r' % gfwlist.match(None, 'twitter.com'))
@@ -184,7 +184,6 @@ def test():
     t = time.perf_counter()
     for _ in range(10000):
         gfwlist.match(None, host)
-    print(f'KEYLEN = {gfwlist.KEYLEN}')
     print(f'10000 query for {url}, {time.perf_counter() - t}s')
 
 
