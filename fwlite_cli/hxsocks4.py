@@ -23,7 +23,7 @@ import time
 import base64
 import logging
 import asyncio
-from asyncio import Lock, get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
+from asyncio import Lock, get_running_loop
 
 from hxcrypto import InvalidTag, AEncryptor
 
@@ -45,16 +45,6 @@ def set_logger():
 set_logger()
 
 CONN_MANAGER = {}  # (server, parentproxy): manager
-
-
-async def hxs4_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
-    loop = get_running_loop()
-    reader = StreamReader(limit=limit, loop=loop)
-    protocol = StreamReaderProtocol(reader, loop=loop)
-    transport = await hxs4_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay)
-    # protocol is for Reader, transport is for Writer
-    writer = StreamWriter(transport, protocol, reader, loop)
-    return reader, writer
 
 
 async def hxs4_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay):

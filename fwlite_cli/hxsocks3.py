@@ -25,7 +25,7 @@ import logging
 import asyncio
 from ipaddress import ip_address
 
-from asyncio import get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
+from asyncio import get_running_loop
 
 import websockets.client
 from websockets.exceptions import ConnectionClosed
@@ -74,16 +74,6 @@ set_logger()
 
 
 CONN_MANAGER = {}  # (server, parentproxy): manager
-
-
-async def hxs3_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
-    loop = get_running_loop()
-    reader = StreamReader(limit=limit, loop=loop)
-    protocol = StreamReaderProtocol(reader, loop=loop)
-    transport = await hxs3_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay)
-    # protocol is for Reader, transport is for Writer
-    writer = StreamWriter(transport, protocol, reader, loop)
-    return reader, writer
 
 
 async def hxs3_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay):

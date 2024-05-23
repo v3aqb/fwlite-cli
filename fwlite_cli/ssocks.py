@@ -26,7 +26,6 @@ import time
 import random
 import logging
 import asyncio
-from asyncio import get_running_loop, StreamReader, StreamReaderProtocol, StreamWriter
 
 from hxcrypto import BufEmptyError, InvalidTag, is_aead, Encryptor, SS_SUBKEY_2022
 
@@ -46,16 +45,6 @@ set_logger()
 
 class IncompleteChunk(Exception):
     pass
-
-
-async def ss_connect(proxy, timeout, addr, port, limit, tcp_nodelay):
-    loop = get_running_loop()
-    reader = StreamReader(limit=limit, loop=loop)
-    protocol = StreamReaderProtocol(reader, loop=loop)
-    transport = await ss_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay)
-    # protocol is for Reader, transport is for Writer
-    writer = StreamWriter(transport, protocol, reader, loop)
-    return reader, writer
 
 
 async def ss_create_connection(protocol, addr, port, proxy, timeout, limit, tcp_nodelay):
