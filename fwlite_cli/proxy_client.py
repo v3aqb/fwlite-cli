@@ -48,7 +48,7 @@ class ProxyClient:
                 self._stage = 2
                 return None, b''.join([b"\x05\x01\x00\x03",
                                       bytes((len(self._addr[0].encode()), )),
-                                      self._addr.encode(),
+                                      self._addr[0].encode(),
                                       struct.pack(b">H", self._addr[1])])
         if self._stage == 2:
             self._recv_buf += data
