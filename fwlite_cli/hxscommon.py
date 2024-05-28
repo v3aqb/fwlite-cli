@@ -169,6 +169,7 @@ class HxsStreamContext(asyncio.Transport):
         self._stream_id = stream_id
         self.host = host  # (host, port)
         self._loop = loop
+        self.drain_lock = asyncio.Lock()
 
         self.last_active = time.monotonic()
 
