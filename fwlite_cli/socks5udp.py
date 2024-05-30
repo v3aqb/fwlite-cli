@@ -92,8 +92,8 @@ class Socks5UDPServer:
             try:
                 self.last_send = time.monotonic()
                 await self.on_client_recv(data[3:], client_addr)
-            except OSError:
-                self.logger.warning('udp_server send OSError')
+            except OSError as err:
+                self.logger.warning('udp_server send %r', err, exc_info=True)
         self.running = False
         self.close_inactive_relay()
         self.logger.info('udp server finish, %ds, running: %s',
