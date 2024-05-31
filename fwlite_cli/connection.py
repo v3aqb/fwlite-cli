@@ -40,7 +40,10 @@ def set_logger():
 set_logger()
 
 
-async def _create_connection(protocol, addr, port, timeout, iplist, tcp_nodelay=True):
+async def _create_connection(protocol, addr, port, timeout, iplist=None, tcp_nodelay=True):
+    '''
+        iplist: for Hosts only
+    '''
     loop = asyncio.get_running_loop()
     if iplist:
         # ipv4 goes first
@@ -85,7 +88,7 @@ async def create_connection(protocol, addr, port, proxy=None, timeout=8, iplist=
     loop = asyncio.get_running_loop()
     if not proxy or not proxy.proxy:
         transport = await _create_connection(protocol, addr, port, timeout, iplist, tcp_nodelay)
-        # transport.set_write_buffer_size(limit)
+        transport.set_write_buffer_limits(limit)
         return transport
     if proxy.scheme == 'ss':
         from .ssocks import ss_create_connection
