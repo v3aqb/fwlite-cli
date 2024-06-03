@@ -192,8 +192,7 @@ class Hxs3Connection(HxsConnection):
             max_size=self._limit * 2,
             max_queue=2,
             read_limit=self._limit * 2,
-            write_limit=self._limit * 2,
-            tcp_nodelay=tcp_nodelay)
+            write_limit=self._limit * 2)
         self._socport = self._remote_writer.local_address[1]
 
         # prep key exchange request
@@ -232,7 +231,7 @@ class Hxs3Connection(HxsConnection):
             try:
                 ct_ = self._sendq.get_nowait()
             except asyncio.QueueEmpty:
-                return
+                break
             if self.connection_lost:
                 self._sendq.task_done()
                 continue
