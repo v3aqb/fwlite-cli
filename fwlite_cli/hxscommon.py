@@ -240,7 +240,10 @@ class HxsStreamContext(asyncio.Transport):
             self.abort()
         # after self._recv_buffer is empty
         self._writing = False
-        self._protocol.resume_writing()
+        try:
+            self._protocol.resume_writing()
+        except AssertionError:
+            pass
 
     def _buf_read(self, n=None):
         if not n:
