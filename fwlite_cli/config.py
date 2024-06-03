@@ -640,7 +640,7 @@ class Config:
             for s in signals:
                 self.loop.add_signal_handler(
                     s, lambda s=s: asyncio.create_task(self.shutdown(s)))
-        except (AttributeError, NotImplementedError):
+        except (AttributeError, NotImplementedError, RuntimeError):
             pass
         try:
             self.loop.run_forever()
@@ -654,9 +654,9 @@ class Config:
 
     def hello(self):
         from . import __version__
-        hello = 'FWLite %s with asyncio, ' % __version__
+        hello = f'FWLite {__version__} with asyncio, '
         import platform
-        hello += 'python %s %s' % (platform.python_version(), platform.architecture()[0])
+        hello += f'python {platform.python_version()} {platform.architecture()[0]}'
 
         if self.GUI:
             hello += ' with GUI'
