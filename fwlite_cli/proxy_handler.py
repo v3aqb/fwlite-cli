@@ -1019,6 +1019,7 @@ class http_handler(BaseProxyHandler):
             if 'Authorization' not in self.headers:
                 self.send_response(401)
                 self.send_header("WWW-Authenticate", 'Basic')
+                self.send_header("Content-Length", '0')
                 self.end_headers()
                 return
 
@@ -1027,6 +1028,7 @@ class http_handler(BaseProxyHandler):
             if _password != self.conf.remotepass:
                 self.send_response(401)
                 self.send_header("WWW-Authenticate", 'Basic')
+                self.send_header("Content-Length", '0')
                 self.end_headers()
                 return
 
@@ -1084,16 +1086,16 @@ class http_handler(BaseProxyHandler):
             # accept a json encoded tuple: (str name, str proxy)
             name, proxy = json.loads(body)
             if 'FWLITE:' in name:
-                self.send_error(401)
+                self.send_error(400)
                 return
             if name == '_L0C4L_':
-                self.send_error(401)
+                self.send_error(400)
                 return
             try:
                 self.conf.add_proxy(name, proxy)
                 self.write(200)
             except ValueError:
-                self.write(401)
+                self.send_error(400)
             return
         if parse.path.startswith('/api/proxy/') and self.command == 'DELETE':
             try:
