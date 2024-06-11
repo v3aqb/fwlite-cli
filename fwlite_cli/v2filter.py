@@ -27,6 +27,9 @@ import re
 from threading import Thread
 import urllib.parse
 import logging
+
+from hxcrypto.iv_checker import BloomFilter
+
 try:
     from .ipfilter import NetFilter
 except ImportError:
@@ -158,8 +161,23 @@ class V2Filter:
             sys.stdout.flush()
 
 
+class V2FilterBloom(V2Filter):
+    def __init__(self, lst=None):
+        self.host_endswith = BloomFilter(30000, 0.01)
+        self.host_match = BloomFilter(30000, 0.01)
+        self.net_filter = NetFilter()
+        self.rules = BloomFilter(30000, 0.01)
+        self.expire = {}
+        if lst:
+            for rule in lst:
+                self.add(rule)
+
+    def remove(self, rule, delay=None):
+        raise NotImplementedError
+
+
 def test():
-    gfwlist = V2Filter()
+    gfwlist = V2FilterBloom()
     t = time.perf_counter()
     with open('../proxy-list.txt', encoding='utf8') as f:
         for line in f:
