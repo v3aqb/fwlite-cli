@@ -34,7 +34,7 @@ from hxcrypto import ECC, AEncryptor, InvalidSignature, method_supported
 from hxcrypto.encrypt import EncryptorStream
 
 from .parent_proxy import ParentProxy
-from .hxs_udp2 import on_dgram_recv
+from .hxs_udp2 import parse_dgram2, on_dgram_recv
 
 DEFAULT_METHOD = 'chacha20-ietf-poly1305'  # for hxsocks2 handshake
 FAST_METHOD = 'chacha20-ietf-poly1305'
@@ -739,7 +739,8 @@ class HxsConnection(HC):
                         size = struct.unpack('>I', payload.read(4))[0]
                         self._stream_ctx[stream_id].window_update(size)
                 elif frame_type == UDP_DGRAM2:  # 21
-                    on_dgram_recv(payload)
+                    _, udp_sid, data = parse_dgram2(payload)
+                    on_dgram_recv(udp_sid, data)
             except Exception as err:
                 self.logger.error('CONNECTION BOOM! %r', err, exc_info=True)
                 break

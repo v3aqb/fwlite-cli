@@ -78,8 +78,7 @@ def parse_dgram2(payload):
     return client_id, udp_sid, data
 
 
-def on_dgram_recv(payload):
-    _, udp_sid, data = parse_dgram2(payload)
+def on_dgram_recv(udp_sid, data):
     if udp_sid in UDP_RELAY2_STORE:
         relay = UDP_RELAY2_STORE[udp_sid]
         asyncio.ensure_future(relay.on_remote_recv(data))
