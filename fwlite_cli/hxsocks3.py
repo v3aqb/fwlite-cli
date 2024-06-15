@@ -125,6 +125,8 @@ class ConnectionManager:
                         await connection.get_key(timeout, tcp_nodelay)
                     except Exception as err:
                         asyncio.ensure_future(connection.wait_closed())
+                        logger = logging.getLogger('hxs3')
+                        logger.info('get_key() fail: %r %s', err, proxy.name, exc_info=True)
                         self._err = repr(err)
                         self._err_time = time.time()
                         if not self.connection_list:
@@ -165,7 +167,9 @@ class Hxs3Connection(HxsConnection):
         self.logger.info('%s connect to server', self.name)
         ctx = None
         scheme = 'ws'
-        hostname = self.proxy.hostname
+        hostname = self.proxy.query.get('host', [self.proxy.hostname, ])[0]
+        host = self.proxy.hostname
+        port = self.proxy.port
         if self.proxy.scheme == 'hxs3s':
             scheme = 'wss'
             # ctx = ssl.create_default_context()
@@ -173,20 +177,18 @@ class Hxs3Connection(HxsConnection):
             # ctx.set_alpn_protocols(["http/1.1"])
             # ctx.set_ciphers(CIPHERS)
             if 'insecure' in self.proxy.query or is_ipaddr(self.proxy.hostname):
-                hostname = self.proxy.query.get('host', [self.proxy.hostname, ])[0]
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
-        else:
-            hostname = None
 
-        if ":" in self.proxy.hostname:
-            url = '%s://[%s]:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
+        if ":" in hostname:
+            url = f'{scheme}://[{hostname}]:{self.proxy.port}{self.proxy.parse.path}'
         else:
-            url = '%s://%s:%d%s' % (scheme, self.proxy.hostname, self.proxy.port, self.proxy.parse.path)
+            url = f'{scheme}://{hostname}:{self.proxy.port}{self.proxy.parse.path}'
 
         self._remote_writer = await websockets.client.connect(
             url, ssl=ctx, compression=None,
-            server_hostname=hostname,
+            host=host,
+            port=port,
             ping_interval=None,
             ping_timeout=None,
             max_size=self._limit * 2,
