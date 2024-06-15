@@ -76,6 +76,7 @@ class DNSCache:
 
 
 DC = DNSCache()
+LOCK = {}
 
 
 async def getaddrinfo(host, port):
@@ -86,29 +87,32 @@ async def getaddrinfo(host, port):
 
 
 async def resolve(host, port=None):
-    result = DC.get(host)
-    if result:
-        if isinstance(result, Exception):
-            raise result
-        return result
+    if host not in LOCK:
+        LOCK[host] = asyncio.Lock()
+    async with LOCK[host]:
+        result = DC.get(host)
+        if result:
+            if isinstance(result, Exception):
+                raise result
+            return result
 
-    err = None
-    try:
-        result = await getaddrinfo(host, port)
-        result = [(i[0], i[4][0]) for i in result]
-        DC.put(host, result)
-        return result
-    except (OSError, asyncio.TimeoutError, LookupError) as err_:
-        err = err_
-    DC.put(host, err)
-    raise err
+        err = None
+        try:
+            result = await getaddrinfo(host, port)
+            result = [(i[0], i[4][0]) for i in result]
+            DC.put(host, result)
+            return result
+        except (OSError, asyncio.TimeoutError, LookupError) as err_:
+            err = err_
+        DC.put(host, err)
+        raise err
 
 
 class Resolver:
     def __init__(self, cic):
         self.cic = cic
         self.bad_ip = set(cic.conf.userconf.dget('dns', 'bad_ip', '').split('|'))
-        self.zero = ip_address(u'0.0.0.0')
+        self.zero = ip_address('0.0.0.0')
 
     def is_poisoned(self, domain, mode):
         if self.cic.get_proxy_o and self.cic.get_proxy_o.isgfwed_resolver(domain, mode):
