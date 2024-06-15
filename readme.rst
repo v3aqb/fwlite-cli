@@ -9,6 +9,8 @@ Support Python 3.8 and above.
 
 Current Version: 0
 
+2024.06.16: udp dgram is now rate controled, update server required
+
 2023.10.24: update hxsocks4 protocol, update server required
 
 2022.07.24: update hxsocks authentication method. before updating to this version, make sure your hxsocks server is updated.
