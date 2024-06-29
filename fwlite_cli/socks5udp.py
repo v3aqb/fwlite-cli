@@ -111,6 +111,9 @@ class Socks5UDPServer:
         elif addrtype == 4:  # ipv6
             addr = data_io.read(16)
             addr = socket.inet_ntop(socket.AF_INET6, addr)
+        else:
+            self.logger.error('Socks5UDPServer.on_client_recv, bad addrtype: %r', addrtype)
+            return
         port = struct.unpack(b">H", data_io.read(2))[0]
         dgram = data_io.read()
 
