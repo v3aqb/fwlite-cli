@@ -82,7 +82,6 @@ class ForwardContext:
         self.writeable = True
         self.readable = True
         # result
-        self.timeout = None
         self.err = None
         # count
         self.fcc = 0
@@ -174,6 +173,8 @@ class BaseProxyHandler(BaseHandler):
         self.retry_count = 0
         self.failed_parents = []
         self.close_connection = True
+        self.timeout = MAX_TIMEOUT2
+        self.ctimeout = MAX_TIMEOUT
 
     def pre_request_init(self):
         super().pre_request_init()
@@ -280,12 +281,12 @@ class BaseProxyHandler(BaseHandler):
             if data:
                 await self._client_writer_write(data)
 
-    async def read_resp_line(self):
+    async def read_resp_line(self, timeout):
         fut = self.remote_reader.readline()
-        response_line = await asyncio.wait_for(fut, self.timeout)
+        response_line = await asyncio.wait_for(fut, timeout)
         split = response_line.split()
         if len(split) < 2:
-            self.logger.error('incomplete response line: %r' % response_line)
+            self.logger.error(f'incomplete response line: {response_line:r}')
             raise ValueError('incomplete response line')
         protocol_version = split[0]
         response_status = split[1]
@@ -451,7 +452,7 @@ class http_handler(BaseProxyHandler):
                 addr, port = self.request_host
                 # addr, port, proxy=None, timeout=3, iplist=None, tunnel=False
                 self.remote_reader, self.remote_writer, self.ppname = \
-                    await open_connection(addr, port, self.pproxy, self.timeout, iplist, False)
+                    await open_connection(addr, port, self.pproxy, self.ctimeout, iplist, False)
 
                 if self.ppname != self.pproxy.name:
                     self._proxylist.insert(0, self.pproxy)
@@ -497,13 +498,13 @@ class http_handler(BaseProxyHandler):
             if 'Expect' in self.headers:
                 try:
                     response_line, protocol_version, response_status, _ = \
-                        await self.read_resp_line()
+                        await self.read_resp_line(self.ctimeout)
                 except (asyncio.TimeoutError, ValueError, OSError) as err:
                     # TODO: probably the server don't handle Expect well.
-                    self.logger.warning('read response line error: %r', err)
+                    self.logger.warning('read response line error(Expect): %r', err)
                 else:
                     if response_status == 100:
-                        hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
+                        hdata = await read_header_data(self.remote_reader, timeout=self.ctimeout)
                         await self._client_writer_write(response_line + hdata)
                     else:
                         skip = True
@@ -572,16 +573,16 @@ class http_handler(BaseProxyHandler):
                         await self.remote_writer.drain()
             # read response line
             timelog = time.monotonic()
-            response_line, protocol_version, response_status, _ = await self.read_resp_line()
+            response_line, protocol_version, response_status, _ = await self.read_resp_line(self.timeout)
             rtime = time.monotonic() - timelog
             # read response headers
             while response_status == 100:
-                hdata = await read_header_data(self.remote_reader, timeout=self.timeout)
+                hdata = await read_header_data(self.remote_reader, timeout=self.ctimeout)
                 await self._client_writer_write(response_line + hdata)
                 response_line, protocol_version, response_status, _ = \
-                    await self.read_resp_line()
+                    await self.read_resp_line(self.ctimeout)
 
-            header_data, response_header = await read_headers(self.remote_reader, self.timeout)
+            header_data, response_header = await read_headers(self.remote_reader, self.ctimeout)
 
             # check response headers
             conntype = response_header.get('Connection', "")
@@ -812,7 +813,7 @@ class http_handler(BaseProxyHandler):
             path = self.path if self.pproxy.name == '_D1R3CT_' else self.shortpath or self.path
             addr, port = parse_hostport(path, 443)
             self.remote_reader, self.remote_writer, self.ppname = \
-                await open_connection(addr, port, self.pproxy, self.timeout, iplist, True)
+                await open_connection(addr, port, self.pproxy, self.ctimeout, iplist, True)
         except ConnectionDenied as err:
             self.logger.warning('%s %s via %s failed on connect! %r',
                                 self.command, self.shortpath or self.path, self.ppname, err)
@@ -883,7 +884,7 @@ class http_handler(BaseProxyHandler):
                 if context.forward_break:
                     return
                 idle_time = time.monotonic() - context.last_active
-                if idle_time > self.timeout and context.remote_eof:
+                if idle_time > self.ctimeout and context.remote_eof:
                     self.logger.debug('forward_from_client timeout with eof recieved from remote')
                     break
                 if idle_time > timeout:
@@ -931,7 +932,7 @@ class http_handler(BaseProxyHandler):
                     self.logger.info('forward_from_remote timeout, retryable')
                     context.forward_break = True
                     break
-                if context.local_eof and idle_time > self.timeout:
+                if context.local_eof and idle_time > self.ctimeout:
                     self.logger.debug('forward_from_remote timeout with eof recieved from client')
                     break
                 continue
@@ -988,12 +989,13 @@ class http_handler(BaseProxyHandler):
     def set_timeout(self):
         if self._proxylist:
             if self.ppname == '_D1R3CT_':
-                self.timeout = self.conf.timeout
+                self.ctimeout = self.conf.timeout
             else:
-                self.timeout = min(2 ** len(self.failed_parents) + self.conf.timeout - 1,
-                                   MAX_TIMEOUT)
+                self.ctimeout = min(2 ** len(self.failed_parents) + self.conf.timeout - 1,
+                                    MAX_TIMEOUT)
         else:
-            self.timeout = MAX_TIMEOUT2
+            self.ctimeout = self.conf.timeout
+        self.timeout = MAX_TIMEOUT2 if self.request_ip.is_private else MAX_TIMEOUT
 
     async def api(self, parse):
         '''
