@@ -329,6 +329,7 @@ class HxsForwardContext(HxsStreamContext):
         self._lock = asyncio.Lock()
         self._window_open = asyncio.Event()  # blocked when cannot send to connection
         self._window_open.set()
+        self.notify_data_recv_job = None
 
         self._recv_w_max = recv_w
         self._recv_w_min = recv_w
@@ -370,12 +371,22 @@ class HxsForwardContext(HxsStreamContext):
         if self.fc_enable:
             self._recv_w_counter += size
             # update window later
-            if self._recv_w_counter > self.recv_w // 2:
-                w_counter = self._recv_w_counter
-                self._recv_w_counter = 0
-                payload = struct.pack('>I', w_counter)
-                payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
-                self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
+            if self._recv_w_counter > self.recv_w // 4:
+                self.notify_data_recv()
+            else:
+                if not self.notify_data_recv_job:
+                    loop = asyncio.get_event_loop()
+                    self.notify_data_recv_job = loop.call_later(0.2, self.notify_data_recv, (True, ))
+
+    def notify_data_recv(self, sched=False):
+        if not sched and self.notify_data_recv_job:
+            self.notify_data_recv_job.cancel()
+        w_counter = self._recv_w_counter
+        self._recv_w_counter = 0
+        payload = struct.pack('>I', w_counter)
+        payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
+        self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
+        self.notify_data_recv_job = None
 
     def enable_fc(self, send_w, recv_w):
         if self.fc_enable:
