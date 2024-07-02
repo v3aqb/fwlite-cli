@@ -99,7 +99,8 @@ class ConnectionManager:
                         self._err = repr(err)
                         self._err_time = time.time()
                         if not self.connection_list:
-                            raise ConnectionResetError(0, 'hxsocks3 get_key() failed: %r' % err) from err
+                            self.logger.warning('hxsocks4 get_key() failed', exc_info=True)
+                            raise ConnectionResetError(0, 'hxsocks4 get_key() failed: %r' % err) from err
                     else:
                         self._err = None
                         self.connection_list.append(connection)
@@ -123,7 +124,7 @@ class Hxs4Connection(HxsConnection):
     async def get_key(self, timeout, tcp_nodelay):
         self.logger.debug('hxsocks4 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
-        self.logger.info('%s connect to server', self.name)
+        self.logger.info('%s connect to server: %s, timeout %.1fs', self.name, self.proxy.hostname, timeout)
         from .connection import open_connection
         self._remote_reader, self._remote_writer, _ = await open_connection(
             self.proxy.hostname,
