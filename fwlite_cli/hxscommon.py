@@ -157,6 +157,7 @@ class HC:
     PONG_FREQ = 0.2
     FRAME_SIZE_LIMIT = 4096 - 22
     FRAME_SIZE_LIMIT2 = 1024 - 22
+    FRAME_SPLIT_COUNT = 5
     FRAME_SPLIT_FREQ = 0.3
     WINDOW_SIZE = (4096, 65536, 1048576 * 4)
 
@@ -224,7 +225,7 @@ class HxsStreamContext(asyncio.Transport):
         self._writing = True
         while self._recv_buffer:
             # write buffer to conn
-            more_padding = self._from_endpoint_count < 5
+            more_padding = self._from_endpoint_count < self._conn.FRAME_SPLIT_COUNT
             data_len = len(self._recv_buffer)
             frame_size_limit = self._conn.FRAME_SIZE_LIMIT2 if more_padding else self._conn.FRAME_SIZE_LIMIT
             if data_len > frame_size_limit and (more_padding or random.random() < self._conn.FRAME_SPLIT_FREQ):
