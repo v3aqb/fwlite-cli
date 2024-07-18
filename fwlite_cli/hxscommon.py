@@ -365,7 +365,7 @@ class HxsForwardContext(HxsStreamContext):
             self._window_open.clear()
 
     def data_recv(self, size):
-        '''data recv from connection, maybe update window'''
+        '''data frame recv from connection, maybe update window'''
         self.traffic_from_conn += size
         self.recv_counter += size
         self.last_active = time.monotonic()
@@ -382,11 +382,12 @@ class HxsForwardContext(HxsStreamContext):
     def notify_data_recv(self, sched=False):
         if not sched and self.notify_data_recv_job:
             self.notify_data_recv_job.cancel()
-        w_counter = self._recv_w_counter
-        self._recv_w_counter = 0
-        payload = struct.pack('>I', w_counter)
-        payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
-        self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
+        if self._recv_w_counter > 0:
+            w_counter = self._recv_w_counter
+            self._recv_w_counter = 0
+            payload = struct.pack('>I', w_counter)
+            payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
+            self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
         self.notify_data_recv_job = None
 
     def enable_fc(self, send_w, recv_w):
@@ -413,11 +414,7 @@ class HxsForwardContext(HxsStreamContext):
         self.recv_w = new_window
         self._recv_w_counter += new_window - old_size
         if self._recv_w_counter > self.recv_w // 2:
-            w_counter = self._recv_w_counter
-            self._recv_w_counter = 0
-            payload = struct.pack('>I', w_counter)
-            payload += bytes(random.randint(self._conn.HEADER_SIZE // 4 - 4, self._conn.HEADER_SIZE - 4))
-            self._conn.send_frame(WINDOW_UPDATE, 0, self._stream_id, payload)
+            self.notify_data_recv()
         self._conn.logger.debug(f'{self._conn.name}: update window form {old_size} to {self.recv_w}')
 
     def reduce_window(self, rtt):
