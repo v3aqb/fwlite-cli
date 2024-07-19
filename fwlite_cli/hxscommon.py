@@ -790,7 +790,7 @@ class HxsConnection(HC):
             self.logger.debug('hxsocks read key exchange respond')
             pklen, scertlen, siglen = struct.unpack(b'!BBB', data.read(3))
 
-            server_key = data.read(pklen)
+            server_dh_key = data.read(pklen)
             auth = data.read(32)
             server_cert = data.read(scertlen)
             signature = data.read(siglen)
@@ -810,10 +810,10 @@ class HxsConnection(HC):
                 self.logger.error('hxs: server %s certificate mismatch! PLEASE CHECK!', server_id)
                 raise ConnectionResetError(0, 'hxs: bad certificate')
 
-            if auth == hmac.new(psw.encode(), pubk + server_key + usn.encode(), hashlib.sha256).digest():
+            if auth == hmac.new(psw.encode(), pubk + server_dh_key + usn.encode(), hashlib.sha256).digest():
                 try:
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
-                    shared_secret = ecc.get_dh_key(server_key)
+                    shared_secret = ecc.get_dh_key(server_dh_key)
                     self.logger.debug('hxs key exchange success')
                     if self._mode & MODE_RC4MD5:
                         self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False, role=2)
