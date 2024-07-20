@@ -108,6 +108,10 @@ class Socks5UDPServer:
         if addrtype == 1:  # ipv4
             addr = data_io.read(4)
             addr = socket.inet_ntoa(addr)
+        elif addrtype == 3:  # hostname
+            addrlen = data_io.read(1)
+            addr = data_io.read(addrlen[0])
+            addr = addr.decode()
         elif addrtype == 4:  # ipv6
             addr = data_io.read(16)
             addr = socket.inet_ntop(socket.AF_INET6, addr)
@@ -117,26 +121,26 @@ class Socks5UDPServer:
         port = struct.unpack(b">H", data_io.read(2))[0]
         dgram = data_io.read()
 
-        remote_ip = ipaddress.ip_address(addr)
-        if remote_ip.is_private:
-            self.logger.warning('remote_ip %s is private, drop', remote_ip)
-            return
         # send recieved dgram to relay
         async with self.lock:
             if client_addr not in self.udp_relay_holder:
                 try:
-                    await self.get_relay(client_addr, (addr, port), remote_ip)
+                    await self.get_relay(client_addr, (addr, port), addr)
                 except OSError as err:
                     self.logger.error('get_relay fail: %r', err)
                     return
         relay = self.udp_relay_holder[client_addr]
         await relay.send(addr, port, dgram, data)
 
-    async def get_relay(self, client_addr, remote_addr, remote_ip):
+    async def get_relay(self, client_addr, remote_addr, addr):
         proxy = self.socks5_handler.conf.parentlist.get(self.socks5_handler.conf.udp_proxy)
         if proxy:
             proxy_list = [proxy, ]
         else:
+            try:
+                remote_ip = ipaddress.ip_address(addr)
+            except ValueError:
+                remote_ip = None
             proxy_list = self.socks5_handler.conf.cic.get_proxy(
                 'udp', remote_addr, 'UDP_ASSOCIATE',
                 remote_ip, self.socks5_handler.mode)
@@ -248,6 +252,16 @@ class UDPRelayDirect(UDPRelayInterface):
         self.recv_from_remote_task = None
 
     async def _send(self, addr, port, dgram, data):
+        try:
+            remote_ip = ipaddress.ip_address(addr)
+        except ValueError:
+            loop = asyncio.get_running_loop()
+            addr = await loop.getaddrinfo(addr, port)[0][4][0]
+            remote_ip = ipaddress.ip_address(addr)
+
+        if remote_ip.is_private:
+            self.logger.warning('remote_ip %s is private, drop', remote_ip)
+            return
         remote_addr = (addr, port)
         await self.remote_stream.send(dgram, remote_addr)
 
