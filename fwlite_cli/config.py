@@ -259,7 +259,7 @@ class Config:
         self.adblock_path = os.path.join(self.conf_dir, 'adblock.txt')
         self.porn_path = os.path.join(self.conf_dir, 'porn.txt')
 
-        self.userconf.read(self.conf_path)
+        self.userconf.read(self.conf_path, encoding='utf8')
 
         self.timeout = self.userconf.dgetint('FWLite', 'timeout', self.timeout)
         self.profile = self.userconf.dget('FWLite', 'profile', self.profile)
@@ -341,7 +341,7 @@ class Config:
         self.cic = CIC(self)
 
     def confsave(self):
-        with open(self.conf_path, 'w') as conf_file:
+        with open(self.conf_path, 'w', encoding='utf8') as conf_file:
             self.userconf.write(conf_file)
 
     def register_proxy_n_forward(self):
