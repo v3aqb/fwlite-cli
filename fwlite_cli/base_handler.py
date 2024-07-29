@@ -162,7 +162,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         fut = self.client_reader.readexactly(4)
         try:
             request = await asyncio.wait_for(fut, timeout=1)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, asyncio.IncompleteReadError):
             return
         addrtype = request[3]
         if addrtype == 1:  # ipv4
