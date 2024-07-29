@@ -277,17 +277,13 @@ class get_proxy:
         if host in self.cic.conf.HOSTS:
             return None
 
-        if ip is None:
-            self.logger.error('%s:%s ip is None.', host, port)
-            return True
-
-        if ip.is_loopback:
+        if ip and ip.is_loopback:
             return False
 
         if mode == 5:
             return True
 
-        if int(ip) and ip.is_private:
+        if ip and int(ip) and ip.is_private:
             return False
 
         if mode == 4:
@@ -301,6 +297,10 @@ class get_proxy:
             if self.gfwlist.match(url, host):
                 return None
             return False
+
+        if ip is None:
+            self.logger.error('%s:%s ip is None.', host, port)
+            return True
 
         if int(ip) == 0:
             return True
