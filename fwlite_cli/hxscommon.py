@@ -905,10 +905,12 @@ class HxsConnection(HC):
         self.logger.info('recv_tp_max: %8d, ewma: %8d, recv_w: %8d', ctx.recv_rate_max, ctx.recv_rate, ctx.recv_w)
         self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w: %8d', ctx.sent_rate_max, ctx.sent_rate, ctx.send_w)
         self.logger.info('buffer_ewma: %8d, active stream: %6d', self._buffer_size_ewma, self.count())
-        self.logger.info('total_recv: %d, data_recv: %d %.3f', self._stat_total_recv, ctx.traffic_from_conn,
-                         ctx.traffic_from_conn / self._stat_total_recv)
-        self.logger.info('total_sent: %d, data_sent: %d %.3f', self._stat_total_sent, ctx.traffic_from_endpoint,
-                         ctx.traffic_from_endpoint / self._stat_total_sent)
+        if self._stat_total_recv:
+            self.logger.info('total_recv: %d, data_recv: %d %.3f', self._stat_total_recv, ctx.traffic_from_conn,
+                             ctx.traffic_from_conn / self._stat_total_recv)
+        if self._stat_total_sent:
+            self.logger.info('total_sent: %d, data_sent: %d %.3f', self._stat_total_sent, ctx.traffic_from_endpoint,
+                             ctx.traffic_from_endpoint / self._stat_total_sent)
 
     async def client_writer_drain(self, stream_id, data_len):
         if self._stream_ctx[stream_id].is_closing():
