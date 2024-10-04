@@ -53,6 +53,8 @@ def is_udp(plugin_info):
 
 
 def find_path(path):
+    if sys.platform == 'win32' and not path.endswith('.exe'):
+        path += '.exe'
     if not os.path.isabs(path):
         if not os.path.dirname(path):
             from ctypes.util import find_library
@@ -73,6 +75,8 @@ def plugin_register(plugin, path):
     if plugin in PLUGIN_PATH:
         logger.error('%s already registered at %s', plugin, PLUGIN_PATH[plugin])
         return
+    if not path:
+        path = plugin
     if not os.path.exists(path):
         path = find_path(path)
     logger.info('register plugin: %s %s', plugin, path)
