@@ -157,6 +157,7 @@ class HC:
     PONG_FREQ = 0.2
     FRAME_SIZE_LIMIT = 4096 - 22
     FRAME_SIZE_LIMIT2 = 1024 - 22
+    MORE_PADDING_RANGE = 512
     FRAME_SPLIT_COUNT = 5
     FRAME_SPLIT_FREQ = 0.3
     WINDOW_SIZE = (4096, 65536, 1048576 * 4)
@@ -592,9 +593,9 @@ class HxsConnection(HC):
         elif self.bufsize - len(data) < 255:
             padding = bytes(self.bufsize - len(data))
         else:
-            diff = 1024 - len(data)
+            diff = self.FRAME_SIZE_LIMIT2 - len(data)
             if diff > 0 and more_padding:
-                padding_len = random.randint(max(diff - 100, diff, 0), diff + 512)
+                padding_len = random.randint(max(diff - 100, diff, 0), diff + self.MORE_PADDING_RANGE)
             else:
                 padding_len = random.randint(8, 64)
             padding = bytes(padding_len)
