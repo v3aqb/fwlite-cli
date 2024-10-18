@@ -40,6 +40,7 @@ except ImportError:
 
 from .parent_proxy import ParentProxyList, ParentProxy
 from .cic import CIC
+from .hxscommon import HC
 from .util import SConfigParser, parse_hostport
 from .plugin_manager import plugin_register
 from .port_forward import ForwardManager
@@ -275,8 +276,16 @@ class Config:
             self.logger.warning('Remote API Enabled WITHOUT password protection!')
         self.tcp_nodelay = self.userconf.dgetbool('FWLite', 'tcp_nodelay', self.tcp_nodelay)
         self.tcp_timeout = self.userconf.dgetint('FWLite', 'tcp_timeout', self.tcp_timeout)
+
         if self.tcp_timeout == 0:
             self.tcp_timeout = float('+inf')
+        else:
+            HC.STREAM_TIMEOUT = self.tcp_timeout
+
+        if self.userconf.dgetbool('FWLite', 'eco', False):
+            self.tcp_timeout = 30
+            HC.STREAM_TIMEOUT = 30
+            HC.IDLE_TIMEOUT = 30
 
         listen = self.userconf.dget('FWLite', 'listen', '8118')
         if listen.isdigit():
