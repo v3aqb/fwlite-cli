@@ -176,7 +176,7 @@ class HxsStreamContext(asyncio.Transport):
         self.last_active = time.monotonic()
 
         # eof recieved
-        self.stream_status = OPEN
+        self.stream_status = CLOSED
         self._from_endpoint_count = 0
 
         self._recv_buffer = bytearray()
@@ -522,7 +522,6 @@ class HxsConnection(HC):
         self._ponging = 0
         self._connection_task = None
         self._connection_stat = None
-        self._setting_sent = False
 
         self._buffer_size_ewma = 0
         self._rtt = 0.5
@@ -538,11 +537,6 @@ class HxsConnection(HC):
         if self.connection_lost:
             self.logger.debug('send_frame: connection closed. %s', self.name)
             return
-        if not self._setting_sent:
-            self._setting_sent = True
-            _payload = struct.pack('>I', self.WINDOW_SIZE[1])
-            _payload += bytes(random.randint(self.HEADER_SIZE // 4 - 4, self.HEADER_SIZE - 4))
-            self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, _payload)
         if frame_type != PING:
             self._last_send = time.monotonic()
         if frame_type == PING and flags == 0:
@@ -834,6 +828,10 @@ class HxsConnection(HC):
                         self._flen_cipher.decrypt(bytes(1024))
                     # start reading from connection
                     self.connected = time.monotonic()
+                    self.stream_status = OPEN
+                    _payload = struct.pack('>I', self.WINDOW_SIZE[1])
+                    _payload += bytes(random.randint(self.HEADER_SIZE // 4 - 4, self.HEADER_SIZE - 4))
+                    self.send_frame(SETTINGS, 0, 1 | FLOW_CONTROL, _payload)
                     self._connection_task = asyncio.ensure_future(self.read_from_connection())
                     self._connection_stat = asyncio.ensure_future(self.monitor())
                     return
@@ -906,7 +904,10 @@ class HxsConnection(HC):
         self.logger.info('%s:%s next_id: %s, rtt ewma: %.3fs min: %.3fs', self.name, self._socport,
                          self._next_stream_id, self._rtt_ewma, self._rtt)
         self.logger.info('recv_tp_max: %8d, ewma: %8d, recv_w: %8d', ctx.recv_rate_max, ctx.recv_rate, ctx.recv_w)
-        self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w: %8d', ctx.sent_rate_max, ctx.sent_rate, ctx.send_w)
+        if ctx.send_w == float('+inf'):
+            self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w:     +inf', ctx.sent_rate_max, ctx.sent_rate)
+        else:
+            self.logger.info('sent_tp_max: %8d, ewma: %8d, send_w: %8d', ctx.sent_rate_max, ctx.sent_rate, ctx.send_w)
         self.logger.info('buffer_ewma: %8d, active stream: %6d', self._buffer_size_ewma, self.count())
         if self._stat_total_recv:
             self.logger.info('total_recv: %d, data_recv: %d %.3f', self._stat_total_recv, ctx.traffic_from_conn,
