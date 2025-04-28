@@ -198,7 +198,7 @@ class Hxs3Connection(HxsConnection):
         self._socport = self._remote_writer.local_address[1]
 
         # prep key exchange request
-        data, pubk, ecc = get_client_auth(32, usn, psw, self.mode)
+        data, pubk, ecc = get_client_auth(32, usn, psw)
 
         data = bytes((0, )) + data
 

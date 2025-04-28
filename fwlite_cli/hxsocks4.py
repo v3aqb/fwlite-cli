@@ -138,7 +138,7 @@ class Hxs4Connection(HxsConnection):
 
         # prep key exchange request
         self._pskcipher = AEncryptor(self._psk.encode(), self.method, CTX, role=1)
-        data, pubk, ecc = get_client_auth_2(self._pskcipher.key_len, usn, psw, self.mode, self.b85encode)
+        data, pubk, ecc = get_client_auth_2(self._pskcipher.key_len, usn, psw, self.b85encode)
 
         ct_ = self._pskcipher.encrypt(data)
         if self.b85encode:
@@ -169,8 +169,6 @@ class Hxs4Connection(HxsConnection):
     async def _read_frame(self, timeout=30):
         try:
             frame_len = await self._rfile_read(2, timeout)
-            if self.encrypt_frame_len:
-                frame_len = self._flen_cipher.decrypt(frame_len)
             frame_len, = struct.unpack('>H', frame_len)
         except (OSError, asyncio.IncompleteReadError) as err:
             # destroy connection
@@ -186,8 +184,6 @@ class Hxs4Connection(HxsConnection):
 
     def _send_frame_data(self, ct_):
         frame_len = struct.pack('>H', len(ct_))
-        if self.encrypt_frame_len:
-            frame_len = self._flen_cipher.encrypt(frame_len)
         self._remote_writer.write(frame_len + ct_)
 
     async def drain(self):

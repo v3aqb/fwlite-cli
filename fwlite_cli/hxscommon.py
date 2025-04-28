@@ -30,8 +30,7 @@ import random
 import asyncio
 from asyncio import Event, Lock, Semaphore
 
-from hxcrypto import ECC, AEncryptor, InvalidSignature, method_supported
-from hxcrypto.encrypt import EncryptorStream
+from hxcrypto import ECC, AEncryptor, InvalidSignature
 
 from .parent_proxy import ParentProxy
 from .hxs_udp2 import parse_dgram2, on_dgram_recv
@@ -100,27 +99,25 @@ class ReadFrameError(Exception):
         self.err = err
 
 
-def get_client_auth(key_len, usn, psw, mode):
+def get_client_auth(key_len, usn, psw):
     ecc = ECC(key_len)
     pubk = ecc.get_pub_key()
     timestamp = struct.pack('>I', int(time.time()) // 30)
     data = b''.join([bytes((len(pubk), )),
                      pubk,
                      hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
-                     bytes((mode, )),
                      ])
     data += bytes(random.randint(HC.CLIENT_AUTH_PADDING // 2, HC.CLIENT_AUTH_PADDING))
     return data, pubk, ecc
 
 
-def get_client_auth_2(key_len, usn, psw, mode, b85encode):
+def get_client_auth_2(key_len, usn, psw, b85encode):
     ecc = ECC(key_len)
     pubk = ecc.get_pub_key()
     timestamp = struct.pack('>I', int(time.time()) // 30)
     data = b''.join([bytes((len(pubk), )),  # 91, 120, 158, 44, 68 for curve P256R1, P384R1, P521R1, x25519, x448
                      pubk,
                      hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
-                     bytes((mode, )),
                      ])
     # keylen = 256, len(data) = 192 (158 + 32 + 2)
     # keylen = 192, len(data) = 154
@@ -486,18 +483,7 @@ class HxsConnection(HC):
 
         self._psk = self.proxy.query.get('PSK', [''])[0]
         self.method = self.proxy.query.get('method', [DEFAULT_METHOD])[0].lower()  # for handshake
-        default_mode = DEFAULT_MODE
-        if self.proxy.scheme == 'hxs4':
-            default_mode |= MODE_ENC_FLEN
-        self.mode = int(self.proxy.query.get('mode', [default_mode])[0])
-        if self.mode & MODE_ENC_FLEN and 'rc4' not in method_supported:
-            self.mode &= 0b11111101
-        if self.method == 'rc4-md5':
-            self.mode |= MODE_RC4MD5
-        self._mode = 0
         self.hash_algo = self.proxy.query.get('hash', [DEFAULT_HASH])[0].upper()
-        self.encrypt_frame_len = False
-        self._flen_cipher = None
 
         self._remote_reader = None
         self._remote_writer = None
@@ -791,7 +777,7 @@ class HxsConnection(HC):
             auth = data.read(32)
             server_cert = data.read(scertlen)
             signature = data.read(siglen)
-            self._mode = data.read(1)[0]
+            mode = data.read(1)[0]
 
             # TODO: ask user if a certificate should be accepted or not.
             host, port = self.proxy.peername
@@ -812,20 +798,7 @@ class HxsConnection(HC):
                     ECC.verify_with_pub_key(server_cert, auth, signature, self.hash_algo)
                     shared_secret = ecc.get_dh_key(server_dh_key)
                     self.logger.debug('hxs key exchange success')
-                    if self._mode & MODE_RC4MD5:
-                        self._cipher = EncryptorStream(shared_secret, 'rc4-md5', check_iv=False, role=2)
-                        self.bufsize += 16
-                    else:
-                        self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False, role=2)
-                    if self._mode & MODE_ENC_FLEN:
-                        self.encrypt_frame_len = True
-                        md5 = hashlib.md5()
-                        md5.update(shared_secret)
-                        md5.update(b'encrypt_flen')
-                        key = md5.digest()
-                        self._flen_cipher = EncryptorStream(key, 'rc4', check_iv=False)
-                        self._flen_cipher.encrypt(bytes(1024))
-                        self._flen_cipher.decrypt(bytes(1024))
+                    self._cipher = AEncryptor(shared_secret, FAST_METHOD, CTX, check_iv=False, role=2)
                     # start reading from connection
                     self.connected = time.monotonic()
                     self.stream_status = OPEN
