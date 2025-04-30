@@ -20,7 +20,6 @@
 
 
 import time
-import ssl
 import logging
 import asyncio
 from ipaddress import ip_address
@@ -32,6 +31,7 @@ from websockets.exceptions import ConnectionClosed
 
 from hxcrypto import InvalidTag
 
+from .utls_tunnel import utls_connect
 from .parent_proxy import ParentProxy
 from .hxscommon import HxsConnection, HC, get_client_auth
 from .hxscommon import ConnectionLostError, ConnectionDenied, ReadFrameError
@@ -165,20 +165,18 @@ class Hxs3Connection(HxsConnection):
         self.logger.debug('hxsocks3 getKey')
         usn, psw = (self.proxy.username, self.proxy.password)
         self.logger.info('%s connect to server', self.name)
-        ctx = None
+        sock = None
         scheme = 'ws'
         hostname = self.proxy.query.get('host', [self.proxy.hostname, ])[0]
         host = self.proxy.hostname
         port = self.proxy.port
         if self.proxy.scheme == 'hxs3s':
-            scheme = 'wss'
-            # ctx = ssl.create_default_context()
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            # ctx.set_alpn_protocols(["http/1.1"])
-            # ctx.set_ciphers(CIPHERS)
-            if 'insecure' in self.proxy.query or is_ipaddr(self.proxy.hostname):
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+            insecure = self.proxy.query.get('insecure', ['0', ])[0] == '1'
+            hello = self.proxy.query.get('hello', ['', ])[0]
+            addr = f'{self.proxy.hostname}:{self.proxy.port}'
+            sock = await asyncio.to_thread(utls_connect, addr=addr, server_name=hostname, client_hello_id=hello, insecure=insecure)
+            host = None
+            port = None
 
         if ":" in hostname:
             url = f'{scheme}://[{hostname}]:{self.proxy.port}{self.proxy.parse.path}'
@@ -186,7 +184,7 @@ class Hxs3Connection(HxsConnection):
             url = f'{scheme}://{hostname}:{self.proxy.port}{self.proxy.parse.path}'
 
         self._remote_writer = await websockets.client.connect(
-            url, ssl=ctx, compression=None,
+            url, sock=sock, compression=None,
             host=host,
             port=port,
             ping_interval=None,

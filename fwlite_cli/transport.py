@@ -1,155 +1,73 @@
 
-from asyncio import transports, constants, get_running_loop
-from asyncio.log import logger
+import asyncio
 
 
-class FWTransport(transports.Transport):
-    def __init__(self, protocol, peer_transport=None, extra=None):
-        super().__init__(extra)
-        self._protocol = protocol  # reader protocol
-        self._peer_transport = peer_transport
-        self._closing = False
-        self._paused = False  # Reading
+class FWProtocol(asyncio.Protocol):
+    '''act as transport provided for client, and protocol connecting to server transport'''
+    def __init__(self, transport):
+        self._t_transport = transport
         self._conn_lost = 0
-        self._eof = False            # eof from Endpoint, sent to Conn
-        self._eof_from_conn = False  # eof from Conn, sent to Endpoint
-        self._empty_waiter = None
-        self._protocol_paused = False
-        self._protocol.connection_made(self)
-        # self._set_write_buffer_limits()
+        self._is_closing = False
+        self._is_reading = True
+        self._connected = False
+        self._write_eof = False
+        self._eof_received = False
 
-    def get_peer(self, protocol):
-        # set self._peer_transport
-        assert self._peer_transport is None
-        self._peer_transport = FWTransport(protocol, self)
-        if self._paused:
-            self._peer_transport.pause_writing()
-        return self._peer_transport
+        self._transport = None
 
-    # BaseTransport
-    def is_closing(self):
-        """Return True if the transport is closing or closed."""
-        return self._closing
+    # BaseProtocol
+    def connection_made(self, transport):
+        '''Called when a connection is made.
 
-    def close(self):
-        """Close the transport.
+        The transport argument is the transport representing the connection.
+        The protocol is responsible for storing the reference to its transport.'''
+        self._transport = transport
 
-        Buffered data will be flushed asynchronously.  No more data
-        will be received.  After all buffered data is flushed, the
-        protocol's connection_lost() method will (eventually) be
-        called with None as its argument.
-        """
-        if self._closing:
-            return
-        self._closing = True
-        self.write_eof()
-        self._conn_lost += 1
-        self._peer_transport.close()
-        loop = get_running_loop()
-        loop.call_soon(self._call_connection_lost, None)
+    def connection_lost(self, exc):
+        '''Called when the connection is lost or closed.
+           self._transport is already closed?'''
+        self._t_transport.close()
+        self._transport.close()
 
-    def _call_connection_lost(self, exc):
-        try:
-            self._protocol.connection_lost(exc)
-        finally:
-            self.resume_reading()
-            self._protocol = None
-
-    def set_protocol(self, protocol):
-        """Set a new protocol."""
-        self._protocol = protocol
-        self._protocol.connection_made(self)
-
-    def get_protocol(self):
-        """Return the current protocol."""
-        return self._protocol
-
-    # called by peer transport
+    # Flow Control Callbacks
+    # Flow control callbacks can be called by transports to pause or resume writing performed by the protocol.
     def pause_writing(self):
-        self._protocol.pause_writing()
+        '''Called when the transport’s buffer goes over the high watermark.'''
+        self._t_transport.pause_reading()
 
     def resume_writing(self):
-        self._protocol.resume_writing()
+        '''Called when the transport’s buffer drains below the low watermark.'''
+        self._t_transport.resume_reading()
 
     def data_received(self, data):
-        self._protocol.data_received(data)
+        '''Called when some data is received. data is a non-empty bytes object containing the incoming data.
+
+        Whether the data is buffered, chunked or reassembled depends on the transport.
+        In general, you shouldn’t rely on specific semantics and instead make your parsing generic and flexible.
+        However, data is always received in the correct order.
+
+        The method can be called an arbitrary number of times while a connection is open.
+
+        However, protocol.eof_received() is called at most once. Once eof_received() is called, data_received() is not called anymore.'''
+        self._t_transport.write(data)
 
     def eof_received(self):
-        self._protocol.eof_received()
+        '''Called when the other end signals it won’t send any more data
+        (for example by calling transport.write_eof(), if the other end also uses asyncio).
 
-    # called by self._protocol
-    def is_reading(self):
-        """Return True if the transport is receiving."""
-        return not self._paused and not self._closing
+        This method may return a false value (including None), in which case the transport will close itself.
+        Conversely, if this method returns a true value, the protocol used determines whether to close the transport.
+        Since the default implementation returns None, it implicitly closes the connection.
 
-    def pause_reading(self):
-        """Pause the receiving end.
+        Some transports, including SSL, don’t support half-closed connections,
+        in which case returning true from this method will result in the connection being closed.'''
+        if not self._eof_received:
+            self._eof_received = True
+            self._t_transport.write_eof()
 
-        No data will be passed to the protocol's data_received()
-        method until resume_reading() is called.
-        """
-        if self._closing or self._paused:
-            return
-        self._paused = True
-        if self._peer_transport:
-            self._peer_transport.pause_writing()
 
-    def resume_reading(self):
-        """Resume the receiving end.
-
-        Data received will once again be passed to the protocol's
-        data_received() method.
-        """
-        if self._closing or not self._paused:
-            return
-        self._paused = False
-        self._peer_transport.resume_writing()
-
-    # called by Writer
-    def write(self, data):
-        """Write some data bytes to the transport.
-
-        This does not block; it buffers the data and arranges for it
-        to be sent out asynchronously.
-        """
-        if not isinstance(data, (bytes, bytearray, memoryview)):
-            raise TypeError(f'data argument must be a bytes-like object, '
-                            f'not {type(data).__name__!r}')
-        if self._eof:
-            raise RuntimeError('Cannot call write() after write_eof()')
-        if self._empty_waiter is not None:
-            raise RuntimeError('unable to write; sendfile is in progress')
-        if not data:
-            return
-
-        if self._conn_lost:
-            if self._conn_lost >= constants.LOG_THRESHOLD_FOR_CONNLOST_WRITES:
-                logger.warning('FWTransport.write() raised exception.')
-            self._conn_lost += 1
-            return
-        self._peer_transport.data_received(data)
-
-    def can_write_eof(self):
-        """Return True if this transport supports write_eof(), False if not."""
-        return True
-
-    def write_eof(self):
-        """Close the write end after flushing buffered data.
-
-        (This is like typing ^D into a UNIX program reading from stdin.)
-
-        Data may still be received.
-        """
-        if self._eof:
-            return
-        self._eof = True
-        self._peer_transport.eof_received()
-
-    def abort(self):
-        """Close the transport immediately.
-
-        Buffered data will be lost.  No more data will be received.
-        The protocol's connection_lost() method will (eventually) be
-        called with None as its argument.
-        """
-        self._peer_transport.close()
+async def transport_forward(transport_1, transport_2, ctx):
+    protocol_1 = FWProtocol(transport_1)
+    protocol_1.connection_made(transport_2)
+    protocol_2 = FWProtocol(transport_2)
+    protocol_2.connection_made(transport_1)

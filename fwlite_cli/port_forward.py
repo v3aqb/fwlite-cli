@@ -5,6 +5,7 @@ import ssl
 import time
 import logging
 
+from .utls_tunnel import utls_connect_async
 
 logger = logging.getLogger('tunnel')
 
@@ -125,17 +126,12 @@ class ForwardHandler:
         self.tcp_nodelay = tcp_nodelay
 
     async def connect_tls(self, mode):
-        # ctx = ssl.create_default_context()
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        # ctx.set_alpn_protocols(["http/1.1"])
-        # ctx.set_ciphers(CIPHERS)
-        if mode in ('TLS_SELF_SIGNED', 'TLS_INSECURE'):
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-        reader, writer = await asyncio.open_connection(self.addr,
-                                                       self.port,
-                                                       ssl=ctx,
-                                                       ssl_handshake_timeout=self.ctimeout)
+        insecure = mode in ('TLS_SELF_SIGNED', 'TLS_INSECURE')
+        addr = f'{self.addr}:{self.port}'
+        reader, writer = await utls_connect_async(addr,
+                                                  self.addr,
+                                                  client_hello_id='chrome',
+                                                  insecure=insecure)
         return reader, writer
 
     async def handle(self, client_reader, client_writer):
@@ -152,13 +148,13 @@ class ForwardHandler:
                                                                         proxy=self.proxy,
                                                                         timeout=self.ctimeout,
                                                                         tunnel=True)
-        except OSError:
-            logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy)
+        except OSError as err:
+            logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy, exc_info=True)
             client_writer.close()
             await client_writer.wait_closed()
             return
         except asyncio.TimeoutError:
-            logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy)
+            logger.error('open_connection failed: %s:%s, via %s', self.addr, self.port, self.proxy, exc_info=True)
             client_writer.close()
             await client_writer.wait_closed()
             return
