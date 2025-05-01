@@ -106,6 +106,7 @@ def get_client_auth(key_len, usn, psw):
     data = b''.join([bytes((len(pubk), )),
                      pubk,
                      hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
+                     bytes((0, )),
                      ])
     data += bytes(random.randint(HC.CLIENT_AUTH_PADDING // 2, HC.CLIENT_AUTH_PADDING))
     return data, pubk, ecc
@@ -118,6 +119,7 @@ def get_client_auth_2(key_len, usn, psw, b85encode):
     data = b''.join([bytes((len(pubk), )),  # 91, 120, 158, 44, 68 for curve P256R1, P384R1, P521R1, x25519, x448
                      pubk,
                      hmac.new(psw.encode() + usn.encode(), timestamp, hashlib.sha256).digest(),
+                     bytes((0, )),
                      ])
     # keylen = 256, len(data) = 192 (158 + 32 + 2)
     # keylen = 192, len(data) = 154
