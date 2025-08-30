@@ -159,7 +159,7 @@ class HC:
     MORE_PADDING_RANGE = 512
     FRAME_SPLIT_FREQ = 0.3
     FRAME_SPLIT_LIMIT = 4096 - 22
-    WINDOW_SIZE = (4096, 65536, 1048576 * 4)
+    WINDOW_SIZE = (32768, 131072, 1048576 * 4)
 
 
 class HxsStreamContext(asyncio.Transport):
