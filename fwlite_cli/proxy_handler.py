@@ -757,10 +757,10 @@ class http_handler(BaseProxyHandler):
         if self.shortpath:
             if self.path.startswith(self.shortpath):
                 self.shortpath = None
-            else:
-                self.logger.info('SNI_REWRITE: path: %s, sni: %s', self.path, self.shortpath)
-                self.request_host = (self.shortpath, self.request_host[1])
-                self.shortpath = '%s:%d' % self.request_host
+            # else:
+            #     self.logger.info('SNI_REWRITE: path: %s, sni: %s', self.path, self.shortpath)
+            #     self.request_host = (self.shortpath, self.request_host[1])
+            #     self.shortpath = '%s:%d' % self.request_host
 
         # redirector
         new_url = self.conf.cic.redirect(self)
